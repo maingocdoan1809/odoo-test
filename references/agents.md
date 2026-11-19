@@ -1,18 +1,17 @@
-# Running EXECUTE: one worker per case, each in its own browser
+﻿# Worker coordination
 
-One coordinator (Sonnet 5.5, you) and one worker (Sonnet 5.5) per case of the strategy, all started in the SAME turn with the Agent tool, so no case waits. A worker has its own playwright-cli browser (`oqa live start`), so workers never move each other's page. There is no validator and no exploring pass: the analysis already judged the case.
+Use Sonnet 5.5 or Sol 6.1 for the coordinator and Haiku or Luna for case workers when the host provides them. Read the host's available worker capacity and use up to five active case slots.
 
 ## Coordinator
-- `oqa status` for the cases; one Agent call per case (at most 6 at a time), `run_in_background: true`.
-- Cases that depend on each other (`depends_on`) go to ONE worker, in order. Data every case needs first (an import file, a second company) is made by the first worker and reported with `oqa note`.
-- Reads the reports, tells the user PASS / FAIL / BLOCKED per case in the user's language, then `oqa report`. Never drives a case by hand, never records a step for a worker.
-- Gives a hint when a worker comes back stuck: `oqa ask`.
 
-## Worker prompt (copy it, fill the case id and workspace)
-> You test case <ID> of Odoo session <SESSION>, workspace <WS>. Run every oqa command as `python3 <skill>/oqa.py <command> --ws <WS>`. Read <skill>/SKILL.md section "EXECUTE" and follow it: `oqa live start <ID>`, then work in YOUR browser with `playwright-cli -s=oqa-<ID> …` (read the snapshot before every action, never guess a selector), record every planned step once with `oqa live step`, close with `oqa live end`. Fix your own mistakes in the browser; do not retry a real failure. Never confirm the strategy, never edit files under ~/.odoo-test, never read cookies or passwords, never run a cron or server action unless the case asks for it. Test data carries the workspace prefix. Report in Vietnamese: PASS/FAIL/BLOCKED, the reason, the evidence path, the test data left behind.
+- After approval, read `oqa status` and `oqa claims`. Assign ready cases to separate workers. Pass the session ID, workspace and case ID.
+- Workers use `oqa claim --agent WORKER --case CASE --packet` to get ownership and the case context together. A dependent case waits for its prerequisites. If a prerequisite fails, record the reason the dependent case cannot run.
+- Ask the data agent to check `oqa fixture plan SCREEN` when a case needs setup. Keep requested records, fields and returned identifiers in case-scoped `oqa note` messages. Visual-only cases can inspect the UI directly.
+- When a worker stalls, get `oqa case context CASE --screen SCREEN --issue ERROR`. Share relevant sitemap, history and knowledge. Retry a runner failure only after identifying a concrete change. A confirmed mismatch is a test result.
 
-## Rules that save time
-- Read the language of the screen first: labels, menus and cron names are in that language (Japanese on astragate), not in English.
-- Make data in small actions and look at the snapshot after each: a dropdown that lists only some records, a form that saves without an error, are Odoo behaviours to read, not to retry blindly.
-- A click that leaves the page: `oqa live shot` BEFORE it, so the picture still shows the element.
-- A step is recorded once. Correct things in the browser first, then record what the page finally showed.
+## Case worker
+
+1. Claim the case and read `oqa case context CASE`. Use the session and workspace flags on every command. Start with `oqa live start CASE` and use the browser name returned by that command.
+2. Inspect the real page before choosing actions. Prepare a case-owned record for state changes, edits or deletes. Run `oqa fixture apply SCREEN --case CASE --key FIELD --values FILE --out SETUP.js` with a JSON object of field values and a workspace-prefixed unique key. Put the generated setup in the verified code for the appropriate step. A relation can refer to an earlier fixture with `{"$fixture":"PREFIX_name"}`.
+3. Check the actual result and record every planned step. Capture evidence before a navigation if it removes the target. Add `--verified-code` and `--shows` only for the final path so the tool can assemble the script. Avoid persistent record IDs, secrets and fixed waits.
+4. Close with `oqa live end CASE --status STATUS`. Report the result, reason and any remaining fixture data. The coordinator generates the workbook after the queue drains.

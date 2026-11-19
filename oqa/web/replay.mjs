@@ -1,0 +1,79 @@
+import { readFile, mkdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { chromium } from "playwright";
+
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+const manifest = JSON.parse(await readFile(new URL("./cases.json", import.meta.url), "utf8"));
+const caseId = process.argv[2];
+if (!Object.hasOwn(manifest.cases, caseId)) {
+  throw new Error("Choose a case: " + Object.keys(manifest.cases).join(", "));
+}
+const base = new URL(process.env.OQA_BASE_URL || manifest.baseUrl);
+const original = new URL(manifest.baseUrl);
+const stamp = randomUUID().slice(0, 10);
+const prefix = manifest.prefix || "ZZ_AUTOTEST_";
+const fresh = text => text.replaceAll(prefix, `${prefix}r${stamp}_`);
+const runDir = `evidence/${caseId.replace(/[^\w.-]/g, "_")}-${stamp}`;
+await mkdir(runDir, { recursive: true });
+
+const installedEdge = process.platform === "win32" &&
+  [process.env["ProgramFiles(x86)"], process.env.ProgramFiles].some(
+    root => root && existsSync(join(root, "Microsoft", "Edge", "Application", "msedge.exe")),
+  );
+const browser = await chromium.launch(installedEdge ? { channel: "msedge" } : {});
+try {
+  const accounts = JSON.parse(process.env.OQA_PROFILES || "{}");
+  const initial = manifest.cases[caseId].profile;
+  const pages = new Map();
+  async function signIn(profile) {
+    if (pages.has(profile)) return pages.get(profile);
+    const account = accounts[profile] || (profile === initial ? {
+      login: process.env.OQA_LOGIN,
+      password: process.env.OQA_PASSWORD,
+      storageState: process.env.OQA_STORAGE_STATE,
+    } : {});
+    const context = await browser.newContext({ baseURL: base.href, storageState: account.storageState || undefined });
+    const page = await context.newPage();
+    if (!account.storageState) {
+      if (!account.login || !account.password) {
+        throw new Error("Supply credentials for profile " + profile);
+      }
+      const login = new URL("/web/login", base);
+      if (process.env.OQA_DB) login.searchParams.set("db", process.env.OQA_DB);
+      await page.goto(login.href);
+      await page.locator("input[name=login]").fill(account.login);
+      await page.locator("input[name=password]").fill(account.password);
+      await page.locator("button[type=submit]").click();
+      await page.locator(".o_web_client").waitFor();
+    }
+    pages.set(profile, page);
+    return page;
+  }
+  for (const step of manifest.cases[caseId].steps) {
+    const page = await signIn(step.profile || initial);
+    const code = step.code.map(line => fresh(line.replaceAll(original.origin, base.origin)));
+    const execute = async lines => {
+      const action = new AsyncFunction("page", lines.join("\n"));
+      await action(page);
+    };
+    try {
+      if (step.before && code.length) {
+        await execute(code.slice(0, -1));
+        await page.screenshot({ path: `${runDir}/step-${step.n}-before.png` });
+        await execute(code.slice(-1));
+      } else {
+        await execute(code);
+      }
+      await page.waitForFunction(text => document.body.innerText.includes(text), fresh(step.shows));
+      await page.screenshot({ path: `${runDir}/step-${step.n}.png` });
+    } catch (error) {
+      await page.screenshot({ path: `${runDir}/step-${step.n}-failed.png` }).catch(() => {});
+      throw new Error(`Case ${caseId}, step ${step.n}`, { cause: error });
+    }
+  }
+  console.log(`${caseId}: PASS. Evidence: ${runDir}`);
+} finally {
+  await browser.close();
+}

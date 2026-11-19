@@ -47,6 +47,7 @@ def test_text_and_status_colours_are_readable_in_light_and_dark(page_html):
 
 @pytest.mark.parametrize("page_html", [HTML, INIT], ids=["dashboard", "init form"])
 def test_nothing_decorative_and_nothing_remote(page_html):
+    page_html = page_html.replace('<link rel="icon" href="data:,">', "")
     assert not re.search(r"gradient\(|backdrop-filter|text-shadow|@import|<link[^>]+href=|<script[^>]+src=|(?:src|href)=[\"']https?://|url\(\s*[\"']?https?://", page_html), "decorative or remote resource"
     assert not re.search(r"[\U0001F300-\U0001FAFF☀-➿]", page_html.replace("↗", "").replace("←", "").replace("→", "").replace("✕", "")), "emoji"
     assert page_html.count("box-shadow") <= 3 and "border-radius:50%" in page_html or "border-radius" in page_html
@@ -117,6 +118,7 @@ def test_every_font_stack_really_draws_vietnamese(served):
         page.wait_for_selector("tr.case")
         page.evaluate("""(text) => { for (const name of ['display', 'sans', 'mono']) { const e = document.createElement('div'); e.id = 'vi-' + name; e.textContent = text;
             e.style.cssText = 'font-family:var(--' + name + ');font-size:24px;position:fixed;left:0;top:0'; document.body.append(e); } }""", VIETNAMESE)
+        page.evaluate("async () => { await document.fonts.ready; await new Promise(requestAnimationFrame); }")
         client = context.new_cdp_session(page)
         client.send("DOM.enable")
         client.send("CSS.enable")

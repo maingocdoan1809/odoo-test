@@ -7,7 +7,9 @@ import subprocess
 import sys
 import time
 import urllib.request
+import webbrowser
 from pathlib import Path
+from urllib.parse import quote
 
 from . import build_id, paths
 from .store import read_json, write_json
@@ -34,9 +36,14 @@ def dashboard_running():
     return None
 
 
-def ensure_dashboard(ws, session_id):
+def ensure_dashboard(ws, session_id, select_existing=False):
     """Start the dashboard in the background on this session when none runs (a running one is left alone). True when one was started."""
-    if os.environ.get("OQA_NO_OPEN") or dashboard_running():
+    if os.environ.get("OQA_NO_OPEN"):
+        return False
+    existing = dashboard_running()
+    if existing:
+        if select_existing:
+            return webbrowser.open(f"{existing}#{quote(ws)}/{quote(session_id)}")
         return False
     mark = paths.home() / "dashboard_spawn.json"
     if time.time() - (read_json(mark, {}) or {}).get("at", 0) < SPAWN_COOLDOWN:

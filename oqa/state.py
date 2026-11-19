@@ -45,7 +45,7 @@ class Session:
         return cls(ws, session)
 
     @classmethod
-    def create(cls, ws, testcase_file, cases_doc):
+    def create(cls, ws, testcase_file, cases_doc, channel=None, make_current=True):
         """INTAKE is done: the workbook was read into `cases_doc`. Starts in ANALYZE and becomes the workspace's current session."""
         session = cls(ws, paths.new_session_id())
         now = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -55,8 +55,10 @@ class Session:
             "done": [{"phase": "INTAKE", "at": now}], "waiting": None, "strategy_sha": None, "confirmation": None, "attempts": {}, "runs": {}, "results": {}, "connect": None,
             "stopped": None, "hints": {}, "seen": 0, "timeouts": {}, "progress": {},
             "explore": "off" if os.environ.get("OQA_NO_EXPLORE_GATE") else "required",
+            **({"channel": channel} if channel else {}),
         })
-        (paths.workspace_dir(ws) / "current").write_text(session.id, encoding="utf-8")
+        if make_current:
+            (paths.workspace_dir(ws) / "current").write_text(session.id, encoding="utf-8")
         events.append(session.dir, "session_started", workspace=ws, file=str(testcase_file))
         events.append(session.dir, "phase", phase="ANALYZE", text=f"Read {len(cases_doc['cases'])} cases; analysing them")
         return session
@@ -96,7 +98,7 @@ class Session:
         events.append(self.dir, "phase", phase=phase, text=text)
 
     # --- ANALYZE / CONNECT / CONFIRM ------------------------------------------------
-    def analysis_submitted(self, open_questions=None):
+    def analysis_submitted(self, open_questions=None, reviews=None, document=None):
         """A valid analysis was saved. First time: go to CONNECT, unless a case still needs the user: then the session stays in ANALYZE and the questions are asked now
         (`open_questions` = the text shown to the user), because a plan built on a guess is the cause of blocked cases later. A later correction (before confirming)
         drops the strategy so it is built again."""
@@ -105,8 +107,17 @@ class Session:
                 raise GateError(f"The analysis can no longer change in phase {state['phase']}.")
             if state["waiting"]:
                 raise GateError("The session is waiting for the user to answer; run `oqa answer` first.")
+            if document is not None:
+                write_json(self.dir / "analysis.json", document)
             state["strategy_sha"] = None
-            if open_questions and state["phase"] == "ANALYZE":
+            if reviews:
+                if state["phase"] != "ANALYZE":
+                    self._enter(state, "ANALYZE", "Updated analysis needs case review")
+                state["reviews"] = reviews
+                state["waiting"] = {"question": "Review the cases in the dashboard.", "case": None, "review": True}
+                for case, questions in reviews.items():
+                    events.append(self.dir, "ask", question="\n".join(questions), case=case)
+            elif open_questions and state["phase"] == "ANALYZE":
                 state["waiting"] = {"question": open_questions, "case": None, "asked_at": time.strftime("%Y-%m-%d %H:%M:%S")}
                 events.append(self.dir, "ask", question=open_questions)
             elif state["phase"] == "ANALYZE":
@@ -126,7 +137,7 @@ class Session:
                 raise GateError(f"Not allowed in phase {state['phase']}. Next: {NEXT[state['phase']]}")
             state["strategy_sha"] = sha
 
-    def confirm(self, by, sha):
+    def confirm(self, by, sha, has_cases=True):
         """The user's approval. `sha` must be the digest of the strategy on disk now, so what they approved is what runs."""
         with self.update() as state:
             if state["waiting"]:
@@ -137,7 +148,8 @@ class Session:
                 raise GateError("The strategy changed or was never built; run `oqa strategy` and ask the user to review it again.")
             state["confirmation"] = {"by": by, "at": time.strftime("%Y-%m-%d %H:%M:%S"), "strategy_sha": sha}
             events.append(self.dir, "confirmed", by=by, strategy_sha=sha)
-            self._enter(state, "EXECUTE", "Confirmed; running the cases one by one")
+            self._enter(state, "EXECUTE" if has_cases else "REPORT",
+                        "Confirmed; ready to run the approved cases" if has_cases else "Confirmed; there are no approved cases to run")
 
     def confirm_current(self, by):
         """The user approves the strategy that is on disk now (the terminal and the dashboard both come here). Refuses a strategy that was
@@ -145,7 +157,7 @@ class Session:
         strategy_doc = read_json(self.dir / "strategy.json")
         if not strategy_doc or not analysis.verify_strategy(strategy_doc, read_json(self.dir / "analysis.json")):
             raise GateError("strategy.json is missing or no longer matches the analysis; run `oqa strategy` again.")
-        self.confirm(by, strategy_doc["sha"])
+        self.confirm(by, strategy_doc["sha"], has_cases=bool(strategy_doc["order"]))
         return strategy_doc
 
     # --- asking the user ----------------------------------------------------------
@@ -158,12 +170,31 @@ class Session:
             state["waiting"] = {"question": question, "case": case, "asked_at": time.strftime("%Y-%m-%d %H:%M:%S")}
             events.append(self.dir, "ask", question=question, **({"case": case} if case else {}))
 
+    def review_case(self, case, text="", skip=False):
+        with self.update() as state:
+            pending = state.get("reviews", {})
+            if state["phase"] != "ANALYZE" or case not in pending:
+                raise GateError(f"Case {case} is not waiting for review.")
+            if not skip and not text.strip():
+                raise GateError("Write the answer first.")
+            if skip:
+                text = text.strip() or "User skipped this case because a prerequisite is missing."
+                state.setdefault("skipped_reviews", {})[case] = text
+            shared = [item["path"] for item in refs.register_from_text(
+                self, text, by="answer", case=case)] if not skip else []
+            del pending[case]
+            if not pending:
+                state["waiting"] = None
+            events.append(self.dir, "answered", case=case, answer=text, files=shared, skipped=skip)
+
     def answer(self, text):
         """The user replied. A question about one case gives that case a fresh repair budget and, if it was left PENDING / BLOCKED, lets it run again."""
         with self.update() as state:
             waiting = state["waiting"]
             if not waiting:
                 raise GateError("Nobody is waiting for an answer.")
+            if waiting.get("review"):
+                raise GateError("Answer or skip each case in the dashboard.")
             case = waiting.get("case")
             state["waiting"] = None
             if case:
@@ -193,10 +224,13 @@ class Session:
             if state["results"].get(case, {}).get("status") == "PASS":
                 raise GateError(f"{case} already passed.")
             used = state["attempts"].get(case, 0)
-            if used >= 1 + MAX_REPAIRS:
-                raise GateError(f"{case} has used its first run and {MAX_REPAIRS} repairs. Stop fixing it: record it (oqa finish) or ask the user: oqa ask --case {case} \"...\"")
+            allowed_repairs = 1 if state.get("channel") else MAX_REPAIRS
+            if used >= 1 + allowed_repairs:
+                raise GateError(f"{case} used its first run and {allowed_repairs} recovery attempt(s). Record the outcome with oqa finish or ask the user with oqa ask --case {case}.")
             if used >= 1:
                 log = self._log(case)
+                if state.get("channel") and (not log["last"] or log["last"]["attempt"] != state.get("runs", {}).get(case)):
+                    raise GateError(f"{case} still has an open attempt. Check the worker and use oqa live recover if it stopped.")
                 if log["last"] and log["last"]["status"] == "FAIL" and not log["noted"]:
                     raise GateError(f"{case} failed on run {log['last']['attempt']} and no repair note was recorded. Do not rerun on a guess: look at the picture and `oqa probe`, "
                                     f"then say what you found: oqa repair {case} --cause \"...\" --evidence \"...\" --change \"...\"")
@@ -335,9 +369,14 @@ class Session:
                 raise GateError(f"{case} already passed.")
             refs.register_from_text(self, text, by="answer", case=case)          # a hint that points at a file ("use C:\data\x.xlsx") makes it a reference too
             state.setdefault("hints", {}).setdefault(case, []).append({"text": text, "at": time.strftime("%Y-%m-%d %H:%M:%S"), "by": by})
-            state["attempts"].pop(case, None)
-            state.setdefault("progress", {}).pop(case, None)
-            state["results"].pop(case, None)
+            existing_result = state["results"].pop(case, None)
+            last = self._log(case)["last"]
+            if not state.get("channel") or existing_result or (last and last["attempt"] == state.get("runs", {}).get(case)):
+                from . import claims
+
+                state["attempts"].pop(case, None)
+                state.setdefault("progress", {}).pop(case, None)
+                claims.release(self, case, missing_ok=True)
             if state["waiting"] and state["waiting"].get("case") == case:
                 state["waiting"] = None
                 events.append(self.dir, "answered", answer=text, case=case)
@@ -355,6 +394,15 @@ class Session:
         with self.update() as state:
             state["seen"] = len(events.read(self.dir))
 
+    def consume_news(self):
+        with self.update() as state:
+            log = events.read(self.dir)
+            pending = log[state.get("seen", 0):]
+            news = [event for event in pending if event["kind"] in events.USER_KINDS]
+            if news:
+                state["seen"] = len(log)
+            return news
+
     def finish_case(self, case, status, reason=""):
         """Record the end of a case. When every case of the strategy has a result, the session moves to REPORT."""
         if status not in events.CASE_STATUSES:
@@ -369,6 +417,10 @@ class Session:
             if not attempts and status in ("PASS", "FAIL"):
                 raise GateError(f"{case} was never run; there is nothing to record.")
             state["results"][case] = {"status": status, "attempts": attempts, **({"reason": reason} if reason else {})}
+            if state.get("channel"):
+                from . import claims
+
+                claims.release(self, case, missing_ok=True)
             events.append(self.dir, "case_finished", case=case, status=status, attempts=attempts, **({"reason": reason} if reason else {}))
             memory.remember_result(self.ws, memory.stem_of(state["file"]), case, status, reason, self.id)
             if all(c in state["results"] for c in order):

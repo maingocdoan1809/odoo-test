@@ -1,0 +1,99 @@
+<odoo>
+    <record id="site_list" model="ir.ui.view">
+        <field name="name">oqa.harness.site.list</field>
+        <field name="model">oqa.harness.site</field>
+        <field name="arch" type="xml">
+            <list><field name="name"/><field name="code"/><field name="active"/></list>
+        </field>
+    </record>
+    <record id="site_form" model="ir.ui.view">
+        <field name="name">oqa.harness.site.form</field>
+        <field name="model">oqa.harness.site</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group><field name="name"/><field name="code"/><field name="active"/></group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+    <record id="site_action" model="ir.actions.act_window">
+        <field name="name">Sites</field>
+        <field name="res_model">oqa.harness.site</field>
+        <field name="view_mode">list,form</field>
+    </record>
+    <record id="item_list" model="ir.ui.view">
+        <field name="name">oqa.harness.item.list</field>
+        <field name="model">oqa.harness.item</field>
+        <field name="arch" type="xml">
+            <list><field name="name"/><field name="code"/><field name="site_id"/><field name="cost"/><field name="active"/></list>
+        </field>
+    </record>
+    <record id="item_form" model="ir.ui.view">
+        <field name="name">oqa.harness.item.form</field>
+        <field name="model">oqa.harness.item</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group><field name="name"/><field name="code"/><field name="site_id"/><field name="cost"/><field name="active"/></group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+    <record id="item_action" model="ir.actions.act_window">
+        <field name="name">Items</field>
+        <field name="res_model">oqa.harness.item</field>
+        <field name="view_mode">list,form</field>
+    </record>
+    <record id="item_search" model="ir.ui.view">
+        <field name="name">oqa.harness.item.search</field>
+        <field name="model">oqa.harness.item</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="code"/>
+                <field name="site_id"/>
+            </search>
+        </field>
+    </record>
+    <record id="request_list" model="ir.ui.view">
+        <field name="name">oqa.harness.request.list</field>
+        <field name="model">oqa.harness.request</field>
+        <field name="arch" type="xml">
+            <list><field name="name"/><field name="site_id"/><field name="total"/><field name="state"/></list>
+        </field>
+    </record>
+    <record id="request_form" model="ir.ui.view">
+        <field name="name">oqa.harness.request.form</field>
+        <field name="model">oqa.harness.request</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_submit" type="object" string="Submit" invisible="state != 'draft'"/>
+                    <button name="action_approve" type="object" string="Approve" invisible="state != 'submitted'" groups="oqa_harness.group_manager"/>
+                    <button name="action_reset" type="object" string="Reset to Draft" invisible="state != 'submitted'"/>
+                    <field name="state" widget="statusbar"/>
+                </header>
+                <sheet>
+                    <group><field name="name"/><field name="site_id"/><field name="total"/></group>
+                    <field name="line_ids">
+                        <list editable="bottom">
+                            <field name="item_id"/>
+                            <field name="quantity"/>
+                            <field name="subtotal"/>
+                        </list>
+                    </field>
+                </sheet>
+            </form>
+        </field>
+    </record>
+    <record id="request_action" model="ir.actions.act_window">
+        <field name="name">Requests</field>
+        <field name="res_model">oqa.harness.request</field>
+        <field name="view_mode">list,form</field>
+    </record>
+    <menuitem id="root_menu" name="OQA Harness" groups="oqa_harness.group_operator"/>
+    <menuitem id="site_menu" name="Sites" parent="root_menu" action="site_action" sequence="10"/>
+    <menuitem id="item_menu" name="Items" parent="root_menu" action="item_action" sequence="20"/>
+    <menuitem id="request_menu" name="Requests" parent="root_menu" action="request_action" sequence="30"/>
+</odoo>

@@ -60,10 +60,4 @@ def fix(report, log):
         subprocess.run(step, check=True)
     if steps and Path(sys.prefix).resolve() != VENV.resolve():
         log("Packages are in ~/.odoo-test/venv: run `oqa doctor` again to check them.")
-    if report.get("missing_hooks"):                      # the two hooks that work before the skill is loaded: written once, with a backup
-        try:
-            path, added, backup = globalhooks.install()
-            log(f"Added {', '.join(added)} to {path}" + (f" (backup: {backup})" if backup else "") + ": open a new Claude Code window for them to start.")
-        except (OSError, ValueError) as error:
-            log(f"Hooks not installed ({error}). Run `oqa hooks --install` after fixing that file.")
     return check()

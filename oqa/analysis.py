@@ -57,6 +57,22 @@ def template(cases_doc, workspace, session=None):
         })
     out = {"schema_version": SCHEMA_VERSION, "cases": items}
     if session:
+        if session.state().get("channel"):
+            from .store import read_json
+
+            latest = read_json(session.dir / "analysis.json", {}) or {}
+            existing = {case["id"]: case for case in latest.get("cases", [])}
+            for item in items:
+                assessed = existing.get(item["id"])
+                if assessed:
+                    for field in ("profile", "verdict", "clarity", "sufficiency", "vague_resolved",
+                                  "data_needs", "data_considered", "edge_cases", "edge_cases_none_reason",
+                                  "depends_on", "reuse", "steps", "reason", "questions", "timeout_s"):
+                        if field in assessed:
+                            item[field] = assessed[field]
+                    refreshed = {ref["text"]: ref for ref in item["refs"] if ref["status"] == "ok"}
+                    item["refs"] = [refreshed.get(ref["text"], ref) if ref["status"] in ("missing", "asked") else ref
+                                    for ref in assessed.get("refs", item["refs"])]
         out["_user_answers"] = [{"case": e.get("case"), "answer": e["answer"]} for e in events.read(session.dir) if e["kind"] == "answered"]
         out["_shared_files"] = [{"name": i["name"], "path": i["path"], "kind": i["kind"], "case": i.get("case")} for i in refs.items(session)]
     return out

@@ -36,7 +36,7 @@ def call(ws, name, arguments):
     raise sitemap.SitemapError(f"no such tool: {name}")
 
 
-def handle(message, ws=None):
+def handle(message, ws=None, tools=None, tool_call=None):
     """The answer to one JSON-RPC message, or None for a notification."""
     method, ident, params = message.get("method"), message.get("id"), message.get("params") or {}
     if ident is None:
@@ -45,10 +45,11 @@ def handle(message, ws=None):
     if method == "initialize":
         reply["result"] = {"protocolVersion": params.get("protocolVersion") or PROTOCOL, "capabilities": {"tools": {}}, "serverInfo": {"name": "oqa-sitemap", "version": "1"}}
     elif method == "tools/list":
-        reply["result"] = {"tools": TOOLS}
+        reply["result"] = {"tools": TOOLS if tools is None else tools}
     elif method == "tools/call":
         try:
-            text, bad = call(ws, params.get("name"), params.get("arguments") or {}), False
+            name, arguments = params.get("name"), params.get("arguments") or {}
+            text, bad = (tool_call(name, arguments) if tool_call else call(ws, name, arguments)), False
         except (sitemap.SitemapError, paths.PathError, KeyError) as error:
             text, bad = f"{type(error).__name__}: {error}" if isinstance(error, KeyError) else str(error), True
         reply["result"] = {"content": [{"type": "text", "text": text}], "isError": bad}
@@ -59,13 +60,13 @@ def handle(message, ws=None):
     return reply
 
 
-def serve(ws=None, stdin=None, stdout=None):
+def serve(ws=None, stdin=None, stdout=None, tools=None, tool_call=None):
     stdin, stdout = stdin or sys.stdin, stdout or sys.stdout
     for line in stdin:
         if not line.strip():
             continue
         try:
-            reply = handle(json.loads(line), ws)
+            reply = handle(json.loads(line), ws, tools=tools, tool_call=tool_call)
         except json.JSONDecodeError:
             reply = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "not JSON"}}
         if reply is not None:

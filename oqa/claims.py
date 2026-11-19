@@ -10,6 +10,7 @@ from .state import GateError
 from .store import locked, read_json, write_json
 
 LEASE_S = 600
+MAX_WORKERS = 5
 HEAVY_WORDS = ("batch", "cron", "mail", "import", "export", "archive", "user", "contract", "company", "upload")
 
 
@@ -24,7 +25,7 @@ def _now():
 def _last_activity(log, case):
     """Epoch seconds of the last event of the case (0 when none)."""
     for e in reversed(log):
-        if e.get("case") == case:
+        if e.get("case") == case and e.get("kind") in ("case_started", "step", "explore", "repair"):
             try:
                 return time.mktime(time.strptime(e["ts"], "%Y-%m-%d %H:%M:%S"))
             except (ValueError, KeyError):
@@ -39,6 +40,12 @@ def _difficulty(item):
 
 def _fresh(entry, log, case):
     return _now() - max(entry["at"], _last_activity(log, case)) < LEASE_S
+
+
+def _unclaimed_activity(log, case):
+    last = next((event["kind"] for event in reversed(log) if event.get("case") == case
+                 and event["kind"] in ("case_started", "step", "attempt_finished", "explore")), None)
+    return last not in (None, "attempt_finished") and _now() - _last_activity(log, case) < LEASE_S
 
 
 def table(session):
@@ -62,7 +69,7 @@ def free_cases(session):
     for c in todo:
         if c in held and held[c]["fresh"]:
             continue
-        if _now() - _last_activity(log, c) < LEASE_S and c not in held:
+        if c not in held and _unclaimed_activity(log, c):
             continue                                              # someone is already working on it, even without having claimed it
         if any(d not in state["results"] or state["results"][d]["status"] != "PASS" for d in analysis[c].get("depends_on") or []):
             continue                                              # its parent has not passed yet
@@ -75,11 +82,15 @@ def claim(session, agent, want=None):
     if not agent:
         raise GateError("Say who you are: oqa claim --agent <name>.")
     with locked(_file(session)):
+        session.require("EXECUTE")
         data = read_json(_file(session), {}) or {}
         state, log = session.state(), events.read(session.dir)
-        mine = [c for c, e in data.items() if e["agent"] == agent and c not in state["results"] and _fresh(e, log, c)]
+        active = {c: e for c, e in data.items() if c not in state["results"] and _fresh(e, log, c)}
+        mine = [c for c, e in active.items() if e["agent"] == agent]
         if mine:
             return mine[0], f"{agent} already holds case {mine[0]}: finish it (oqa finish / oqa run) or release it (oqa release {mine[0]}) before claiming another."
+        if len(active) >= MAX_WORKERS:
+            return None, f"All {MAX_WORKERS} case worker slots are occupied."
         free = free_cases(session)
         if want:                                                  # an agent asks for the case it was given: it gets it only when nobody else works on it
             if want not in free:
@@ -95,10 +106,12 @@ def claim(session, agent, want=None):
         return case, f"{agent} now owns case {case}. Read the shared notes first: oqa notes"
 
 
-def release(session, case):
+def release(session, case, missing_ok=False):
     with locked(_file(session)):
         data = read_json(_file(session), {}) or {}
         if case not in data:
+            if missing_ok:
+                return
             raise GateError(f"Case {case} is not claimed.")
         del data[case]
         write_json(_file(session), data)

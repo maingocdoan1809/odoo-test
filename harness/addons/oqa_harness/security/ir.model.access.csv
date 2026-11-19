@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_site,site,model_oqa_harness_site,group_operator,1,1,1,1
+access_item,item,model_oqa_harness_item,group_operator,1,1,1,1
+access_request,request,model_oqa_harness_request,group_operator,1,1,1,1
+access_line,line,model_oqa_harness_line,group_operator,1,1,1,1

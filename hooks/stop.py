@@ -23,7 +23,7 @@ def verdict():
     state = session.state()
     if state["phase"] == "DONE" or state.get("stopped") or not autostart.session_active(session):
         return None
-    if not os.environ.get("OQA_NO_OPEN"):
+    if not os.environ.get("OQA_NO_OPEN") and (not state.get("channel") or (session.dir / "analysis.json").is_file()):
         autostart.ensure_dashboard(ws, session_id)              # repaired quietly: the user always has the page
     if state["waiting"] or state["phase"] == "CONFIRM":
         if autostart.wait_running(session):

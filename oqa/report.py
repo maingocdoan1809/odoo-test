@@ -47,7 +47,7 @@ LABELS = {
         "blocked": "Could not be done: {why}", "notrun_text": "Not run in this test{why}", "retry": " It took {n} runs (the earlier ones failed, see section 5).",
     },
 }
-COLORS = {"PASS": "C6EFCE", "FAIL": "FFC7CE", "PENDING": "FFEB9C", "BLOCKED": "D9D9D9"}
+COLORS = {"PASS": "C6EFCE", "FAIL": "FFC7CE", "PENDING": "FFEB9C", "BLOCKED": "D9D9D9", "NOT EXECUTED": "D9D9D9"}
 NOT_RUN_COLOR = "EDEDED"
 IMAGE_WIDTH = 440
 WIDTHS = {"A": 22, "B": 40, "C": 40, "D": 40, "E": 10, "F": 11, "G": 64}
@@ -255,7 +255,7 @@ def build(session: Session, ws):
     main = folder / f"Evidence_{stem}_{session.id}.xlsx"
     evidence = main
     for old in folder.glob("*.xlsx"):
-        if old != main and not old.name.startswith("~$"):           # `~$...` is Excel's lock file for a workbook that is open
+        if old != main and not old.name.startswith(("~$", "original_")):
             try:
                 old.unlink(missing_ok=True)                         # one current workbook per session; also clears the per-case files older versions wrote
             except OSError:
@@ -334,10 +334,13 @@ def write_back(session: Session, ws, records, t):
     book = load_workbook(backup, keep_vba=source.suffix.lower() == ".xlsm")
     table = book[sheet_name]
     last = max((c for c in range(1, table.max_column + 1) if table.cell(header, c).value not in (None, "")), default=len(cols))
-    for key in ("res", "date", "evid", "why"):
+    result_fields = ("res", "date", "evid", "why")
+    new_columns = []
+    for key in result_fields:
         if key not in cols:
             last += 1
             cols[key] = last
+            new_columns.append(last)
             cell = table.cell(header, last, heads[key])
             donor = table.cell(header, max(1, last - 1))
             cell.font, cell.fill, cell.border, cell.alignment = copy(donor.font), copy(donor.fill), copy(donor.border), copy(donor.alignment)
@@ -360,7 +363,30 @@ def write_back(session: Session, ws, records, t):
     write_summary(summary, session, ws, records, t, names)
     note = ""
     target = source
-    if _would_lose_content(source):
+    if state.get("channel") == "path":
+        target = source.with_name(f"{source.stem}.result-{session.id}{source.suffix}")
+    elif state.get("channel") == "addin":
+        from . import excel_writeback
+
+        stage = session.dir / "logs"
+        stage.mkdir(exist_ok=True)
+        target = stage / f"excel-result{source.suffix}"
+        book.save(target)
+        applied, error = excel_writeback.apply(source, target, {
+            "session": session.id, "sheet": sheet_name, "id_column": cols["no"],
+            "header": header, "new_columns": new_columns,
+            "rows": [{"row": r["row"], "id": r["id"]} for r in records],
+            "cells": [{"row": header, "col": col} for col in new_columns] + [
+                {"row": r["row"], "col": cols[key]}
+                for r in records if r["status"] in COLORS for key in result_fields
+            ],
+            "evidence": [*names.values(), summary.title],
+        }, stage)
+        return {
+            "path": str(source if applied else target), "in_place": applied, "backup": str(backup),
+            "note": "" if applied else f"Could not update the open workbook: {error}",
+        }
+    elif _would_lose_content(source):
         target = source.with_name(source.stem + ".result" + source.suffix)
         note = f"{source.name} holds charts or shapes that would be lost when saved: the result is a copy beside it, the original is untouched."
     try:

@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
 <title>Odoo Test: tiến độ</title>
 <style>
   /* Warm editorial look: a cream canvas, coral used sparingly, a serif for headings, dark surfaces for code. No external fonts: the stacks fall back to what the computer has. */
@@ -331,13 +332,15 @@ function drawMain() {
   let attention = "";
   if (v.stopped) attention = `<section class="attn-panel"><h3>Bạn đã dừng test</h3><div class="muted">Bước đang chạy được hoàn tất, không có bước nào bắt đầu thêm. AI đang đợi. Bấm tiếp tục khi sẵn sàng.</div>
       <div style="margin-top:10px"><button class="btn primary" id="resume" ${S.busy ? "disabled" : ""}>Tiếp tục test</button></div><div class="err">${esc(S.error)}</div></section>`;
+  else if (v.waiting?.review) attention = `<section class="attn-panel"><h3>Rà soát testcase</h3><p>Chọn từng case Need confirm để trả lời hoặc bỏ qua.</p></section>`;
   else if (v.waiting) attention = `<section class="attn-panel"><h3>AI đang chờ bạn trả lời</h3><div class="q">${esc(v.waiting.question)}</div>${v.waiting.case ? `<div class="muted">Về case ${esc(v.waiting.case)}</div>` : ""}
       <textarea id="answer" aria-label="Câu trả lời" placeholder="Nhập câu trả lời… Cần đưa tệp (thiết kế, file import…) thì dán thẳng đường dẫn vào đây, không phải tải lên: AI tự đọc."></textarea><button class="btn primary" id="sendAnswer" ${S.busy ? "disabled" : ""}>Gửi trả lời</button><div class="err">${esc(S.error)}</div></section>`;
   else if (v.can_confirm) attention = `<section class="attn-panel"><h3>Chiến lược đang chờ bạn duyệt</h3><div class="muted">Xem lại thứ tự, dữ liệu dự phòng và các bước. AI chỉ bắt đầu test sau khi bạn xác nhận.</div>
       <details data-key="strategy" ${isOpen("strategy", true)}><summary>Chiến lược</summary><pre class="strategy">${esc(v.strategy)}</pre></details><div style="margin-top:10px"><button class="btn primary" id="confirm" ${S.busy ? "disabled" : ""}>Xác nhận và bắt đầu test</button></div><div class="err">${esc(S.error)}</div></section>`;
   const rows = v.cases.map(k => `<tr class="case ${cls(k.status)}" tabindex="0" data-id="${esc(k.id)}" aria-selected="${k.id === S.caseId}">
       <td class="mono">${esc(k.id)}</td><td><div class="title">${esc(k.title)}</div></td><td>${esc(k.profile) || '<span class="muted">-</span>'}</td><td>${ticks(k)}</td>
-      <td>${k.attempts.length || '<span class="muted">-</span>'}</td><td><span class="status">${dot(k.status)}${esc(STATUS[k.status] || k.status)}</span></td></tr>`).join("");
+      <td>${k.attempts.length || '<span class="muted">-</span>'}</td><td><span class="status">${dot(k.status)}${esc(STATUS[k.status] || k.status)}</span>
+      ${k.review_pending ? '<span class="tag attn">Need confirm</span>' : k.review_skipped ? '<span class="tag">Đã bỏ qua</span>' : k.verdict === "ready" && v.phase === "ANALYZE" ? '<span class="tag">Ready</span>' : ""}</td></tr>`).join("");
   $("main").innerHTML = `
     <div class="head"><h1>${esc(v.file.split(/[\\/]/).pop())}</h1>${v.phase === "EXECUTE" && v.can_stop ? `<button class="btn danger" id="stop" ${S.busy ? "disabled" : ""}>Dừng test</button>` : ""}</div>
     <div class="meta"><span>Workspace <b>${esc(v.workspace)}</b></span><span class="mono">${esc(v.session)}</span><span>Bắt đầu ${esc(v.created)}</span><span>${(v.connect && v.connect.version) ? "Odoo " + esc(v.connect.version) : ""}</span><span>${v.knowledge} mục tri thức</span></div>
@@ -392,13 +395,31 @@ function drawDetail(box) {
   const analysis = (base || notes) ? `<details data-key="analysis-${esc(k.id)}" ${isOpen("analysis-" + k.id, k.repairs.length > 0)}><summary>Phân tích của AI${k.repairs.length ? ` · đã sửa ${k.repairs.length} lần` : ""}</summary>${base}${notes}</details>` : "";
   box.innerHTML = `<h2><span class="mono">${esc(k.id)}</span> ${esc(k.title)}</h2>
     <div><span class="status ${cls(k.status)}">${dot(k.status)}${esc(STATUS[k.status] || k.status)}</span>${k.reason ? ` <span class="muted">· ${esc(k.reason)}</span>` : ""}</div>
-    ${replayBar(k)}<div class="chips">${chips}</div>${hintBox(k)}${tabs}${list}${analysis}`;
+    ${replayBar(k)}<div class="chips">${chips}</div>${reviewBox(k)}
+    <section aria-label="Testcase gốc">
+      <h3>Testcase gốc</h3>
+      <p>${esc(k.source.pre)}</p>
+      <ol>${k.source.steps.map(step => `<li>${esc(step)}</li>`).join("")}</ol>
+      <p>Mong đợi: ${esc(k.source.expected)}</p>
+    </section>
+    ${hintBox(k)}${tabs}${list ? "<h3>Các bước sau đánh giá</h3>" : ""}${list}${analysis}`;
+}
+
+function reviewBox(k) {
+  if (k.review_skipped) return `<p><span class="tag">Đã bỏ qua</span> ${esc(k.review_skipped)}</p>`;
+  if (!k.review_pending) return k.verdict === "ready" ? '<span class="tag">Ready</span>' : "";
+  return `<section class="attn-panel"><h3>Need confirm</h3>
+    <ul>${k.questions.map(question => `<li>${esc(question)}</li>`).join("")}</ul>
+    <textarea id="reviewText" data-draft="review-${esc(k.id)}" aria-label="Câu trả lời hoặc lý do bỏ qua"></textarea>
+    <button id="sendReview" class="btn primary" ${S.busy ? "disabled" : ""}>Gửi trả lời</button>
+    <button id="skipReview" class="btn" ${S.busy ? "disabled" : ""}>Bỏ qua testcase</button>
+    <div class="err">${esc(S.error)}</div></section>`;
 }
 
 /** After the case ended (PASS or FAIL): run its saved script again, same account and Odoo, with the browser in view. */
 function replayBar(k) {
   if (!["PASS", "FAIL"].includes(k.status)) return "";
-  const note = k.can_replay ? "Chạy lại bằng script đã lưu, cùng tài khoản và môi trường, mở trình duyệt để bạn xem." : "Chưa có script đã lưu (chỉ case PASS mới lưu script).";
+  const note = k.can_replay ? "Mở browser và chạy script đã lưu của case này." : "Chưa có script đã lưu.";
   return `<div class="replaybar" style="margin:10px 0"><button class="replay" data-replay="${esc(k.id)}" ${k.can_replay ? "" : "disabled"} title="${esc(note)}">Chạy lại testcase</button> <span class="muted" id="replayMsg">${esc(note)}</span></div>`;
 }
 
@@ -409,7 +430,8 @@ function reportBar(v) {
   const main = v.reports.find(r => r.main);
   const label = main ? "Cập nhật báo cáo Excel" : "Xuất báo cáo Excel";
   return `<div class="reports"><button class="btn ${main ? "" : "primary"}" id="exportReport" ${S.busy ? "disabled" : ""}>${label}</button>
-    ${main ? `<a class="btn primary" href="${reportUrl(main.name)}" download>Tải file Evidence (.xlsx)</a>` : ""}</div>`;
+    ${main ? `<a class="btn primary" href="${reportUrl(main.name)}" download>Tải file Evidence (.xlsx)</a>` : ""}
+    ${v.cases.some(k => k.can_replay) ? `<a class="btn" href="${reportUrl("").replace("/api/report?", "/api/scripts?")}" download>Tải ZIP script</a>` : ""}</div>`;
 }
 
 function hintBox(k) {
@@ -547,6 +569,8 @@ document.addEventListener("click", async e => {
     exportReport: () => post("/api/report", where),
     confirm: () => post("/api/confirm", where), stop: () => post("/api/stop", where), resume: () => post("/api/resume", where),
     sendAnswer: () => post("/api/answer", { ...where, text: ($("answer") || {}).value || "" }),
+    sendReview: () => post("/api/review", { ...where, case: S.caseId, text: ($("reviewText") || {}).value || "" }),
+    skipReview: () => post("/api/review", { ...where, case: S.caseId, text: ($("reviewText") || {}).value || "", skip: true }),
     addRef: () => post("/api/refs", { ...where, path: ($("refPath") || {}).value || "" }),
     sendHint: () => post("/api/hint", { ...where, case: S.caseId, text: ($("hint") || {}).value || "" }),
   }[t.id];
@@ -556,6 +580,7 @@ document.addEventListener("click", async e => {
     S.busy = false;
     if (t.id === "sendHint") { S.hintError = r.error || ""; if (!r.error) delete S.draft["hint-" + S.caseId]; } else S.error = r.error || "";
     if (t.id === "sendAnswer" && !r.error) delete S.draft.answer;
+    if (["sendReview", "skipReview"].includes(t.id) && !r.error) delete S.draft["review-" + S.caseId];
     if (t.id === "addRef" && r.ok) delete S.draft.refPath;
     await refreshView();
     renderMain();

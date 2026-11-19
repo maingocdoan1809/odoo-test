@@ -18,7 +18,7 @@ raw = "--raw" in args
 args = [a for a in args if a != "--raw"]
 cmd = args[0]
 if cmd == "run-code" and "includes(" in args[1]:
-    print("true" if "NOT-ON-PAGE" not in args[1] else "false")
+    print("### Error\\nExpected text not found" if "NOT-ON-PAGE" in args[1] else "### Result")
 elif cmd == "run-code" and "boundingBox" not in args[1]:
     print("### Result")
 elif cmd in ("eval", "run-code"):
@@ -40,6 +40,26 @@ elif cmd in ("goto", "open", "state-load", "close"):
 SCRIPT = "".join(f"// step {n}\n// frame: .o_form_view\n// shows: ZZ_AUTOTEST_order\nawait page.goto('http://x/web');\nawait page.getByRole('button', {{ name: 'Save' }}).click();\n" for n in (1, 2, 3, 4))
 
 
+def test_replay_resolves_a_relative_odoo_url(monkeypatch):
+    commands = []
+    monkeypatch.setattr(livemod, "_run", lambda *args: commands.append(args) or "")
+    livemod.run_actions("case", ["await page.goto('/odoo/action-92/new');"])
+    assert 'new URL("/odoo/action-92/new", page.url()).href' in commands[0][2]
+
+
+def test_live_rejects_replay_text_not_present_in_the_page(live, pw):
+    session, ws, store = live
+    approve(session, ws, store)
+    livemod.start(session, "T-1")
+    with session.update() as state:
+        state["channel"] = "path"
+    with pytest.raises(GateError, match="verbatim"):
+        livemod.step(session, "T-1", 1, "PASS", "Three records were visible",
+                     target="body", verified_code="await page.goto('http://x/web');",
+                     shows="NOT-ON-PAGE")
+    assert not any(event["kind"] == "step" for event in events.read(session.dir))
+
+
 @pytest.fixture
 def pw(tmp_path, monkeypatch):
     bin_ = tmp_path / "bin"
@@ -47,6 +67,16 @@ def pw(tmp_path, monkeypatch):
     exe = bin_ / "playwright-cli"
     exe.write_text(FAKE.format(python=sys.executable), encoding="utf-8")
     exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
+    if os.name == "nt":
+        run = livemod.subprocess.run
+
+        def run_fake(args, **kwargs):
+            if isinstance(args, list) and args[0] == str(exe):
+                args = [sys.executable, *args]
+            return run(args, **kwargs)
+
+        monkeypatch.setattr(livemod, "_cli", lambda: str(exe))
+        monkeypatch.setattr(livemod.subprocess, "run", run_fake)
     monkeypatch.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("ODOO_TEST_HOME", str(tmp_path / "home"))
     return exe
@@ -113,12 +143,52 @@ def test_a_passed_case_is_replayed_in_a_new_session_and_stops_at_the_first_step_
     mine = tmp_path / "case.js"
     mine.write_text(SCRIPT, encoding="utf-8")
     livemod.end(session, "T-1", "PASS", "", script=str(mine))
-    again, status, why = livemod.replay(session, "T-1", headed=False)
+    again, status, why = livemod.verify_replay(session, "T-1", headed=False)
     assert status == "PASS" and not why and again.id != session.id
     assert again.state()["replay_of"] == session.id and again.state()["results"]["T-1"]["status"] == "PASS"
     assert [e["status"] for e in events.read(again.dir) if e["kind"] == "step"] == ["PASS"] * 4
     mine.write_text(SCRIPT.replace("ZZ_AUTOTEST_order", "NOT-ON-PAGE", 1), encoding="utf-8")
     livemod.script_file(session, "T-1").write_text(mine.read_text(encoding="utf-8"), encoding="utf-8")
-    broken, status, why = livemod.replay(session, "T-1", headed=False)
+    broken, status, why = livemod.verify_replay(session, "T-1", headed=False)
     assert status == "FAIL" and "step 1" in why
     assert [e["status"] for e in events.read(broken.dir) if e["kind"] == "step"] == ["FAIL", "SKIPPED", "SKIPPED", "SKIPPED"]
+
+
+def test_recording_rejects_uncommitted_odoo_search():
+    script = """// step 1
+// frame: td
+// shows: ITEM
+await page.goto('http://x/odoo/items');
+await page.getByRole('searchbox', {name: 'Search...'}).fill('ITEM');
+await page.getByRole('cell', {name: 'ITEM'}).click();
+"""
+    steps = [{"n": 1}]
+    assert "search helper" in livemod.parse_script(script, steps, check_search=True)[1][0]
+    assert not livemod.parse_script(script, steps)[1]
+    committed = script.replace("await page.getByRole('cell'", (
+        "await page.getByRole('link', {name: 'Search Code for: ITEM', exact: true}).click();\n"
+        "await page.getByRole('cell'"
+    ))
+    assert not livemod.parse_script(committed, steps, check_search=True)[1]
+
+
+def test_dashboard_style_replay_runs_saved_actions_in_headed_browser(live, tmp_path, monkeypatch):
+    session, ws, store = live
+    approve(session, ws, store)
+    script = tmp_path / "case.js"
+    script.write_text(SCRIPT.replace("ZZ_AUTOTEST_order", "NOT-ON-PAGE"), encoding="utf-8")
+    livemod.keep_script(session, "T-1", str(script))
+    before = session.state()
+    history = events.read(session.dir)
+    sessions = set(session.dir.parent.iterdir())
+    calls = []
+    monkeypatch.setattr(livemod, "open_browser", lambda *a, **kw: calls.append(kw) or "Admin")
+    monkeypatch.setattr(livemod, "run_actions", lambda browser, code: calls.append(list(code)))
+    result = livemod.replay(session, "T-1")
+    assert result["session"] == session.id and result["status"] == "COMPLETED"
+    assert calls[0]["headed"] is True and calls[0]["browser_id"].startswith("replay-")
+    assert calls[1] == ["await page.goto('http://x/web');",
+                        "await page.getByRole('button', { name: 'Save' }).click();"]
+    assert len(calls) == 5
+    assert session.state() == before and events.read(session.dir) == history
+    assert set(session.dir.parent.iterdir()) == sessions

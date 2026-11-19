@@ -1,0 +1,3 @@
+Name,Code,Site,Cost
+Valid site,{run}-A,{site},7
+Invalid site,{run}-B,{run}-absent,11

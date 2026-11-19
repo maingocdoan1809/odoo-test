@@ -136,7 +136,9 @@ def case_records(session: Session):
                                              [e for e in mine if e["kind"] == "step" and e["attempt"] == n], carried, running=not ended and not state.get("stopped"))})
         explore = _explore(session, ident, mine, current, state, log)
         result = state["results"].get(ident)
-        if result:
+        if ident in state.get("skipped_reviews", {}):
+            status = "NOT EXECUTED"
+        elif result:
             status = result["status"]
         elif attempts:
             status = {"RUNNING": "RUNNING", "STOPPED": "STOPPED"}.get(attempts[-1]["status"], "REPAIRING")
@@ -154,8 +156,11 @@ def case_records(session: Session):
                     "planned": [{"n": s["n"], "caption": s["action"], "expected": s["expected"]} for s in item.get("steps") or []],
                     "depends_on": item.get("depends_on") or [], "edge_cases": item.get("edge_cases") or [], "edge_none": item.get("edge_cases_none_reason", ""),
                     "data_needs": item.get("data_needs") or [], "clarity": (item.get("clarity") or {}).get("score"), "sufficiency": (item.get("sufficiency") or {}).get("score"),
-                    "questions": item.get("questions") or [], "hints": (state.get("hints") or {}).get(ident, []), "used": state["attempts"].get(ident, 0),
-                    "exhausted": state["attempts"].get(ident, 0) >= 1 + MAX_REPAIRS,
+                    "questions": item.get("questions") or [],
+                    "review_pending": ident in state.get("reviews", {}),
+                    "review_skipped": state.get("skipped_reviews", {}).get(ident, ""),
+                    "hints": (state.get("hints") or {}).get(ident, []), "used": state["attempts"].get(ident, 0),
+                    "exhausted": state["attempts"].get(ident, 0) >= 1 + (1 if state.get("channel") else MAX_REPAIRS),
                     "can_hint": state["phase"] in ("EXECUTE", "REPORT") and ident in strategy["order"] and status != "PASS" and bool(attempts or result or state["attempts"].get(ident))})
     return out
 
@@ -207,7 +212,7 @@ def session_view(session: Session):
     return {"workspace": session.ws, "session": session.id, "file": state["file"], "phase": current, "phases": phases, "waiting": state["waiting"], "stopped": state.get("stopped"), "can_stop": current != "DONE" and not state.get("stopped"),
             "confirmed": bool(state["confirmation"]), "created": state["created"], "updated": log[-1]["ts"] if log else state["created"], "idle_hours": round(hours, 1), "idle": hours >= IDLE_HOURS, "now": latest["text"] if latest else "",
             "counts": counts(records), "total": len(records), "cases": records, "activity": activity(log), "free_cases": claims.free_cases(session) if current == "EXECUTE" else [], "notes": claims.notes(session, 12), "connect": state.get("connect"),
-            "reports": reports(session), "strategy": strategy_md.read_text(encoding="utf-8") if strategy_md.exists() else "", "can_confirm": current == "CONFIRM" and (session.dir / "strategy.json").exists()
+            "reports": reports(session), "strategy": strategy_md.read_text(encoding="utf-8") if strategy_md.exists() else "", "can_confirm": current == "CONFIRM" and bool(state.get("strategy_sha")) and (session.dir / "strategy.json").exists()
             and state["strategy_sha"] is not None, "knowledge": len(knowledge.search(session.ws)),
             "refs": [{k: i.get(k) for k in ("name", "path", "kind", "by", "case")} for i in refs.items(session)]}
 

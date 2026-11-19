@@ -100,7 +100,17 @@ class LocalApp:
                 if method == "GET" and url.path.startswith("/font/") and self._same_site():
                     return self._font(url.path[len("/font/"):])
                 if not self._allowed(query):
-                    return self._send(403, {"error": "forbidden"})
+                    self._send(403, {"error": "forbidden"})
+                    # Let the reply reach Windows clients before closing with unread POST bytes.
+                    if method == "POST":
+                        try:
+                            size = int(self.headers.get("Content-Length") or 0)
+                            if 0 < size <= MAX_BODY:
+                                self.connection.settimeout(0.25)
+                                self.rfile.read(size)
+                        except (OSError, ValueError):
+                            pass
+                    return
                 body = {}
                 if method == "POST":
                     length = int(self.headers.get("Content-Length") or 0)

@@ -1,5 +1,16 @@
 # Contract: files and commands
 
+## Workbook run entry point
+
+- `oqa run start --file FILE [--cases SELECTION] [--channel path|addin]` waits for the workspace picker and creates the session. The default channel is `path`. The dashboard opens after the first submitted analysis.
+- The dashboard shows the original and assessed case. `POST /api/review` takes `{ws,id,case,text?,skip?}`. A review remains scoped to that case. `oqa wait --until reviews` returns when every pending review is handled. Final strategy approval uses the strategy hash and a separate action.
+- `oqa case context CASE [--screen TEXT] [--issue TEXT]` returns both testcase versions, references, feedback, sitemap hits and recent context. `oqa claim` enforces five case slots. A live attempt can be recovered once with `oqa live recover CASE --reason TEXT`.
+- `oqa fixture plan SCREEN` returns writable fields, the model and route. `oqa fixture apply SCREEN --case CASE --key FIELD --values JSON_FILE` uses the live case's account, requires a prefixed unique key and includes its setup in the next replayable step. A related field may use `{"$fixture":"PREFIX_key"}` from the same browser session. `--values-json` accepts inline values. `fixture advise` requests a data-agent proposal.
+- `oqa live step` accepts `--verified-code JS_FILE --shows TEXT` to build its replay script from the selected actions. The result of live start includes its browser session name. Dashboard `GET /api/scripts?ws=WS&id=SESSION&t=TOKEN` exports an executable bundle. Reruns use the saved case script.
+- Path runs write a result copy of the source. Add-in runs apply result cells and evidence sheets through desktop Excel. If Excel write-back is unavailable, the CLI returns the staged result and its write-back error.
+- `oqa dispatch` runs the approved queue with the local Claude CLI. Each worker receives only its case-scoped MCP tools for browser actions, evidence, fixtures, references and communication. Sonnet supplies recovery notes. The five-slot limit applies across host and CLI case workers.
+- Dashboard replay and `oqa live replay CASE` open a headed browser on the case's saved profile and execute its saved actions and assertions. They use the original test session. Evidence-based verification runs in the harness are a separate operation.
+
 This is everything another program (the Office Partner add-in, a dashboard, a script) may rely on. Nothing else in `oqa/` is a public interface.
 Every JSON file has `schema_version` (now 1). A reader that meets a larger number must stop and tell the user to update the skill.
 `oqa --version` prints the CLI version. Every command accepts `--json`. Exit codes: 0 done, 1 unexpected failure, 2 refused (wrong phase, invalid input, waiting for the user).

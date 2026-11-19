@@ -10,7 +10,7 @@ import unicodedata
 from pathlib import Path
 from urllib.parse import quote
 
-from . import live, paths, refs, report, sitemap, view, workspace
+from . import live, paths, refs, report, script_bundle, sitemap, view, workspace
 from .localserver import LocalApp, font_faces
 from .state import GateError, Session
 from .store import SchemaError
@@ -165,6 +165,9 @@ class Dashboard(LocalApp):
                 return 200, {"ok": True}
             if method == "GET" and path == "/api/report":
                 return self._report_file(query)
+            if method == "GET" and path == "/api/scripts":
+                session = self._session(query)
+                return 200, script_bundle.build(session), "application/zip", {"Content-Disposition": _attachment("oqa-scripts.zip")}
             if method == "POST" and path == "/api/report":
                 session = self._session(body)
                 built = report.build(session, workspace.load(session.ws))
@@ -172,19 +175,20 @@ class Dashboard(LocalApp):
             if method == "POST" and path == "/api/replay":
                 session = self._session(body)
                 case = str(body.get("case", ""))
-                if session.state()["phase"] not in ("REPORT", "DONE") and case not in session.state()["results"]:
+                state = session.state()
+                if state["phase"] not in ("REPORT", "DONE") and case not in state["results"]:
                     return 200, {"error": "Case này chưa test xong, chưa chạy lại được."}
-                if not live.script_file(session, case).is_file():
+                script = live.script_file(session, case)
+                if not script.is_file():
                     return 200, {"error": "Case này chưa có script đã lưu (chỉ case PASS mới lưu script)."}
-                if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
-                    return 200, {"error": "Máy chạy dashboard không có màn hình để mở trình duyệt (không thấy DISPLAY). Chạy lại bằng lệnh: oqa live replay " + case + " --headless"}
-                log = session.dir / "logs" / f"replay-{case}.log"
+                log = session.dir / "logs" / f"replay-{script.stem}.log"
                 log.parent.mkdir(exist_ok=True)
                 entry = Path(__file__).resolve().parent.parent / "oqa.py"
                 with log.open("ab") as out:
                     subprocess.Popen([sys.executable, str(entry), "live", "replay", case, "--ws", session.ws, "--session", session.id], stdout=out, stderr=out,
-                                     stdin=subprocess.DEVNULL, start_new_session=True)
-                return 200, {"ok": True, "message": "Đang mở trình duyệt để chạy lại. Phiên mới sẽ hiện ở danh sách bên trái."}
+                                     stdin=subprocess.DEVNULL, start_new_session=True,
+                                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+                return 200, {"ok": True, "message": "Đang mở browser để chạy lại script của case này."}
             if method == "POST" and path == "/api/delete_session":
                 session = self._session(body)
                 state = session.state()
@@ -221,6 +225,10 @@ class Dashboard(LocalApp):
                 if not str(body.get("text", "")).strip():
                     return 200, {"error": "Write the answer first."}
                 self._session(body).answer(str(body["text"]).strip())
+                return 200, {"ok": True}
+            if method == "POST" and path == "/api/review":
+                self._session(body).review_case(str(body.get("case", "")), str(body.get("text", "")),
+                                               skip=body.get("skip") is True)
                 return 200, {"ok": True}
         except (GateError, SchemaError, refs.RefError, paths.PathError, sitemap.SitemapError, json.JSONDecodeError, OSError) as error:
             return 200, {"error": "\n".join(error.problems) if isinstance(error, SchemaError) else str(error)}

@@ -43,7 +43,7 @@ def cmd_init(args):
 
 def cmd_doctor(args):
     report = doctor.check()
-    if args.fix and (not report["ready"] or report["missing_hooks"]):
+    if args.fix and not report["ready"]:
         report = doctor.fix(report, lambda line: print(line, file=sys.stderr, flush=True))
     lines = [f"oqa {report['oqa']} · python {report['python']} {'ok' if report['python_ok'] else 'TOO OLD (3.9+ needed)'}",
              "packages: " + ("ok" if not report["missing_packages"] else "missing " + ", ".join(report["missing_packages"])),
@@ -87,7 +87,8 @@ def cmd_session(args):
         return {"cases": [{"id": c["id"], "title": c["title"], "steps": len(c["steps"])} for c in cases["cases"]]}, "\n".join(
             f"{c['id']:14} {len(c['steps']):2} step(s)  {c['title']}" for c in cases["cases"]) + f"\n{len(cases['cases'])} case(s) in {path.name}. Pick some with: oqa session new --file <it> --cases \"A,B\" (ids, A..C ranges or words of the title)."
     cases = intake.select(cases, args.cases)
-    session = Session.create(ws, path, cases)
+    channel = getattr(args, "channel", None)
+    session = Session.create(ws, path, cases, channel=channel)
     missing = [(c["id"], r["text"]) for c in cases["cases"] for r in c["refs"] if r["status"] == "missing"]
     chosen = cases.get("selection")
     lines = [f"Session {session.id} in workspace {ws}: {len(cases['cases'])} cases " + (f"chosen out of {chosen['of']} " if chosen else "read ") + f"from {path.name} (sheet {cases['source']['sheet']}); the file is used as it is, nothing new is written."]
@@ -95,10 +96,24 @@ def cmd_session(args):
     lines += [f"  reference not found: {case} mentions {name}" for case, name in missing]
     lines += memory.summary(ws, memory.stem_of(path), [c["id"] for c in cases["cases"]])
     autostart.ensure_prepare(ws)                      # a workspace that was never prepared gets its sitemap and lines now, not in the middle of a step
-    started = autostart.ensure_dashboard(ws, session.id)
-    lines.append("Dashboard " + ("is opening in the user's browser (started for you)." if started else "is already running: `oqa dashboard` opens it on this session."))
+    started = autostart.ensure_dashboard(ws, session.id) if channel is None else False
+    if channel is None:
+        lines.append("Dashboard " + ("is opening in the user's browser (started for you)." if started else "is already running: `oqa dashboard` opens it on this session."))
     lines.append("Next: " + Session.open(ws, session.id).summary()["next"])
     return {"dashboard_started": started, "session": session.id, "workspace": ws, "cases": len(cases["cases"]), "warnings": cases["warnings"], "missing_refs": [{"case": c, "file": f} for c, f in missing]}, "\n".join(lines)
+
+
+def cmd_run(args):
+    path = Path(args.file).expanduser().resolve()
+    if not path.is_file() or path.suffix.lower() != ".xlsx":
+        raise GateError(f"Choose an existing .xlsx workbook: {path}")
+    server = init_server.InitServer(default_store(), args.ws, args.timeout)
+    selected = server.run(lambda url: print(f"Workspace picker: {url}", file=sys.stderr, flush=True),
+                          open_browser=not args.no_open)
+    if selected is None:
+        raise GateError("Workspace selection timed out. Run oqa run start again.")
+    args.ws, args.what = selected["workspace"], "new"
+    return cmd_session(args)
 
 
 def cmd_analyze(args):
@@ -118,14 +133,27 @@ def cmd_analyze(args):
     submitted = read_json(args.submit)
     if not isinstance(submitted, dict):
         raise SchemaError(f"{args.submit} is not an analysis file", "analysis")
+    state = session.state()
+    if state["waiting"]:
+        raise GateError("Complete the pending reviews before submitting analysis again.")
+    skipped = state.get("skipped_reviews", {})
+    for case in submitted.get("cases", []):
+        if isinstance(case, dict) and case.get("id") in skipped:
+            reason = skipped[case["id"]]
+            case.update(verdict="blocked", reason=reason,
+                        data_considered=f"The user excluded the case from this run: {reason}", questions=[])
     analysis.validate(submitted, cases, config)
-    write_json(session.dir / "analysis.json", submitted)
     counts = {}
     for case in submitted["cases"]:
         counts[case["verdict"]] = counts.get(case["verdict"], 0) + 1
     asking = [c for c in submitted["cases"] if c["verdict"] == "needs_user"]
     question = "\n".join(f"[{c['id']}] {q}" for c in asking for q in c["questions"]) if asking else None
-    session.analysis_submitted(question)
+    reviews = {c["id"]: c["questions"] for c in asking} if state.get("channel") else None
+    session.analysis_submitted(question, reviews=reviews, document=submitted)
+    if session.state().get("channel"):
+        marker = session.dir / "dashboard-opened"
+        if not marker.exists() and autostart.ensure_dashboard(session.ws, session.id, select_existing=True):
+            marker.touch()
     summary = ", ".join(f"{n} {v}" for v, n in counts.items())
     if question and session.state()["waiting"] and session.state()["phase"] == "ANALYZE":
         return {"accepted": True, "verdicts": counts, "waiting": True}, (
@@ -278,7 +306,53 @@ def cmd_claim(args):
     case, note = claims.claim(session, args.agent, args.case or None)
     recent = claims.notes(session, 8)
     text = note + ("\nShared notes (latest):\n" + "\n".join(f"  {n['ts'][11:]} [{n['agent']}{' case ' + n['case'] if n['case'] else ''}] {n['text']}" for n in recent) if recent and case else "")
-    return {"case": case, "note": note}, text
+    data = {"case": case, "note": note}
+    if case and getattr(args, "packet", False):
+        from . import case_context
+
+        data["context"] = case_context.build(session, case)
+        return data, json.dumps(data, ensure_ascii=False, indent=2)
+    return data, text
+
+
+def cmd_case(args):
+    from . import case_context
+
+    session = Session.open(args.ws, args.session)
+    data = case_context.build(session, args.case, args.screen, args.issue)
+    return data, json.dumps(data, ensure_ascii=False, indent=2)
+
+
+def cmd_fixture(args):
+    from . import fixtures
+
+    session = Session.open(args.ws, args.session)
+    if args.action == "apply":
+        if not args.case or not args.key or not (args.values or args.values_json):
+            raise GateError("Apply needs --case, --key and either --values or --values-json.")
+        try:
+            values = json.loads(args.values_json) if args.values_json else read_json(args.values)
+        except (ValueError, OSError) as error:
+            raise GateError(f"Read fixture values: {error}") from error
+        data = fixtures.apply(session, args.case, args.screen, args.key, values)
+        if args.out:
+            Path(args.out).write_text(data["code"] + "\n", encoding="utf-8")
+        return {"id": data["id"], "key": data["key"], "code_file": args.out}, data["id"]
+    data = sitemap.load(session.ws)
+    key, form = fixtures.form_for(data, args.screen)
+    fields = [{**field, "selector": sitemap.selector_of("field", field["name"], "form")}
+              for field in form.get("fields", []) if not field.get("readonly")]
+    plan = {
+        "model": form["model"], "screen": key,
+        "prefix": workspace.load(session.ws).get("test_prefix"),
+        "fields": fields, "route": sitemap.text_path(data, "", key),
+        "playwright": sitemap.codegen(data, key),
+    }
+    if args.action == "advise":
+        if not args.case or not args.need:
+            raise GateError("Advise needs --case and --need.")
+        plan["proposal"] = fixtures.advise(session, args.case, plan, args.need)
+    return plan, json.dumps(plan, ensure_ascii=False, indent=2)
 
 
 def cmd_release(args):
@@ -293,6 +367,21 @@ def cmd_claims(args):
     lines = [f"  case {c}: {e['agent']} ({'working' if e['fresh'] else 'quiet for over ' + str(claims.LEASE_S // 60) + ' min: free to take'})" for c, e in held.items()]
     lines.append("  free: " + (", ".join(free) if free else "none"))
     return {"held": held, "free": free}, "\n".join(lines)
+
+
+def cmd_dispatch(args):
+    from . import dispatch
+
+    session = Session.open(args.ws, args.session)
+    result = dispatch.run(session, args.worker_model, args.coordinator_model, args.worker_timeout)
+    return result, json.dumps(result, ensure_ascii=False, indent=2)
+
+
+def cmd_worker_mcp(args):
+    from . import worker_mcp
+
+    worker_mcp.serve(Session.open(args.ws, args.session), args.case, args.agent)
+    return {}, ""
 
 
 def cmd_note(args):
@@ -328,15 +417,27 @@ def cmd_live(args):
     session = Session.open(args.ws, args.session)
     if args.action == "start":
         return live.start(session, args.case)
+    if args.action == "recover":
+        return live.recover(session, args.case, args.reason or "")
+    if args.action == "profile":
+        return live.select_profile(session, args.case, args.profile)
+    code = args.code
+    if args.action in ("act", "step") and args.verified_code:
+        try:
+            code = Path(args.verified_code).read_text(encoding="utf-8")
+        except OSError as error:
+            raise GateError(str(error)) from error
+    if args.action == "act":
+        return live.act(session, args.case, args.browser_command, args.browser_arg, code)
     if args.action == "shot":
         return live.shot(session, args.case, args.n, args.target)
     if args.action == "step":
-        return live.step(session, args.case, args.n, args.status, args.actual or "", args.target)
+        return live.step(session, args.case, args.n, args.status, args.actual or "", args.target, code, args.shows)
     if args.action == "script":
         return live.keep_script(session, args.case, args.script)
     if args.action == "replay":
-        new, status, why = live.replay(session, args.case, headed=not args.headless)
-        return {"session": new.id, "status": status, "reason": why}, f"Replay of {args.case}: {status}{' (' + why + ')' if why else ''}. New session {new.id}."
+        result = live.replay(session, args.case, headed=not args.headless)
+        return result, f"Saved script completed for {args.case}."
     return live.end(session, args.case, args.status, args.reason or "", args.script)
 
 
@@ -624,18 +725,20 @@ def _describe(event):
     """One user action, as a sentence that says what to do about it."""
     kind, case = event["kind"], event.get("case")
     if kind == "confirmed":
-        return "The user confirmed the strategy. Next: oqa run"
+        return "The user confirmed the strategy. Check the execution queue with oqa status."
     if kind == "answered":
+        if event.get("skipped"):
+            return f"The user skipped {case}: {event['answer']}"
         shared = event.get("files") or []
         return (f"The user answered{f' (about {case})' if case else ''}: {event['answer']}"
                 + (f"\nThey shared {len(shared)} file(s) by path: read each with `oqa ref show \"<name>\"` ({'; '.join(shared)})." if shared else ""))
     if kind == "ref_added":
         return f"The user shared {event.get('what', 'file')} {event['path']}: read it with `oqa ref show \"{event.get('name', event['path'])}\"`."
     if kind == "hint":
-        return f"The user sent a hint for {case}: {event['text']}\n{case} is back in the queue with a fresh budget. Next: oqa run {case}"
+        return f"The user sent a hint for {case}: {event['text']}\n{case} is back in the queue with a fresh budget."
     if kind == "stopped":
         return "The user stopped the test. Do nothing until they resume it: run `oqa wait` again."
-    return "The user resumed the test. Next: oqa run"
+    return "The user resumed the test. Check the execution queue with oqa status."
 
 
 def cmd_wait(args):
@@ -649,9 +752,12 @@ def cmd_wait(args):
             if time.monotonic() - last_beat >= autostart.HEARTBEAT_SECONDS:
                 autostart.beat(session)
                 last_beat = time.monotonic()
-            news = session.news()
+            available = session.news()
+            wait_for_reviews = getattr(args, "until", None) == "reviews" and bool(session.state().get("reviews"))
+            if wait_for_reviews and not any(event["kind"] == "stopped" for event in available):
+                available = []
+            news = session.consume_news() if available else []
             if news:
-                session.mark_seen()
                 return {"events": news}, "\n".join(_describe(e) for e in news)
             if time.monotonic() > deadline:
                 raise GateError(f"The user did nothing in {args.timeout} seconds. Run `oqa wait` again if you are still waiting for them.")
@@ -732,6 +838,27 @@ def build_parser():
     p.add_argument("what", choices=["new", "show", "list", "cases"])
     p.add_argument("--file", help="testcase workbook (.xlsx) for `new` / `cases`")
     p.add_argument("--cases", help="new: test only these cases of the workbook: ids, A..C ranges or words of the title, comma-separated (default: all of them)")
+    p = add("case", cmd_case, "get original case, analysis, feedback and related workspace knowledge")
+    p.add_argument("action", choices=["context"])
+    p.add_argument("case")
+    p.add_argument("--screen", default="")
+    p.add_argument("--issue", default="")
+    p = add("fixture", cmd_fixture, "plan and create approved test records")
+    p.add_argument("action", choices=["plan", "apply", "advise"])
+    p.add_argument("screen")
+    p.add_argument("--case")
+    p.add_argument("--values", help="apply: JSON file with model values")
+    p.add_argument("--values-json", help="apply: inline JSON object of model values")
+    p.add_argument("--key", help="apply: unique writable field with the workspace test prefix")
+    p.add_argument("--out", help="apply: reusable Playwright setup fragment")
+    p.add_argument("--need", help="advise: describe the data the case needs")
+    p = add("run", cmd_run, "choose a workspace before starting a workbook run")
+    p.add_argument("action", choices=["start"])
+    p.add_argument("--file", required=True)
+    p.add_argument("--cases")
+    p.add_argument("--channel", choices=["path", "addin"], default="path")
+    p.add_argument("--timeout", type=int, default=900)
+    p.add_argument("--no-open", action="store_true")
     p = add("analyze", cmd_analyze, "get the analysis template, or hand in the analysis")
     p.add_argument("--template", action="store_true")
     p.add_argument("--submit", metavar="FILE")
@@ -744,11 +871,19 @@ def build_parser():
     p.add_argument("--agents", type=int, default=0, help="how many agents (default: as few as the maximum allows)")
     p.add_argument("--max", type=int, default=5, help="most cases per agent (default 5)")
     p = add("claim", cmd_claim, "take the next free case (easy and independent first); a claim lasts while the case sees activity")
+    p.add_argument("--packet", action="store_true", help="include the case context for the worker")
     p.add_argument("--agent", required=True, help="your name, the same in every call")
     p.add_argument("--case", default="", help="take this exact case (the one you were given) instead of the next free one")
     p = add("release", cmd_release, "give a claimed case back")
     p.add_argument("case")
     add("claims", cmd_claims, "who holds which case, and which cases are free")
+    p = add("dispatch", cmd_dispatch, "run the approved queue with Claude CLI case workers")
+    p.add_argument("--worker-model", default="haiku")
+    p.add_argument("--coordinator-model", default="sonnet")
+    p.add_argument("--worker-timeout", type=int, default=480)
+    p = add("worker-mcp", cmd_worker_mcp, "serve only the assigned case tools over stdio")
+    p.add_argument("case")
+    p.add_argument("--agent", required=True)
     p = add("note", cmd_note, "share something every agent of this session must know (data you made, a name, a trap)")
     p.add_argument("text", nargs="+")
     p.add_argument("--agent", default="")
@@ -756,7 +891,7 @@ def build_parser():
     p = add("notes", cmd_notes, "read what the agents shared")
     p.add_argument("--limit", type=int, default=30)
     p = add("live", cmd_live, "run a case live in its own playwright-cli browser: start | shot | step | end")
-    p.add_argument("action", choices=["start", "shot", "step", "end", "replay", "script"])
+    p.add_argument("action", choices=["start", "act", "profile", "shot", "step", "end", "replay", "script", "recover"])
     p.add_argument("case")
     p.add_argument("--n", type=int, help="the step number (shot, step)")
     p.add_argument("--status", help="step: PASS or FAIL; end: PASS, FAIL, BLOCKED or PENDING")
@@ -765,6 +900,12 @@ def build_parser():
     p.add_argument("--script", help="end PASS or live script: the file with the Playwright code playwright-cli printed for your actions (kept as the case's script)")
     p.add_argument("--reason", help="end: why, when the case is not PASS")
     p.add_argument("--headless", action="store_true", help="replay: no visible window (the default shows the browser)")
+    p.add_argument("--verified-code", help="step: file containing only the confirmed Playwright actions")
+    p.add_argument("--code", help="act or step: one verified Playwright action per line")
+    p.add_argument("--shows", help="step: expected page text for replay")
+    p.add_argument("--browser-command", help="act: playwright-cli operation in this case's browser")
+    p.add_argument("--browser-arg", action="append", default=[], help="act: argument for the browser operation")
+    p.add_argument("--profile", help="profile: switch the active case to another signed-in account")
     p = add("finish", cmd_finish, "record FAIL (with evidence), BLOCKED or PENDING for a case you stop working on")
     p.add_argument("case")
     p.add_argument("--status", required=True, choices=["FAIL", "BLOCKED", "PENDING"])
@@ -808,6 +949,7 @@ def build_parser():
     p.add_argument("--case")
     p = add("wait", cmd_wait, "block until the user acts on the dashboard (confirm, answer, hint, stop, resume), then say what")
     p.add_argument("--timeout", type=int, default=3600)
+    p.add_argument("--until", choices=["reviews"], help="wait until all per-case reviews are answered or skipped")
     add("stop", cmd_stop, "the USER stops the test (the step in progress finishes)")
     add("resume", cmd_resume, "the USER lets a stopped test go on (needs a real terminal)")
     p = add("answer", cmd_answer, "record the user's reply (a file path written in it becomes a reference)")

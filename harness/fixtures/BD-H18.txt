@@ -1,0 +1,1 @@
+After submission, a Manager sees Approve and Reset to Draft. Submit is hidden. The status is Submitted. These expectations still hold after reloading.
