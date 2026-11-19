@@ -176,7 +176,7 @@ def test_dashboard_style_replay_runs_saved_actions_in_headed_browser(live, tmp_p
     session, ws, store = live
     approve(session, ws, store)
     script = tmp_path / "case.js"
-    script.write_text(SCRIPT.replace("ZZ_AUTOTEST_order", "NOT-ON-PAGE"), encoding="utf-8")
+    script.write_text(SCRIPT, encoding="utf-8")
     livemod.keep_script(session, "T-1", str(script))
     before = session.state()
     history = events.read(session.dir)
@@ -184,11 +184,13 @@ def test_dashboard_style_replay_runs_saved_actions_in_headed_browser(live, tmp_p
     calls = []
     monkeypatch.setattr(livemod, "open_browser", lambda *a, **kw: calls.append(kw) or "Admin")
     monkeypatch.setattr(livemod, "run_actions", lambda browser, code: calls.append(list(code)))
+    monkeypatch.setattr(livemod.uuid, "uuid4", lambda: type("ReplayStamp", (), {"hex": "0123456789"})())
     result = livemod.replay(session, "T-1")
     assert result["session"] == session.id and result["status"] == "COMPLETED"
     assert calls[0]["headed"] is True and calls[0]["browser_id"].startswith("replay-")
-    assert calls[1] == ["await page.goto('http://x/web');",
-                        "await page.getByRole('button', { name: 'Save' }).click();"]
+    assert calls[1][:2] == ["await page.goto('http://x/web');",
+                            "await page.getByRole('button', { name: 'Save' }).click();"]
+    assert "ZZ_AUTOTEST_r0123456789_order" in str(calls[1:])
     assert len(calls) == 5
     assert session.state() == before and events.read(session.dir) == history
     assert set(session.dir.parent.iterdir()) == sessions

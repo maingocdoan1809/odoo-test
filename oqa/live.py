@@ -541,6 +541,9 @@ def replay(session, case, headed=True):
         raise GateError("\n".join(problems))
     key = hashlib.sha256(f"{session.ws}:{session.id}:{case}".encode("utf-8")).hexdigest()[:16]
     browser_id = f"replay-{key}"
+    prefix = workspace.load(session.ws).get("test_prefix") or "ZZ_AUTOTEST_"
+    replay_prefix = f"{prefix}r{uuid.uuid4().hex[:10]}_"
+    timeout = 1000 * (item.get("timeout_s") or 8)
     try:
         profile = open_browser(session, case, headed=headed, browser_id=browser_id)
         for block in blocks:
@@ -548,7 +551,9 @@ def replay(session, case, headed=True):
                 if block.get("profile") and block["profile"] != profile:
                     profile = open_browser(session, case, headed=headed, profile_override=block["profile"],
                                            browser_id=browser_id)
-                run_actions(browser_id, block["code"])
+                code = [line.replace(prefix, replay_prefix) for line in block["code"]]
+                shows = block["shows"].replace(prefix, replay_prefix)
+                run_actions(browser_id, [*code, literal_check(shows, timeout)])
             except GateError as error:
                 raise GateError(f"Step {block['n']} in {path.name}: {error}") from error
     finally:
