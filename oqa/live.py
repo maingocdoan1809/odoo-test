@@ -142,14 +142,35 @@ def _strategy_case(session, case):
     return {c["id"]: c for c in read_json(session.dir / "analysis.json")["cases"]}[case]
 
 
-def open_browser(session, case, headed=False, refresh=True, profile_override=None, browser_id=None):
-    """The case's own browser, already signed in as its profile. oqa loads the saved sign-in from a private copy that is removed at once: nobody reads it."""
-    ws = workspace.load(session.ws)
+def _env_state(session, ws, profile, headed):
+    """The signed-in state of `profile` on another environment than main: signed in fresh with that environment's own login and password, kept under the
+    session (auth_env/, never read by the assistant). Nothing from the main environment's saved sign-in is reused there."""
+    from . import browser
+    from .secrets import default_store
+
+    account = next(account for account in ws["profiles"] if account["name"] == profile)
+    target = session.dir / "auth_env" / ws["env"] / f"{profile}.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with browser.launch(headless=not headed) as new_page:
+            context, page = new_page()
+            connect.login(page, ws, account, default_store())
+            context.storage_state(path=str(target))
+    except Exception as error:
+        raise GateError(f"Could not sign {profile} in on environment {ws['env']} ({ws['url']}): {str(error).splitlines()[0]}") from error
+    os.chmod(target, 0o600)
+    return str(target)
+
+
+def open_browser(session, case, headed=False, refresh=True, profile_override=None, browser_id=None, env=None):
+    """The case's own browser, already signed in as its profile. oqa loads the saved sign-in from a private copy that is removed at once: nobody reads it.
+    `env` names another environment of the workspace: its address, login and password are used instead of the main ones."""
+    ws = workspace.for_env(workspace.load(session.ws), env)
     item = _strategy_case(session, case)
     profile = profile_override or item.get("profile") or ws["profiles"][0]["name"]
     if not any(account["name"] == profile for account in ws["profiles"]):
         raise GateError(f"Unknown workspace profile {profile}.")
-    state = connect.storage_path(session, profile)
+    state = _env_state(session, ws, profile, headed) if ws["env"] != workspace.MAIN_ENV else connect.storage_path(session, profile)
     if not state:
         raise GateError(f"No signed-in state for profile {profile}: run `oqa connect` first.")
     work = _home()
@@ -192,7 +213,7 @@ def open_browser(session, case, headed=False, refresh=True, profile_override=Non
             except Exception as error:
                 raise GateError(f"Could not refresh the sign-in for {profile}: {str(error).splitlines()[0]}") from error
             return open_browser(session, case, headed=headed, refresh=False,
-                                profile_override=profile, browser_id=browser_id)
+                                profile_override=profile, browser_id=browser_id, env=env)
         raise GateError(f"The saved sign-in did not work (landed on {landed.group(1)}): run `oqa init` to save the password, or sign in again.")
     return profile
 
@@ -704,6 +725,28 @@ def replay_delays(action_delay_ms=DEFAULT_ACTION_DELAY_MS, step_delay_ms=DEFAULT
     return replay_delay(action_delay_ms, "action_delay_ms"), replay_delay(step_delay_ms, "step_delay_ms")
 
 
+VIDEO_MODES = ("off", "on", "fail")        # off: no video; on: keep it; fail: record every run and keep the video only of a FAIL
+
+# The step note drawn over the page, so a video (or a picture) explains itself. It lives in sessionStorage and is drawn again by an init script after every
+# page load, because Odoo navigates and a note put on the page once would vanish. It never decides a result: a note that cannot be drawn is ignored.
+_NOTE_DRAW = ("(() => { if (window.__oqaDraw) return; const draw = () => { try { const t = sessionStorage.getItem('__oqa_note'); let el = document.getElementById('__oqa_note');"
+              " if (!t) { if (el) el.remove(); return; } if (!el) { el = document.createElement('div'); el.id = '__oqa_note'; el.style.cssText = 'position:fixed;left:0;right:0;"
+              "bottom:0;z-index:2147483647;padding:10px 16px;background:rgba(20,20,19,.88);color:#fff;font:600 16px/1.4 sans-serif;pointer-events:none';"
+              " (document.body || document.documentElement).appendChild(el); } el.textContent = t; } catch (e) {} }; window.__oqaDraw = draw;"
+              " document.addEventListener('DOMContentLoaded', draw); window.addEventListener('load', draw); })()")
+
+
+def _note(browser_id, text):
+    """Show `text` over the page and put a chapter marker in the video. Best effort: never raises."""
+    payload = ("async page => { await page.context().addInitScript(" + json.dumps(_NOTE_DRAW) + "); await page.evaluate(" + json.dumps(_NOTE_DRAW) + "); "
+               "await page.evaluate(t => { try { sessionStorage.setItem('__oqa_note', t); } catch (e) {} window.__oqaDraw && window.__oqaDraw(); }, " + json.dumps(text) + "); }")
+    for command in (("run-code", payload), ("video-chapter", text)):
+        try:
+            _run(browser_id, *command)
+        except GateError:
+            pass
+
+
 class _Clock:
     """Where a replay spends its time: viewing pauses, calls into the browser (each one starts a playwright-cli process) and the rest."""
 
@@ -740,34 +783,76 @@ class _Clock:
                 "steps": [{k: (r(v) if isinstance(v, float) else v) for k, v in step.items()} for step in self.steps]}
 
 
+def video_file(ws, script_key, env, run_id):
+    """workspaces/<ws>/videos/<script>/<env>-<run>.webm: one folder per script, the environment and run in the name."""
+    return paths.workspace_dir(ws) / "videos" / script_key.replace("/", "__") / f"{env}-{run_id}.webm"
+
+
 def replay(session, case, headed=True, action_delay_ms=DEFAULT_ACTION_DELAY_MS,
-           step_delay_ms=DEFAULT_STEP_DELAY_MS, fast=False):
+           step_delay_ms=DEFAULT_STEP_DELAY_MS, fast=False, env=None, video="off"):
     """Open the saved script in a separate browser, keeping the original test session. The outcome goes to replay.json (Replay PASS/FAIL); the live result is not touched."""
     action_delay_ms, step_delay_ms = replay_delays(action_delay_ms, step_delay_ms, fast)
+    if video not in VIDEO_MODES:
+        raise GateError(f"video must be one of {', '.join(VIDEO_MODES)}.")
+    env = workspace.for_env(workspace.load(session.ws), env)["env"]
     item = _strategy_case(session, case)
     path = script_file(session, case)
     if not path.is_file():
         raise GateError(f"{case} has no saved script.")
-    key = hashlib.sha256(f"{session.ws}:{session.id}:{case}".encode("utf-8")).hexdigest()[:16]
+    key = hashlib.sha256(f"{session.ws}:{session.id}:{case}:{env}".encode("utf-8")).hexdigest()[:16]
     browser_id = f"replay-{key}"
     prefix = workspace.load(session.ws).get("test_prefix") or "ZZ_AUTOTEST_"
     stamp = uuid.uuid4().hex[:10]
     replay_prefix = f"{prefix}r{stamp}_"
-    run = {"run_id": f"r{stamp}", "prefix": replay_prefix, "headed": headed, "fast": bool(fast),
+    run = {"run_id": f"r{stamp}", "env": env, "prefix": replay_prefix, "headed": headed, "fast": bool(fast),
            "action_delay_ms": action_delay_ms, "step_delay_ms": step_delay_ms}
     clock, failed = _Clock(), None
     blocks, problems = parse_script(path.read_text(encoding="utf-8"), item["steps"])
     timeout = 1000 * (item.get("timeout_s") or 8)
+    from . import regression
+
+    movie = video_file(session.ws, regression.key_of(session.state()["file"], case), env, run["run_id"]) if video != "off" else None
+    capture = _home() / ".playwright-cli" / "videos" / f"{browser_id}-{run['run_id']}.webm" if movie else None
+    recording = False
+
+    def stop_video(status):
+        """Close the recording; keep the file when asked to (`on`), or when the run failed (`fail`). Returns the path kept, else None."""
+        nonlocal recording
+        if not recording:
+            return None
+        recording = False
+        try:
+            _run(browser_id, "video-stop")
+        except GateError:
+            pass
+        if capture.is_file():
+            movie.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(capture), str(movie))
+        if movie.is_file() and (video == "on" or status == "FAIL"):
+            return str(movie)
+        movie.unlink(missing_ok=True)
+        return None
+
     try:
         if problems:
             raise GateError("\n".join(problems))
-        profile = open_browser(session, case, headed=headed, browser_id=browser_id)
+        profile = open_browser(session, case, headed=headed, browser_id=browser_id, env=env)
+        if movie:
+            capture.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                _run(browser_id, "video-start", str(capture))
+                recording = True
+            except GateError:
+                pass                                                         # no video is not a reason to fail the run
         for block in blocks:
             clock.begin(block["n"])
             try:
+                if recording:
+                    spec = next((x for x in item["steps"] if x["n"] == block["n"]), {})
+                    _note(browser_id, f"Bước {block['n']}/{len(item['steps'])}: {spec.get('action', '')}"[:200])
                 if block.get("profile") and block["profile"] != profile:
                     profile = open_browser(session, case, headed=headed, profile_override=block["profile"],
-                                           browser_id=browser_id)
+                                           browser_id=browser_id, env=env)
                 code = [line.replace(prefix, replay_prefix) for line in block["code"]]
                 shows = block["shows"].replace(prefix, replay_prefix)
                 if action_delay_ms:
@@ -781,23 +866,27 @@ def replay(session, case, headed=True, action_delay_ms=DEFAULT_ACTION_DELAY_MS,
             except GateError as error:
                 failed = block["n"]
                 raise GateError(f"Step {block['n']} in {path.name}: {error}") from error
+        kept = stop_video("PASS")             # inside the try: the `finally` below must not meet a recording that already succeeded
     except GateError as error:
-        replays.record(session, case, "FAIL", reason=str(error)[:600], failed_step=failed, timing=clock.report(), **run)
+        kept = stop_video("FAIL")
+        replays.record(session, case, "FAIL", reason=str(error)[:600], failed_step=failed, timing=clock.report(), **({"video": kept} if kept else {}), **run)
         raise
     finally:
+        if recording:
+            stop_video("FAIL")
         if not headed:
             try:
                 _run(browser_id, "close")
             except GateError:
                 pass
     timing = clock.report()
-    replays.record(session, case, "PASS", timing=timing, **run)
-    return {"session": session.id, "case": case, "status": "COMPLETED", "replay": "PASS", "browser": sname(browser_id),
+    replays.record(session, case, "PASS", timing=timing, **({"video": kept} if kept else {}), **run)
+    return {"session": session.id, "case": case, "env": env, "status": "COMPLETED", "replay": "PASS", "browser": sname(browser_id),
             "action_delay_ms": action_delay_ms, "step_delay_ms": step_delay_ms, "timing": timing}
 
 
 def replay_all(session, cases=None, headed=False, action_delay_ms=DEFAULT_ACTION_DELAY_MS,
-               step_delay_ms=DEFAULT_STEP_DELAY_MS, fast=False):
+               step_delay_ms=DEFAULT_STEP_DELAY_MS, fast=False, env=None, video="off"):
     """Replay every case of the session that has a saved script (or the listed ones). Each outcome is recorded; one failure does not stop the rest."""
     action_delay_ms, step_delay_ms = replay_delays(action_delay_ms, step_delay_ms, fast)
     order = read_json(session.dir / "strategy.json")["order"]
@@ -807,7 +896,7 @@ def replay_all(session, cases=None, headed=False, action_delay_ms=DEFAULT_ACTION
     out = []
     for case in wanted:
         try:
-            result = replay(session, case, headed=headed, action_delay_ms=action_delay_ms, step_delay_ms=step_delay_ms)
+            result = replay(session, case, headed=headed, action_delay_ms=action_delay_ms, step_delay_ms=step_delay_ms, env=env, video=video)
             out.append({"case": case, "replay": "PASS", "total_s": result["timing"]["total_s"]})
         except GateError as error:
             out.append({"case": case, "replay": "FAIL", "reason": str(error)[:300]})

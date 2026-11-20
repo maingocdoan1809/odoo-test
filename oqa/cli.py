@@ -67,6 +67,7 @@ def cmd_ws(args):
         view = ws
     lines = [f"{view['name']}  {view['url']}" + (f"  db={view['db']}" if view["db"] else "")]
     lines += [f"  profile {p['name']}: {p['login']}" + ("" if "has_secret" not in p else " (password saved)" if p["has_secret"] else " (NO PASSWORD)") + (f"  {p['note']}" if p["note"] else "") for p in view["profiles"]]
+    lines += [f"  environment {e['name']}: {e['url']}" + (f"  db={e['db']}" if e["db"] else "") for e in view.get("environments", [])]
     lines += [f"  reference folder: {d}" for d in view["reference_dirs"]]
     return view, "\n".join(lines)
 
@@ -462,6 +463,38 @@ def _case_in_strategy(session, case):
 
 
 
+def default_video(args):
+    """No video unless asked for: a fast run has no viewing pauses to read a note in. A regression keeps the video of a failed script by default."""
+    if args.fast:
+        return "off"
+    return "fail" if args.func is cmd_regress else "off"
+
+
+def cmd_regress(args):
+    """Run every saved script of the workspace on one environment (regression), or show the latest result of each script on each environment."""
+    from . import regression
+
+    ws = paths.resolve_workspace(args.ws)
+    if args.matrix or not args.env:
+        table = regression.matrix(ws)
+        head = ["script"] + table["environments"]
+        lines = ["  ".join(head)] + ["  ".join([row["key"]] + [f"{row['results'][e]['status']}" + (f" ({row['results'][e]['at']})" if row["results"][e].get("at") else "") for e in table["environments"]]) for row in table["scripts"]]
+        return table, "\n".join(lines) if table["scripts"] else "No saved script in this workspace yet."
+    wanted = [c.strip() for c in args.cases.split(",") if c.strip()] if args.cases else None
+    rows = regression.run(ws, args.env, wanted, headed=args.headed, video=args.video or default_video(args), action_delay_ms=args.action_delay_ms, step_delay_ms=args.step_delay_ms, fast=args.fast)
+    bad = [row for row in rows if row["replay"] != "PASS"]
+    lines = [f"{row['script']} on {row['env']}: {row['replay']}" + (f" ({row['total_s']}s)" if row["replay"] == "PASS" else f" - {row['reason']}") + (f"\n    video: {row['video']}" if row.get("video") else "") for row in rows]
+    return {"environment": rows[0]["env"], "runs": rows, "failed": len(bad)}, "\n".join(lines) + f"\nRegression on {rows[0]['env']}: PASS {len(rows) - len(bad)}/{len(rows)}."
+
+
+def cmd_results(args):
+    """Put the result.json of runs made by hand (node replay.mjs from the scripts ZIP) onto the dashboard."""
+    from . import regression
+
+    rows = regression.import_results(paths.resolve_workspace(args.ws), args.path)
+    return {"imported": rows}, "\n".join(f"{r['script']} on {r['env']}: {r['status']}" for r in rows) + f"\nImported {len(rows)} result(s)."
+
+
 def cmd_live(args):
     """EXECUTE with playwright-cli: the case's own browser, the outcome of each step with a picture framed by oqa (see oqa/live.py)."""
     session = Session.open(args.ws, args.session)
@@ -492,12 +525,12 @@ def cmd_live(args):
     if args.action == "replay":
         if args.case == "all":
             rows = live.replay_all(session, headed=not args.headless, action_delay_ms=args.action_delay_ms,
-                                   step_delay_ms=args.step_delay_ms, fast=args.fast)
+                                   step_delay_ms=args.step_delay_ms, fast=args.fast, env=args.env, video=args.video or default_video(args))
             bad = [row for row in rows if row["replay"] != "PASS"]
             lines = [f"{row['case']}: Replay {row['replay']}" + (f" ({row['total_s']}s)" if row["replay"] == "PASS" else f" - {row['reason']}") for row in rows]
             return {"replays": rows, "failed": len(bad)}, "\n".join(lines) + f"\nReplay PASS {len(rows) - len(bad)}/{len(rows)}."
         result = live.replay(session, args.case, headed=not args.headless,
-                             action_delay_ms=args.action_delay_ms, step_delay_ms=args.step_delay_ms, fast=args.fast)
+                             action_delay_ms=args.action_delay_ms, step_delay_ms=args.step_delay_ms, fast=args.fast, env=args.env, video=args.video or default_video(args))
         t = result["timing"]
         return result, (f"Saved script completed for {args.case}: Replay PASS in {t['total_s']}s "
                         f"({t['pause_s']}s viewing pauses, {t['call_s']}s in {t['calls']} browser calls).")
@@ -958,6 +991,18 @@ def build_parser():
     p.add_argument("--case", default="")
     p = add("notes", cmd_notes, "read what the agents shared")
     p.add_argument("--limit", type=int, default=30)
+    p = add("regress", cmd_regress, "regression: replay every saved script of the workspace on one environment, or --matrix to see the latest results")
+    p.add_argument("--env", help="the environment to run on (see `oqa ws show`)")
+    p.add_argument("--matrix", action="store_true", help="only show the latest result of each script on each environment")
+    p.add_argument("--cases", help="only these case ids, comma-separated")
+    p.add_argument("--headed", action="store_true", help="show the browser (regression runs without a window by default)")
+    p.add_argument("--action-delay-ms", type=int, default=0, help="pause after each action in milliseconds (default 0)")
+    p.add_argument("--step-delay-ms", type=int, default=0, help="pause after each checked step in milliseconds (default 0)")
+    p.add_argument("--fast", action="store_true", help="both viewing pauses 0")
+    p.add_argument("--video", choices=list(live.VIDEO_MODES), help="video with a note of each step: off | on (keep every video) | fail (keep only the video of a failed script). Default: fail, but off with --fast")
+    p = add("results", cmd_results, "import results of scripts run by hand: results import <result.json or the evidence folder>")
+    p.add_argument("what", choices=["import"])
+    p.add_argument("path", help="a result.json written by replay.mjs, or a folder holding several")
     p = add("live", cmd_live, "run a case live in its own playwright-cli browser: start | shot | step | end")
     p.add_argument("action", choices=["start", "act", "profile", "shot", "step", "end", "replay", "script", "recover", "diagnose", "handover"])
     p.add_argument("case", help="the case id; `replay all` replays every saved script of the session")
@@ -978,6 +1023,8 @@ def build_parser():
     p.add_argument("--tried", help="diagnose (automation): what was already tried")
     p.add_argument("--need", help="diagnose (precondition): what is needed to continue")
     p.add_argument("--to", help="handover: the worker that takes the running case")
+    p.add_argument("--env", help="replay: the environment to run on (default main); see `oqa ws show`")
+    p.add_argument("--video", choices=list(live.VIDEO_MODES), help="replay: video with a note of each step: off (default) | on | fail (keep it only if the replay fails)")
     p.add_argument("--fast", action="store_true", help="replay: fast mode, both viewing pauses 0 (application waits are unchanged)")
     p.add_argument("--caption", help="shot: describe the checkpoint shown in this evidence picture")
     p.add_argument("--verified-code", help="step: file containing only the confirmed Playwright actions")
@@ -1071,4 +1118,4 @@ def main(argv=None):
             print("REFUSED: " + message, file=sys.stderr)
         return 2
     print(json.dumps(data, ensure_ascii=False, indent=2) if args.json else text)
-    return 0
+    return 1 if args.func is cmd_regress and isinstance(data, dict) and data.get("failed") else 0      # a regression with a failure fails a pipeline

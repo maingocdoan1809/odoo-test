@@ -42,9 +42,22 @@ A session is chosen by `--ws` / `--session`, else `$OQA_WS` / `$OQA_SESSION` (wh
 
 ## workspace.json
 
-`{schema_version, name, url, db, profiles:[{name, login, note}], reference_dirs:[path], language: vi|ja|en, test_prefix}`.
+`{schema_version, name, url, db, profiles:[{name, login, note}], environments:[{name, url, db, accounts:[{profile, login}]}], reference_dirs:[path], language: vi|ja|en, test_prefix}`.
 Never a password: each profile's password is in the credential store under the key `oqa:<workspace>:<profile>`
 (Windows Credential Manager; the `keyring` package elsewhere).
+
+Environments: the workspace's own `url`/`db` is the environment `main`; `environments` lists the others (staging, production...) that run the same scripts. A profile is a role
+shared by all environments, but each environment gives it its own login (`accounts`) and password, stored under `oqa:<workspace>:<profile>:<environment>`. A profile an environment
+gives no account for fails to sign in there (it never falls back to another system's account). `workspace.for_env(ws, env)` returns the workspace as seen from one environment.
+
+## regression.json (per workspace)
+
+`<home>/workspaces/<ws>/regression.json` = `{schema_version, scripts:{"<workbook>/<case>":{<environment>:{latest, runs[≤20]}}}}`. A run is a replay run (`status PASS|FAIL, env, at, run_id,
+reason?, failed_step?, timing, video?, source?`). A script never run on an environment is NOT RUN there. The session's own `replay.json` keeps `latest` for `main` only and `envs` per environment.
+Results of runs made by hand are put here with `oqa results import <result.json | folder>`; `result.json` is written by `replay.mjs`
+(`{schema, workspace, script, case, env, status, at, run_id, failed_step, reason, base_url, video, total_s, source:"manual"}`, exit code 0 PASS / 1 FAIL) and is refused when its workspace,
+environment, script or status cannot be placed. Videos live in `<home>/workspaces/<ws>/videos/<script>/<env>-<run>.webm`: a step note drawn over the page and a chapter per step;
+`--video off|on|fail` (`fail` keeps it only for a FAILed run; default off, `fail` for `regress`, off with `--fast`). Dashboard: tab "Scripts" (`/api/regression`, `/api/regress`, `/api/video`).
 
 ## sitemap.json
 
@@ -143,6 +156,9 @@ kind: login | navigation | locator | data | error | fix | quirk | rule. Never a 
 | command | what it does |
 |---|---|
 | `init [--ws N] [--timeout S] [--no-open] [--status]` | serves the configuration form on 127.0.0.1 and **blocks until it is saved** (exit 0, summary without secrets) or times out (exit 2, nothing written). Run it in the background; `--status` only reports whether a workspace is configured |
+| `regress --env E [--cases C] [--headed] [--video off\|on\|fail] [--fast]` / `regress --matrix` | replay every saved script of the workspace on environment E (exit 1 when a script fails) / show the latest result of each script on each environment |
+| `results import <result.json\|folder>` | put the `result.json` of runs made by hand (`node replay.mjs`) onto the dashboard |
+| `live replay CASE\|all [--env E] [--video off\|on\|fail]` | replay on another environment, optionally with a noted video |
 | `doctor [--fix]` | checks Python, packages, browser, credential store; `--fix` installs what is missing |
 | `ws show\|list` | the workspace (no secrets: each profile says whether a password is saved) |
 | `session new --file F` / `show` / `list` | INTAKE: read the workbook → `cases.json`, session starts in ANALYZE |

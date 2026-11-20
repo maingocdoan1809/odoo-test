@@ -10,7 +10,7 @@ import unicodedata
 from pathlib import Path
 from urllib.parse import quote
 
-from . import live, paths, refs, report, script_bundle, sitemap, view, workspace
+from . import live, paths, refs, regression, report, script_bundle, sitemap, view, workspace
 from .localserver import LocalApp, font_faces
 from .state import GateError, Session
 from .store import SchemaError
@@ -168,11 +168,42 @@ class Dashboard(LocalApp):
             if method == "GET" and path == "/api/scripts":
                 session = self._session(query)
                 return 200, script_bundle.build(session), "application/zip", {"Content-Disposition": _attachment("oqa-scripts.zip")}
+            if method == "GET" and path == "/api/regression":
+                return 200, regression.matrix(paths.resolve_workspace(query.get("ws")))
+            if method == "GET" and path == "/api/video":
+                ws = paths.resolve_workspace(query.get("ws"))
+                root = (paths.workspace_dir(ws) / "videos").resolve()
+                target = Path(query.get("path", "")).resolve()
+                if root not in target.parents or target.suffix.lower() != ".webm" or not target.is_file():
+                    return 404, {"error": "no such video"}
+                return 200, target.read_bytes(), "video/webm"
+            if method == "POST" and path == "/api/regress":
+                video = body.get("video", "fail")
+                if video not in live.VIDEO_MODES:
+                    return 200, {"error": "Chế độ quay video không hợp lệ."}
+                ws = paths.resolve_workspace(body.get("ws"))
+                env = workspace.for_env(workspace.load(ws), str(body.get("env", "")) or None)["env"]
+                case = str(body.get("case", "")).strip()
+                folder = paths.workspace_dir(ws) / "logs"
+                folder.mkdir(exist_ok=True)
+                entry = Path(__file__).resolve().parent.parent / "oqa.py"
+                with (folder / f"regress-{env}.log").open("ab") as out:
+                    subprocess.Popen([sys.executable, str(entry), "regress", "--ws", ws, "--env", env, *(["--cases", case] if case else []),
+                                      # a video you mean to watch keeps the viewing pauses so each step note can be read; otherwise the run is fast
+                                      *(["--action-delay-ms", str(live.DEFAULT_ACTION_DELAY_MS), "--step-delay-ms", str(live.DEFAULT_STEP_DELAY_MS)] if video == "on" else ["--fast"]),
+                                      "--video", video,
+                                      *(["--headed"] if body.get("headed") is True else [])],
+                                     stdout=out, stderr=out, stdin=subprocess.DEVNULL, start_new_session=True,
+                                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+                return 200, {"ok": True, "message": f"Đang chạy regression trên môi trường {env}: " + ("script của case này." if case else "tất cả script của workspace.")}
             if method == "POST" and path == "/api/report":
                 session = self._session(body)
                 built = report.build(session, workspace.load(session.ws))
                 return 200, {"ok": True, "main": built["download"]}
             if method == "POST" and path == "/api/replay":
+                video = body.get("video", "off")
+                if video not in live.VIDEO_MODES:
+                    return 200, {"error": "Chế độ quay video không hợp lệ."}
                 fast = body.get("fast") is True
                 action_delay, step_delay = live.replay_delays(body.get("action_delay_ms", live.DEFAULT_ACTION_DELAY_MS),
                                                               body.get("step_delay_ms", live.DEFAULT_STEP_DELAY_MS), fast)
@@ -195,7 +226,7 @@ class Dashboard(LocalApp):
                 entry = Path(__file__).resolve().parent.parent / "oqa.py"
                 with log.open("ab") as out:
                     subprocess.Popen([sys.executable, str(entry), "live", "replay", case, "--ws", session.ws, "--session", session.id,
-                                      "--action-delay-ms", str(action_delay), "--step-delay-ms", str(step_delay), *(["--fast"] if fast else [])],
+                                      "--action-delay-ms", str(action_delay), "--step-delay-ms", str(step_delay), "--video", video, *(["--fast"] if fast else [])],
                                      stdout=out, stderr=out,
                                      stdin=subprocess.DEVNULL, start_new_session=True,
                                      creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)

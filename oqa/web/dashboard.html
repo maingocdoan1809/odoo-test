@@ -82,6 +82,14 @@
 
   .bar { display:flex; height:8px; border-radius:9999px; overflow:hidden; background:var(--line); gap:2px; }
   .bar i { display:block; min-width:4px; }
+  .s-NOT { --c:var(--planned); }
+  .scripts-table { width:100%; border-collapse:collapse; } .scripts-table th, .scripts-table td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  .scripts-table .res { font-weight:600; color:var(--c); } .scripts-table .res small { display:block; font-weight:400; color:var(--muted); }
+  .scripts-bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:0 0 14px; }
+  #scriptsMain > .panel { padding:20px 24px; }
+  #scriptsMain > .panel > header { display:grid; gap:6px; margin-bottom:20px; }
+  #scriptsMain > .panel > header h2 { margin:0; font:500 18px/1.4 var(--sans); }
+  #scriptsMain > .panel > header span { color:var(--muted); font-size:13px; }
   .s-PASS { --c:var(--pass); } .s-FAIL { --c:var(--fail); } .s-PENDING { --c:var(--pending); } .s-BLOCKED, .s-STOPPED, .s-INTERRUPTED { --c:var(--blocked); }
   .s-RUNNING { --c:var(--running); } .s-REPAIRING { --c:var(--repairing); } .s-PLANNED, .s-HELD, .s-NEW, .s-NOT { --c:var(--planned); }
   .s-EXPLORING, .s-TRYING { --c:var(--repairing); } .s-BUILT { --c:var(--pending); } .s-VERIFIED { --c:var(--pass); }
@@ -252,6 +260,7 @@
     .meta { gap:4px 12px; font-size:12px; }
     .meta .mono { font-size:12px; }
     .attn-panel, .refs-panel, .liveboard, .hint-box, .detail { padding:16px; margin-bottom:16px; }
+    #scriptsMain > .panel { padding:16px; }
     .detail h2 { font-size:22px; }
     .reports { gap:8px; margin-bottom:16px; }
     .btn { height:auto; min-height:40px; max-width:100%; padding:8px 14px; white-space:normal; }
@@ -265,6 +274,7 @@
 <body>
 <div class="top"><b>Odoo Test</b><nav class="tabs workspace-tabs" role="tablist" aria-label="Workspace">
   <button id="tab-progress" role="tab" data-workspace-tab="progress" aria-selected="true" aria-controls="main">Tiến độ test</button>
+  <button id="tab-scripts" role="tab" data-workspace-tab="scripts" aria-selected="false" aria-controls="scriptsMain" tabindex="-1">Scripts</button>
   <button id="tab-site-map" role="tab" data-workspace-tab="site_map" aria-selected="false" aria-controls="siteMapMain" tabindex="-1">site_map</button>
 </nav><div class="live" aria-live="polite"><span class="dot" id="dot"></span><span id="liveText">đang tải…</span></div></div>
 <div class="layout">
@@ -273,6 +283,7 @@
     <div id="history"></div>
   </aside>
   <main id="main" role="tabpanel" aria-labelledby="tab-progress"></main>
+  <main id="scriptsMain" role="tabpanel" aria-labelledby="tab-scripts" hidden></main>
   <main id="siteMapMain" role="tabpanel" aria-labelledby="tab-site-map" hidden></main>
 </div>
 <div class="lightbox" id="lb" role="dialog" aria-modal="true" aria-label="Ảnh bằng chứng">
@@ -289,6 +300,8 @@ const STATUS = { INTERRUPTED: "Bị bỏ dở", STOPPED: "Đã dừng", PASS: "P
 const ORDER = ["PASS", "FAIL", "REPAIRING", "RUNNING", "EXPLORING", "BUILT", "INTERRUPTED", "STOPPED", "PENDING", "BLOCKED", "PLANNED", "HELD", "NEW", "NOT EXECUTED"];
 const S = { sig: "", histSig: "", open: {}, draft: {}, hintError: "", sessions: [], ws: "", sel: null, view: null, caseId: null, attempt: null, raw: false, gallery: [], index: 0, error: "", busy: false };
 S.replayTiming = { action_delay_ms: 700, step_delay_ms: 1500 };
+S.videoMode = "fail";          // a plain re-run keeps the video only of a failure; the "Quay video" button always records, at a pace where the step notes can be read
+const RECORD_TIMING = { action_delay_ms: 700, step_delay_ms: 1500 };
 try {
   const saved = JSON.parse(localStorage.getItem("oqaReplayTiming") || "{}");
   for (const key of Object.keys(S.replayTiming)) {
@@ -440,7 +453,7 @@ function drawMain() {
     <div class="track">${phases}</div>
     <div class="summary"><span><strong>${passed}</strong>/${total} Live đạt</span>${stats}</div>
     <div class="summary" aria-label="Kết quả chạy lại script"><span>Replay</span>${["PASS", "FAIL", "NOT RUN"].filter(k => (v.replay_counts || {})[k]).map(k => `<span class="s-${k === "NOT RUN" ? "NEW" : k}"><strong>${v.replay_counts[k]}</strong><i class="sq"></i>${esc(RSTATUS[k])}</span>`).join("") || '<span class="muted">Chưa có case nào đủ điều kiện chạy lại.</span>'}
-      ${v.cases.some(k => k.can_replay) && ["REPORT", "DONE"].includes(v.phase) ? `<button class="btn" data-replay-all="1" title="Chạy lại script của tất cả case đã lưu script">Chạy lại tất cả</button>` : ""}</div>
+      ${v.cases.some(k => k.can_replay) && ["REPORT", "DONE"].includes(v.phase) ? `<button class="btn" data-replay-all="1" title="Chạy lại script của tất cả case đã lưu script">Chạy lại tất cả</button><button class="btn primary" data-replay-all="1" data-record="1" title="Chạy lại tất cả case đã lưu script và quay video có chú thích từng bước">Quay video tất cả</button>` : ""}</div>
     ${bar(c, total)}
     <div class="now">${esc(v.now)}</div>
     ${v.idle && !v.waiting ? `<div class="idle">Phiên này không có hoạt động ${Math.floor(v.idle_hours)} giờ nay: AI có thể đã dừng giữa chừng. Các case đang chạy hoặc đang sửa được hiển thị là "Bị bỏ dở". Bảo AI chạy <span class="mono">oqa status</span> để tiếp tục.</div>` : ""}
@@ -514,6 +527,7 @@ function reviewBox(k) {
 }
 
 /** After the case ended (PASS or FAIL): run its saved script again, same account and Odoo, with the browser in view. */
+const videoUrl = (ws, path) => `/api/video?ws=${encodeURIComponent(ws)}&path=${encodeURIComponent(path)}&t=${TOKEN}`;
 function replayBar(k) {
   if (!["PASS", "FAIL"].includes(k.status)) return "";
   const note = k.can_replay ? "Mở browser và chạy script đã lưu của case này." : "Chưa có script đã lưu.";
@@ -522,6 +536,8 @@ function replayBar(k) {
     <label>Nghỉ sau thao tác (ms) <input data-replay-delay="action_delay_ms" aria-label="Nghỉ sau thao tác (ms)" type="number" min="0" max="60000" step="100" value="${S.replayTiming.action_delay_ms}" ${S.fast ? "disabled" : ""} style="width:90px"></label>
     <label>Nghỉ sau bước (ms) <input data-replay-delay="step_delay_ms" aria-label="Nghỉ sau bước (ms)" type="number" min="0" max="60000" step="100" value="${S.replayTiming.step_delay_ms}" ${S.fast ? "disabled" : ""} style="width:90px"></label>
     <button class="replay" data-replay="${esc(k.id)}" ${k.can_replay ? "" : "disabled"} title="${esc(note)}">Chạy lại testcase</button>
+    <button class="replay primary" data-replay="${esc(k.id)}" data-record="1" ${k.can_replay ? "" : "disabled"} title="${k.can_replay ? "Chạy lại testcase và quay video có chú thích từng bước" : "Chưa có script đã lưu."}">Quay video</button>
+    ${k.replay?.video ? `<a class="btn" href="${videoUrl(S.sel.ws, k.replay.video)}" target="_blank" rel="noopener">Xem video</a>` : ""}
     <span class="muted" id="replayMsg">${esc(note)} Kết quả chạy lại hiển thị riêng (Replay), không thay đổi kết quả Live. Thời gian chờ ứng dụng giữ theo testcase.</span></div>`;
 }
 
@@ -576,6 +592,7 @@ function workspaceTab(tab) {
   document.body.classList.toggle("site-map-active", tab === "site_map");
   $("main").hidden = tab !== "progress";
   $("siteMapMain").hidden = tab !== "site_map";
+  $("scriptsMain").hidden = tab !== "scripts";
   document.querySelectorAll("[data-workspace-tab]").forEach(button => {
     const selected = button.dataset.workspaceTab === tab;
     button.setAttribute("aria-selected", selected); button.tabIndex = selected ? 0 : -1;
@@ -585,6 +602,36 @@ function workspaceTab(tab) {
   if (tab === "site_map" && mapWorkspace()) url.searchParams.set("workspace", mapWorkspace()); else url.searchParams.delete("workspace");
   history.replaceState(null, "", url);
   if (tab === "site_map") loadMap();
+  if (tab === "scripts") loadScripts();
+}
+
+const R = { ws: "", data: null, msg: "", busy: false };
+function scriptsWorkspace() {
+  const names = (S.workspaces || []).map(w => w.name);
+  return R.ws && names.includes(R.ws) ? R.ws : (S.sel && S.sel.ws) || S.ws || names[0] || "";
+}
+async function loadScripts() {
+  R.ws = scriptsWorkspace();
+  if (!R.ws) { $("scriptsMain").innerHTML = '<section class="panel"><p class="muted">Chưa có workspace nào.</p></section>'; return; }
+  const data = await get("/api/regression?ws=" + encodeURIComponent(R.ws));
+  if (data.error) { R.msg = data.error; return renderScripts(); }
+  R.data = data; renderScripts();
+}
+function resultCell(r) {
+  const status = r.status || "NOT RUN";
+  return `<td class="res ${cls(status)}">${esc(status)}${r.at ? `<small>${esc(r.at)}</small>` : ""}${r.video ? `<small><a href="/api/video?ws=${encodeURIComponent(R.ws)}&path=${encodeURIComponent(r.video)}&t=${TOKEN}" target="_blank" rel="noopener">xem video</a></small>` : ""}${status === "FAIL" && r.reason ? `<small title="${esc(r.reason)}">${esc(String(r.reason).slice(0, 80))}</small>` : ""}</td>`;
+}
+function renderScripts() {
+  const box = $("scriptsMain"), d = R.data;
+  if (!d) { box.innerHTML = `<section class="panel"><div class="err">${esc(R.msg)}</div></section>`; return; }
+  const wsOptions = (S.workspaces || []).map(w => `<option ${w.name === R.ws ? "selected" : ""}>${esc(w.name)}</option>`).join("");
+  const runAll = d.environments.map(e => `<button class="btn" data-regress-env="${esc(e)}" ${R.busy ? "disabled" : ""}>Chạy tất cả trên ${esc(e)}</button><button class="btn primary" data-regress-env="${esc(e)}" data-record="1" ${R.busy ? "disabled" : ""} title="Chạy tất cả script trên ${esc(e)} và quay video có chú thích từng bước">Quay video tất cả trên ${esc(e)}</button>`).join("");
+  const rows = d.scripts.map(k => `<tr><td>${k.session ? `<a href="#" data-script-open="${esc(k.session)}" data-script-case="${esc(k.case_id)}">${esc(k.case_id)}</a>` : esc(k.case)}<small class="muted" style="display:block">${esc(k.workbook)}</small></td>
+    ${d.environments.map(e => resultCell(k.results[e] || {})).join("")}
+    <td>${k.case_id ? d.environments.map(e => `<button class="btn" data-regress-env="${esc(e)}" data-regress-case="${esc(k.case_id)}" ${R.busy ? "disabled" : ""} title="Chạy lại script này trên ${esc(e)}">▶ ${esc(e)}</button> <button class="btn primary" data-regress-env="${esc(e)}" data-regress-case="${esc(k.case_id)}" data-record="1" ${R.busy ? "disabled" : ""} title="Chạy script này trên ${esc(e)} và quay video có chú thích từng bước">Quay video</button>`).join(" ") : '<span class="muted">chưa có phiên để chạy</span>'}</td></tr>`).join("");
+  box.innerHTML = `<section class="panel"><header><h2>Script của workspace (${d.scripts.length})</h2><span>Bấm tên case để mở testcase. Kết quả theo từng môi trường; chưa chạy hiện NOT RUN.</span></header>
+    <div class="scripts-bar"><select id="scriptsWs" aria-label="Workspace">${wsOptions}</select>${runAll}<button class="btn" id="scriptsReload">Tải lại</button><span class="muted">${esc(R.msg)}</span></div>
+    ${d.scripts.length ? `<div class="case-table-scroll"><table class="scripts-table"><thead><tr><th>Script / testcase</th>${d.environments.map(e => `<th>${esc(e)}</th>`).join("")}<th>Chạy lại</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">Workspace này chưa có script nào được lưu (chỉ case PASS mới lưu script).</p>'}</section>`;
 }
 
 /*__SITE_MAP__*/
@@ -633,7 +680,9 @@ document.addEventListener("click", async e => {
   const rep = e.target.closest("[data-replay], [data-replay-all]");
   if (rep && S.sel) {
     rep.disabled = true;
-    const r = await post("/api/replay", { ws: S.sel.ws, id: S.sel.id, case: rep.dataset.replayAll ? "all" : rep.dataset.replay, ...S.replayTiming, fast: S.fast });
+    const record = rep.dataset.record === "1";
+    const r = await post("/api/replay", { ws: S.sel.ws, id: S.sel.id, case: rep.dataset.replayAll ? "all" : rep.dataset.replay,
+      ...(record ? RECORD_TIMING : S.replayTiming), fast: record ? false : S.fast, video: record ? "on" : S.videoMode });
     const msg = $("replayMsg");
     if (msg) msg.textContent = r.error || r.message || "Đã bắt đầu.";
     else if (r.error) alert(r.error);
@@ -641,9 +690,19 @@ document.addEventListener("click", async e => {
     return;
   }
   if (e.target.closest("#railToggle")) { toggleRail(); return; }
+  const open = e.target.closest("[data-script-open]");
+  if (open) { e.preventDefault(); workspaceTab("progress"); select(R.ws, open.dataset.scriptOpen); S.caseId = open.dataset.scriptCase; S.attempt = null; return; }
   const t = e.target.closest("button, tr.case, [data-map-screen], [data-map-expand], [data-map-home], [data-map-focus]");
   if (!t) return;
   if (t.dataset.workspaceTab) return workspaceTab(t.dataset.workspaceTab);
+  if (t.id === "scriptsReload") return loadScripts();
+  if (t.dataset.regressEnv) {
+    R.busy = true; renderScripts();
+    const r = await post("/api/regress", { ws: R.ws, env: t.dataset.regressEnv, case: t.dataset.regressCase || "", video: t.dataset.record === "1" ? "on" : S.videoMode });
+    R.msg = r.error || r.message || "Đã bắt đầu."; renderScripts();
+    setTimeout(() => { R.busy = false; loadScripts(); }, 4000);
+    return;
+  }
   if (t.id === "mapReload") return loadMap();
   if (t.dataset.mapHome) return resetGraph();
   if (t.dataset.mapFocus) { G.focus = t.dataset.mapFocus; G.expanded.add(G.focus); G.inspector = false; G.fit = true; return renderMap(); }
@@ -725,6 +784,7 @@ document.addEventListener("change", e => {
     return;
   }
   if (e.target.id === "mapWorkspace") { S.ws = e.target.value; renderHistory(); return workspaceTab("site_map"); }
+  if (e.target.id === "scriptsWs") { R.ws = e.target.value; return loadScripts(); }
   if (e.target.id === "mapLanguage") { M.lang = e.target.value; return loadMap(); }
   if (e.target.id === "mapKind") { M.kind = e.target.value; G.searchOpen = !!(M.kind || M.q); return loadMap(); }
   if (e.target.id === "mapView") { M.view = e.target.value; return loadMapScreen(); }
@@ -764,6 +824,7 @@ $("wsFilter").onchange = e => { S.ws = e.target.value; renderHistory(); if (S.ta
   if (params.get("tab") === "site_map") workspaceTab("site_map");
   setInterval(() => { if (!$("lb").classList.contains("open")) refreshView(); }, 1500);
   setInterval(refreshList, 6000);
+  setInterval(() => { if (S.tab === "scripts" && !R.busy) loadScripts(); }, 5000);
 })();
 </script>
 </body>

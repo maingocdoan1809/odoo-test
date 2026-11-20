@@ -23,6 +23,9 @@
   :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   .row { display:grid; gap:10px; grid-template-columns:120px 1fr 1fr 1fr 40px; align-items:center; margin-bottom:10px; }
   .row.head { color:var(--muted); font-size:13px; margin-bottom:4px; }
+  .row.env { grid-template-columns:140px 1fr 160px 40px; }
+  .envbox { border:1px solid var(--line); border-radius:8px; padding:12px; margin-bottom:12px; background:var(--sunk); }
+  .row.acc { grid-template-columns:140px 1fr 1fr 40px; }
   .dir { display:grid; grid-template-columns:1fr 40px; gap:10px; margin-bottom:10px; }
   button { font:inherit; font-weight:500; height:40px; padding:0 20px; border:1px solid var(--line); background:var(--bg); color:var(--ink); border-radius:8px; cursor:pointer; }
   button.primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
@@ -36,7 +39,7 @@
   details summary { cursor:pointer; color:var(--muted); font-weight:500; }
   .done { text-align:center; padding:56px 10px; }
   .done h2 { font:400 30px/1.2 var(--display); letter-spacing:-.4px; color:var(--ink); text-transform:none; margin:0 0 8px; }
-  @media (max-width:640px) { .row { grid-template-columns:1fr 1fr; } .row.head { display:none; } main { padding:32px 16px 64px; } section { padding:20px; } h1 { font-size:30px; } }
+  @media (max-width:640px) { .row, .row.env, .row.acc { grid-template-columns:1fr 1fr; } .row.head { display:none; } main { padding:32px 16px 64px; } section { padding:20px; } h1 { font-size:30px; } }
 </style>
 </head>
 <body>
@@ -67,6 +70,13 @@
     <div class="row head"><span>Tên profile</span><span>Tài khoản</span><span>Mật khẩu</span><span>Ghi chú vai trò</span><span></span></div>
     <div id="profiles"></div>
     <button id="addProfile" type="button">+ Thêm profile</button>
+  </section>
+
+  <section>
+    <h2>Môi trường khác <small style="text-transform:none">(tùy chọn)</small></h2>
+    <p style="color:var(--muted);margin:0 0 10px">Địa chỉ ở trên là môi trường “main”. Thêm staging, production… để chạy lại các script trên đó (regression). Mỗi môi trường có tài khoản và mật khẩu riêng cho từng profile: ghi tên profile ở phần trên, rồi tài khoản và mật khẩu dùng trên môi trường đó.</p>
+    <div id="envs"></div>
+    <button id="addEnv" type="button">+ Thêm môi trường</button>
   </section>
 
   <section>
@@ -114,6 +124,26 @@ function profileRow(p = {}) {
   row.querySelector("button").onclick = () => row.remove();
   $("profiles").append(row);
 }
+function accRow(box, a = {}, envName = "") {
+  const row = document.createElement("div");
+  row.className = "row acc";
+  row.innerHTML = '<input data-k="profile" placeholder="Admin" autocomplete="off"><input data-k="login" placeholder="tài khoản trên môi trường này" autocomplete="off"><input data-k="password" type="password" autocomplete="new-password"><button type="button" class="icon" title="Xóa" aria-label="Xóa tài khoản">✕</button>';
+  row.querySelector("[data-k=profile]").value = a.profile || "";
+  row.querySelector("[data-k=login]").value = a.login || "";
+  row.querySelector("[data-k=password]").placeholder = a.has_secret ? "•••••• đã lưu (để trống = giữ)" : "mật khẩu";
+  row.querySelector("button").onclick = () => row.remove();
+  box.querySelector(".accs").append(row);
+}
+function envRow(e = {}) {
+  const box = document.createElement("div");
+  box.className = "envbox";
+  box.innerHTML = '<div class="row env"><input data-k="name" placeholder="staging" autocomplete="off"><input data-k="url" placeholder="http://staging.example:8069" autocomplete="off"><input data-k="db" placeholder="database" autocomplete="off"><button type="button" class="icon" title="Xóa môi trường" aria-label="Xóa môi trường">✕</button></div><div class="accs"></div><button type="button" class="addAcc">+ Thêm tài khoản</button>';
+  for (const k of ["name", "url", "db"]) box.querySelector(`[data-k=${k}]`).value = e[k] || "";
+  box.querySelector(".icon").onclick = () => box.remove();
+  box.querySelector(".addAcc").onclick = () => accRow(box);
+  (e.accounts || []).forEach(a => accRow(box, a));
+  $("envs").append(box);
+}
 function dirRow(value = "") {
   const row = document.createElement("div");
   row.className = "dir";
@@ -129,7 +159,8 @@ function fill(ws) {
   $("db").value = ws.db || "";
   $("language").value = ws.language || "vi";
   $("prefix").value = ws.test_prefix || "ZZ_AUTOTEST_";
-  $("profiles").innerHTML = ""; $("dirs").innerHTML = "";
+  $("profiles").innerHTML = ""; $("dirs").innerHTML = ""; $("envs").innerHTML = "";
+  (ws.environments || []).forEach(envRow);
   (ws.profiles && ws.profiles.length ? ws.profiles : [{}]).forEach(profileRow);
   (ws.reference_dirs || []).forEach(dirRow);
 }
@@ -143,14 +174,24 @@ function collect() {
     const pw = row.querySelector("[data-k=password]").value;
     if (pw) passwords[get("name")] = pw;
   }
+  const environments = [...$("envs").children].map(box => {
+    const head = box.querySelector(".row.env"), val = (row, k) => row.querySelector(`[data-k=${k}]`).value.trim(), env = val(head, "name");
+    const accounts = [...box.querySelectorAll(".acc")].map(row => {
+      const pw = row.querySelector("[data-k=password]").value;
+      if (pw) passwords[val(row, "profile") + "@" + env] = pw;
+      return { profile: val(row, "profile"), login: val(row, "login") };
+    });
+    return { name: env, url: val(head, "url"), db: val(head, "db"), accounts };
+  });
   return {
-    workspace: { name: $("name").value.trim(), url: $("url").value.trim(), db: $("db").value.trim(), profiles, language: $("language").value, test_prefix: $("prefix").value.trim(),
+    workspace: { name: $("name").value.trim(), url: $("url").value.trim(), db: $("db").value.trim(), profiles, environments, language: $("language").value, test_prefix: $("prefix").value.trim(),
                  reference_dirs: [...$("dirs").querySelectorAll("input")].map(i => i.value.trim()).filter(Boolean) },
     passwords, home: $("home").value.trim(),
   };
 }
 
 $("addProfile").onclick = () => profileRow();
+$("addEnv").onclick = () => envRow();
 $("addDir").onclick = () => dirRow();
 $("existing").onchange = async () => {
   const name = $("existing").value;

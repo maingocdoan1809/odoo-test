@@ -131,3 +131,57 @@ def test_check_url_recognises_odoo_and_reports_a_dead_address():
         server.shutdown()
     assert init_server.check_url("http://127.0.0.1:9", timeout=2)["ok"] is False
     assert init_server.check_url("ftp://x")["ok"] is False
+
+
+def _env_form(environments):
+    form = json.loads(json.dumps(FORM))
+    form["workspace"]["environments"] = environments
+    return form
+
+
+def test_environments_are_saved_and_the_workspace_can_be_seen_from_each(store):
+    saved = workspace.save(_env_form([{"name": "staging", "url": "stg.example:8069", "db": "stg"}])["workspace"], store, {"Admin": "pw"})
+    assert [e["name"] for e in workspace.environments(saved)] == ["main", "staging"]
+    assert workspace.for_env(saved, "staging")["url"] == "http://stg.example:8069" and workspace.for_env(saved, "staging")["db"] == "stg"
+    assert workspace.for_env(saved, "STAGING")["env"] == "staging"
+    assert workspace.for_env(saved)["url"] == saved["url"] and workspace.for_env(saved, "main")["env"] == "main"
+    with pytest.raises(Exception, match="does not exist"):
+        workspace.for_env(saved, "prod")
+
+
+def test_workspace_without_environments_still_loads_and_has_only_main(store):
+    saved = workspace.save(FORM["workspace"], store, {"Admin": "pw"})
+    assert saved["environments"] == [] and [e["name"] for e in workspace.environments(saved)] == ["main"]
+
+
+@pytest.mark.parametrize("bad", [[{"name": "main", "url": "http://a"}], [{"name": "a", "url": "http://a"}, {"name": "A", "url": "http://b"}],
+                                 [{"name": "x y", "url": "http://a"}], [{"name": "stg", "url": ""}]])
+def test_a_bad_environment_is_refused(store, bad):
+    with pytest.raises(Exception):
+        workspace.save(_env_form(bad)["workspace"], store, {"Admin": "pw"})
+
+
+def test_each_environment_has_its_own_login_and_password(store):
+    form = _env_form([{"name": "staging", "url": "http://stg:8069", "accounts": [{"profile": "Admin", "login": "stg_admin"}]}])
+    saved = workspace.save(form["workspace"], store, {"Admin": "main-pw", "Admin@staging": "stg-pw"})
+    seen = workspace.for_env(saved, "staging")
+    assert seen["profiles"][0]["login"] == "stg_admin" and workspace.for_env(saved)["profiles"][0]["login"] == "admin"
+    assert store.get(workspace.secret_ref("erp", "Admin")) == "main-pw"
+    assert store.get(workspace.secret_ref("erp", "Admin", "staging")) == "stg-pw"
+    assert workspace.secret_ref("erp", "Admin", "main") == workspace.secret_ref("erp", "Admin")
+    view = workspace.public_view(saved, store)
+    assert view["environments"][0]["accounts"][0]["has_secret"] is True and "stg-pw" not in json.dumps(view)
+
+
+def test_environment_account_needs_a_password_a_known_profile_and_cleans_up(store):
+    form = _env_form([{"name": "staging", "url": "http://stg:8069", "accounts": [{"profile": "Admin", "login": "a"}]}])
+    with pytest.raises(Exception, match="needs a password"):
+        workspace.save(form["workspace"], store, {"Admin": "pw"})
+    form["workspace"]["environments"][0]["accounts"][0]["profile"] = "Nobody"
+    with pytest.raises(Exception, match="not one of the profiles"):
+        workspace.save(form["workspace"], store, {"Admin": "pw", "Nobody@staging": "x"})
+    form["workspace"]["environments"][0]["accounts"][0]["profile"] = "Admin"
+    workspace.save(form["workspace"], store, {"Admin": "pw", "Admin@staging": "x"})
+    form["workspace"]["environments"] = []
+    workspace.save(form["workspace"], store, {})
+    assert not store.has(workspace.secret_ref("erp", "Admin", "staging")) and store.has(workspace.secret_ref("erp", "Admin"))

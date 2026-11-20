@@ -1,4 +1,4 @@
-import { readFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -38,6 +38,31 @@ const prefix = manifest.prefix || "ZZ_AUTOTEST_";
 const fresh = text => text.replaceAll(prefix, `${prefix}r${stamp}_`);
 const runDir = `evidence/${caseId.replace(/[^\w.-]/g, "_")}-${stamp}`;
 await mkdir(runDir, { recursive: true });
+// The outcome goes in result.json beside the pictures and in the exit code (0 = PASS, 1 = FAIL), so a run by hand can be told apart without reading the log.
+// `oqa results import` puts it on the dashboard. Passwords are never written here.
+const started = Date.now();
+const environment = process.env.OQA_ENV || "main";
+let failedStep = null, reason = "";
+async function saveResult(status) {
+  const result = { schema: 1, workspace: manifest.workspace || null, script: manifest.cases[caseId].script || null, case: caseId, env: environment,
+    status, at: new Date().toISOString().slice(0, 19).replace("T", " "), run_id: `r${stamp}`, failed_step: failedStep, reason: reason.slice(0, 600),
+    base_url: base.origin, video: videoPath, total_s: Math.round((Date.now() - started) / 100) / 10, source: "manual" };
+  await writeFile(`${runDir}/result.json`, JSON.stringify(result, null, 2));
+}
+
+// Video with a note of each step: OQA_VIDEO=on keeps it, OQA_VIDEO=fail keeps it only when the run fails. The note is drawn over the page, again after every page load.
+const videoMode = ["on", "fail"].includes(process.env.OQA_VIDEO) ? process.env.OQA_VIDEO : "off";
+let videoPath = null, outcome = "FAIL";
+const videoPages = [];
+const noteScript = () => {
+  const draw = () => { try { const text = sessionStorage.getItem("__oqa_note"); let el = document.getElementById("__oqa_note");
+    if (!text) { if (el) el.remove(); return; }
+    if (!el) { el = document.createElement("div"); el.id = "__oqa_note";
+      el.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:2147483647;padding:10px 16px;background:rgba(20,20,19,.88);color:#fff;font:600 16px/1.4 sans-serif;pointer-events:none";
+      (document.body || document.documentElement).appendChild(el); }
+    el.textContent = text; } catch (e) {} };
+  window.__oqaDraw = draw; document.addEventListener("DOMContentLoaded", draw); window.addEventListener("load", draw);
+};
 
 const installedEdge = process.platform === "win32" &&
   [process.env["ProgramFiles(x86)"], process.env.ProgramFiles].some(
@@ -55,8 +80,11 @@ try {
       password: process.env.OQA_PASSWORD,
       storageState: process.env.OQA_STORAGE_STATE,
     } : {});
-    const context = await browser.newContext({ baseURL: base.href, storageState: account.storageState || undefined });
+    const context = await browser.newContext({ baseURL: base.href, storageState: account.storageState || undefined,
+      ...(videoMode !== "off" ? { recordVideo: { dir: `${runDir}/video`, size: { width: 1280, height: 720 } } } : {}) });
+    if (videoMode !== "off") await context.addInitScript(noteScript);
     const page = await context.newPage();
+    videoPages.push(page);
     if (!account.storageState) {
       if (!account.login || !account.password) {
         throw new Error("Supply credentials for profile " + profile);
@@ -74,6 +102,10 @@ try {
   }
   for (const step of manifest.cases[caseId].steps) {
     const page = await signIn(step.profile || initial);
+    if (videoMode !== "off") {                       // a note that cannot be drawn never fails the run
+      const text = `Step ${step.n}/${manifest.cases[caseId].steps.length}: ${step.action || ""}`.slice(0, 200);
+      await page.evaluate(([src, note]) => { try { if (!window.__oqaDraw) (0, eval)(`(${src})()`); sessionStorage.setItem("__oqa_note", note); window.__oqaDraw && window.__oqaDraw(); } catch (e) {} }, [noteScript.toString(), text]).catch(() => {});
+    }
     const code = step.code.map(line => fresh(line.replaceAll(original.origin, base.origin)));
     const execute = async lines => {
       for (const line of lines) {
@@ -96,10 +128,25 @@ try {
       await pause(stepDelay);
     } catch (error) {
       await page.screenshot({ path: `${runDir}/step-${step.n}-failed.png` }).catch(() => {});
+      failedStep = step.n;
+      reason = String(error && error.message || error).split("\n")[0];
       throw new Error(`Case ${caseId}, step ${step.n}`, { cause: error });
     }
   }
-  console.log(`${caseId}: PASS. Evidence: ${runDir}`);
+  outcome = "PASS";
+} catch (error) {
+  if (!reason) reason = String(error && error.message || error).split("\n")[0];
 } finally {
+  // A video file exists only once its page is closed.
+  const recorded = videoPages.map(page => page.video() ? page.video().path().catch(() => null) : null);
   await browser.close();
+  const files = (await Promise.all(recorded)).filter(Boolean);
+  if (videoMode === "fail" && outcome === "PASS") await Promise.all(files.map(file => rm(file, { force: true })));
+  else videoPath = files[0] || null;
+}
+await saveResult(outcome);
+if (outcome === "PASS") console.log(`${caseId}: PASS on ${environment}. Evidence: ${runDir}`);
+else {
+  console.error(`${caseId}: FAIL on ${environment}${failedStep ? `, step ${failedStep}` : ""}: ${reason}. Evidence: ${runDir}`);
+  process.exitCode = 1;
 }

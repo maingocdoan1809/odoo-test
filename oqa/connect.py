@@ -39,7 +39,7 @@ def reach(page, ws, profile, store: SecretStore, target):
 
 def login(page, ws, profile, store: SecretStore):
     """Sign `profile` in on `page`. Returns {landing_url, title, version}; raises LoginFailed with the reason."""
-    password = store.get(secret_ref(ws["name"], profile["name"]))
+    password = store.get(secret_ref(ws["name"], profile["name"], ws.get("env")))
     if password is None:
         raise LoginFailed(f"no password is saved for profile {profile['name']}: run oqa init and enter it")
     page.goto(urljoin(ws["url"], "/web/login") + (f"?db={ws['db']}" if ws.get("db") else ""), wait_until="domcontentloaded")
@@ -93,7 +93,7 @@ def connect(session: Session, ws, store: SecretStore, headless=True):
         for profile in ws["profiles"]:
             context, page = new_page()
             try:
-                info[profile["name"]] = login(page, ws, profile, store) if store.has(secret_ref(ws["name"], profile["name"])) else reuse_session(session, context, page, ws, profile)
+                info[profile["name"]] = login(page, ws, profile, store) if store.has(secret_ref(ws["name"], profile["name"], ws.get("env"))) else reuse_session(session, context, page, ws, profile)
                 context.storage_state(path=str(auth / f"{profile['name']}.json"))
             except Exception as error:
                 picture = session.dir / "logs" / f"connect_{profile['name']}.png"

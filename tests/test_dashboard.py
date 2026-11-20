@@ -247,11 +247,60 @@ def test_replay_api_passes_pacing_to_runner_and_rejects_invalid_values(session, 
     script.write_text("// saved", encoding="utf-8")
     launched = []
     monkeypatch.setattr(dashboard_server.subprocess, "Popen", lambda command, **kw: launched.append(command))
-    body = {"ws": session.ws, "id": session.id, "case": "ORD-001", "action_delay_ms": 1200, "step_delay_ms": 2400}
+    body = {"ws": session.ws, "id": session.id, "case": "ORD-001", "action_delay_ms": 1200, "step_delay_ms": 2400, "video": "on"}
     assert up.call("/api/replay", body)[1]["ok"]
     command = launched[0]
     assert command[command.index("--action-delay-ms") + 1] == "1200"
     assert command[command.index("--step-delay-ms") + 1] == "2400"
+    assert command[command.index("--video") + 1] == "on"
     for value in (-1, 60001, True, "1200", 1.5):
         assert up.call("/api/replay", {**body, "step_delay_ms": value})[1]["error"]
+    assert up.call("/api/replay", {**body, "video": "invalid"})[1]["error"]
     assert len(launched) == 1
+
+
+def test_scripts_screen_lists_scripts_with_a_result_per_environment_and_starts_a_regression(session, up, tmp_path, monkeypatch, store):
+    from oqa import live, workspace
+
+    at_confirm(session, tmp_path)
+    session.confirm_current("test")
+    script = live.script_file(session, "ORD-001")
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text("// saved", encoding="utf-8")
+    config = workspace.load(session.ws)
+    workspace.save(dict(config, environments=[{"name": "staging", "url": "http://stg:8069", "accounts": []}]), store, {})
+    table = up.call("/api/regression?ws=demo")[1]
+    assert table["environments"] == ["main", "staging"]
+    (row,) = table["scripts"]
+    assert (row["case_id"], row["session"], row["results"]["staging"]["status"]) == ("ORD-001", session.id, "NOT RUN")
+    launched = []
+    monkeypatch.setattr(dashboard_server.subprocess, "Popen", lambda command, **kw: launched.append(command))
+    assert up.call("/api/regress", {"ws": "demo", "env": "staging", "case": "ORD-001", "video": "off"})[1]["ok"]
+    command = launched[0]
+    assert command[command.index("--env") + 1] == "staging" and command[command.index("--cases") + 1] == "ORD-001"
+    assert command[command.index("--video") + 1] == "off"
+    assert up.call("/api/regress", {"ws": "demo", "env": "staging", "video": "invalid"})[1]["error"]
+    assert up.call("/api/regress", {"ws": "demo", "env": "prod"})[1]["error"] and len(launched) == 1
+
+
+def test_a_video_you_watch_keeps_the_viewing_pauses_and_a_fast_run_does_not(session, up, tmp_path, monkeypatch, store):
+    from oqa import live, workspace
+
+    at_confirm(session, tmp_path)
+    session.confirm_current("test")
+    script = live.script_file(session, "ORD-001")
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text("// saved", encoding="utf-8")
+    launched = []
+    monkeypatch.setattr(dashboard_server.subprocess, "Popen", lambda command, **kw: launched.append(command))
+    assert up.call("/api/regress", {"ws": "demo", "env": "main", "video": "on"})[1]["ok"]
+    assert "--fast" not in launched[0] and launched[0][launched[0].index("--action-delay-ms") + 1] == str(live.DEFAULT_ACTION_DELAY_MS)
+    assert up.call("/api/regress", {"ws": "demo", "env": "main", "video": "fail"})[1]["ok"]
+    assert "--fast" in launched[1] and launched[1][launched[1].index("--video") + 1] == "fail"
+    assert up.call("/api/regress", {"ws": "demo", "env": "main", "video": "x"})[1]["error"]
+
+
+def test_the_page_has_record_buttons_and_no_leftover_of_the_removed_video_selector():
+    page = (dashboard_server.PAGE).read_text(encoding="utf-8")
+    assert page.count('data-record="1"') >= 4 and "Quay video tất cả" in page
+    assert "videoControl" not in page and "data-video-mode" not in page            # a call to a removed function would blank the Scripts tab

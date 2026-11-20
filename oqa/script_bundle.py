@@ -14,7 +14,8 @@ def build(session):
     analysis = read_json(session.dir / "analysis.json", {}) or {}
     planned = {case["id"]: case for case in analysis.get("cases", [])}
     config = workspace.load(session.ws)
-    manifest = {"baseUrl": config["url"], "prefix": config.get("test_prefix"), "cases": {}}
+    manifest = {"workspace": config["name"], "baseUrl": config["url"], "prefix": config.get("test_prefix"), "cases": {}}
+    channel = session.state().get("channel")
     content = io.BytesIO()
     with zipfile.ZipFile(content, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for case in strategy.get("order", []):
@@ -25,7 +26,10 @@ def build(session):
             blocks, issues = live.parse_script(text, planned[case]["steps"])
             if issues:
                 raise GateError(f"Cannot export {case}: " + "; ".join(issues))
-            manifest["cases"][case] = {"profile": planned[case].get("profile"), "steps": blocks}
+            said = {step["n"]: step for step in planned[case]["steps"]}
+            blocks = [{**block, "action": said.get(block["n"], {}).get("action", ""), "expected": said.get(block["n"], {}).get("expected", "")} for block in blocks]
+            manifest["cases"][case] = {"profile": planned[case].get("profile"), "steps": blocks,
+                                       **({} if channel else {"script": f"{source.parent.name}/{source.name[:-len('.spec.js')]}"})}
             archive.writestr(f"scripts/{source.name}", text)
         if not manifest["cases"]:
             raise GateError("This session has no saved scripts.")
@@ -43,6 +47,11 @@ The browser is visible by default; set OQA_HEADLESS=1 for unattended runs.
 OQA_ACTION_DELAY_MS sets the pause after each action (default 700).
 OQA_STEP_DELAY_MS sets the pause after each checked step (default 1500).
 Both accept whole milliseconds from 0 to 60000; 0 disables the pause.
+OQA_ENV names the environment you run on (default main); it is written into the result.
+The run ends with exit code 0 (PASS) or 1 (FAIL) and writes result.json in its evidence folder.
+Put the result on the dashboard with: oqa results import <evidence folder or result.json>
+OQA_VIDEO=on records a video of the run with a note of each step over the page; OQA_VIDEO=fail keeps the video only when the run fails.
+The video path is written into result.json. Leave it unset for no video.
 OQA_FAST=1 is fast mode: both pauses are 0 whatever the two values above say.
 These viewing pauses do not change application assertion timeouts.
 The archive may contain test fixture values. Keep it within your test team.

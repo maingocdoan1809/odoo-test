@@ -68,7 +68,7 @@ class InitServer(LocalApp):
             paths.set_home(home)
         saved = workspace.save(ws, self.store, body.get("passwords") if isinstance(body.get("passwords"), dict) else {})
         self.result = {"workspace": saved["name"], "home": str(paths.home()), "url": saved["url"], "profiles": [p["name"] for p in saved["profiles"]],
-                       "reference_dirs": saved["reference_dirs"]}
+                       "reference_dirs": saved["reference_dirs"], "environments": [e["name"] for e in workspace.environments(saved)]}
         return {"ok": True, "name": saved["name"]}
 
     def handle(self, method, path, query, body):
@@ -104,4 +104,4 @@ def status(name=None):
         ws = workspace.load(pick)
     except (SchemaError, paths.PathError) as error:
         return {"configured": False, "workspaces": names, "problem": str(error)}
-    return {"configured": True, "workspace": ws["name"], "url": ws["url"], "profiles": [p["name"] for p in ws["profiles"]], "reference_dirs": ws["reference_dirs"], "workspaces": names}
+    return {"configured": True, "workspace": ws["name"], "url": ws["url"], "profiles": [p["name"] for p in ws["profiles"]], "reference_dirs": ws["reference_dirs"], "environments": [e["name"] for e in workspace.environments(ws)], "workspaces": names}
