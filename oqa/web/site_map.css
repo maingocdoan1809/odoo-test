@@ -15,7 +15,8 @@
 .map-toolbar .map-query { flex:1; min-width:220px; position:relative; }
 .map-toolbar .btn { height:38px; padding:0 15px; }
 .map-toolbar .primary { background:var(--map-blue); border-color:var(--map-blue); color:white; }
-.map-search-box { display:flex; flex:1; gap:8px; }
+.map-search-box { display:flex; flex:1; min-width:0; gap:8px; }
+.map-search-box > .btn { flex:0 0 auto; white-space:nowrap; }
 .map-note { color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
 .map-error { color:var(--fail); padding:20px; white-space:pre-wrap; }
 .diagram-shell { position:relative; height:calc(100dvh - 230px); min-height:480px; border:1px solid #d9e1ec; border-radius:14px; overflow:hidden; background:var(--map-paper); }
