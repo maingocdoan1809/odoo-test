@@ -20,7 +20,7 @@ import uuid
 from pathlib import Path
 
 from . import analysis as analysis_mod
-from . import connect, evidence, events, memory, paths, workspace
+from . import connect, evidence, events, memory, paths, replays, workspace
 from .state import GateError, Session
 from .store import read_json, write_json
 
@@ -79,8 +79,23 @@ _RELATIVE_GOTO = re.compile(r"""^(await page\.goto\(\s*)(['"])(/(?!/)[^'"\\]*)\2
 
 
 def literal_check(text, timeout):
-    return ("await page.waitForFunction(text => document.body.innerText.includes(text), "
+    """Wait until the visible text contains `text`. Whitespace is compared after normalising, because Odoo renders values such as the pager
+    "1-1 / 1" in separate elements and innerText joins them with line breaks or non-breaking spaces."""
+    return ("await page.waitForFunction(text => { const norm = value => value.replace(/[\\s\\u00a0\\u202f]+/g, ' ').trim(); "
+            "return norm(document.body.innerText).includes(norm(text)); }, "
             + json.dumps(text) + f", {{timeout: {timeout}}});")
+
+
+SETTLE_MAX_MS = 3000
+SETTLE = ("await page.waitForFunction(() => new Promise(resolve => { const started = performance.now(); let last = started; "
+          "const watch = new MutationObserver(() => { last = performance.now(); }); "
+          "watch.observe(document.body, {subtree: true, childList: true, attributes: true, characterData: true}); "
+          "const tick = () => { const now = performance.now(); "
+          "const busy = document.querySelector('.o_loading_indicator, .o_blockUI, .o_form_saving, .o_loading'); "
+          "if ((now - last >= 300 && !busy) || now - started >= " + str(SETTLE_MAX_MS) + ") { watch.disconnect(); resolve(true); } else setTimeout(tick, 100); }; "
+          "tick(); }), null, {timeout: " + str(SETTLE_MAX_MS + 5000) + "});")
+"""Wait for the page to stop changing before a step is judged: after Save, Discard or an onchange Odoo re-renders the form, and a value read in between is stale.
+An application wait, not a viewing pause: it applies in fast mode too, and is bounded."""
 
 
 def _upload_csv(browser_id, button, name, content):
@@ -205,6 +220,9 @@ def start(session, case):
 
         if not claims.table(session).get(case, {}).get("fresh"):
             raise GateError(f"Claim {case} with `oqa claim --agent WORKER --case {case}` before starting.")
+    resumed = _handed_over(session, case)
+    if resumed:
+        return _resume(session, case, item, resumed)
     attempt = session.begin_attempt(case)
     try:
         profile = open_browser(session, case)
@@ -224,6 +242,72 @@ def start(session, case):
     return {"case": case, "attempt": attempt, "browser": browser_name}, "\n".join(lines)
 
 
+def _open_attempt(session, case):
+    """(attempt, index of its case_started event) when the case has a run that has not finished, else None."""
+    log = events.read(session.dir)
+    started = next(((i, e) for i, e in reversed(list(enumerate(log))) if e["kind"] == "case_started" and e.get("case") == case), None)
+    if not started:
+        return None
+    index, event = started
+    if any(e["kind"] == "attempt_finished" and e.get("case") == case and e.get("attempt") == event["attempt"] for e in log[index:]):
+        return None
+    return event["attempt"], index
+
+
+def _handed_over(session, case):
+    """The open attempt of a case that was handed over and not yet taken up, else None."""
+    found = _open_attempt(session, case)
+    if not found:
+        return None
+    attempt, index = found
+    log = events.read(session.dir)
+    handovers = [e for e in log[index:] if e["kind"] == "handover" and e.get("case") == case and e.get("attempt") == attempt]
+    return {"attempt": attempt, "handover": handovers[-1]} if handovers else None
+
+
+def handover(session, case, reason, to=""):
+    """Pass a case that is running to another worker. Unlike `recover`, the open attempt stays open: the steps already recorded, the evidence, the browser and
+    the attempt count are kept, so nothing is redone and no recovery budget is spent. The new owner continues with `live start`."""
+    from . import claims
+
+    session.require("EXECUTE")
+    _strategy_case(session, case)
+    if len(reason.strip()) < 12:
+        raise GateError("Say why the case changes hands and where the work stands (at least 12 characters).")
+    found = _open_attempt(session, case)
+    if not found:
+        raise GateError(f"{case} has no running attempt to hand over. Use `oqa claim` for a case that has not started.")
+    attempt = found[0]
+    owner = (claims.table(session).get(case) or {}).get("agent", "")
+    claims.release(session, case, missing_ok=True)
+    if to:
+        claims.assign(session, case, to)
+    done = sorted(_recorded(session, case, attempt))
+    events.append(session.dir, "handover", case=case, attempt=attempt, reason=reason.strip(), **{"from": owner, "to": to})
+    claims.add_note(session, "coordinator", f"HANDOVER {case}: {reason.strip()} (steps recorded: {done or 'none'}; attempt {attempt} stays open)", case=case)
+    return ({"case": case, "attempt": attempt, "steps_recorded": done},
+            f"{case} handed over{' to ' + to if to else ''}. Attempt {attempt} and its {len(done)} recorded step(s) are kept; the new worker runs `oqa live start {case}` to continue.")
+
+
+def _resume(session, case, item, taken):
+    attempt = taken["attempt"]
+    browser_name = sname(browser_case(session, case))
+    try:
+        _run(browser_case(session, case), "snapshot")
+        browser = "still open"
+    except GateError:
+        profile = open_browser(session, case)
+        browser = f"reopened as {profile} (the page position was lost: navigate back to where step {len(_recorded(session, case, attempt)) + 1} starts)"
+    done = _recorded(session, case, attempt)
+    nxt = len(done) + 1
+    lines = [f"{case}: attempt {attempt} CONTINUES after a handover ({taken['handover'].get('reason', '')}). Browser `{browser_name}` {browser}.",
+             f"Steps already recorded: {sorted(done) or 'none'}. Do not redo them. Next is step {nxt}."]
+    for step in item["steps"]:
+        mark = done[step["n"]]["status"] if step["n"] in done else "todo"
+        lines.append(f"  {step['n']}. [{mark}] {step['action']}   ->   {step['expected']}")
+    return {"case": case, "attempt": attempt, "browser": browser_name, "resumed": True, "next_step": nxt}, "\n".join(lines)
+
+
 def recover(session, case, reason):
     """Close a worker's unfinished attempt after the coordinator diagnosed it."""
     from . import claims
@@ -241,6 +325,7 @@ def recover(session, case, reason):
         if not attempt:
             raise GateError("There is no live worker attempt to recover.")
         with session.update() as current:
+            session.archive_result(current, case, f"coordinator diagnosis: {reason}")
             current["results"].pop(case, None)
         events.append(session.dir, "repair", case=case, attempt=attempt,
                       cause="Coordinator diagnosed an incorrect worker conclusion",
@@ -459,9 +544,11 @@ def step(session, case, n, status, actual, target=None, verified_code=None, show
         _, problems = parse_script("\n".join(script_step), [spec], check_search=True)
         if problems:
             raise GateError("\n".join(problems))
+        if status == "PASS":
+            check_specific(spec, shows, actual, "\n".join(code))
         if status == "PASS" and session.state().get("channel"):
             try:
-                run_actions(browser_case(session, case), [literal_check(shows, 1500)])
+                run_actions(browser_case(session, case), [SETTLE, literal_check(shows, 1500)])
             except GateError as error:
                 raise GateError("The replay check could not find 'shows' verbatim on the page. Use a short visible label or value for shows, keep the observation in actual, and put specific checks in the Playwright code. The step has not been recorded.") from error
     raw, annotated = folder / f"s{n}_raw.png", folder / f"s{n}_annotated.png"
@@ -610,54 +697,121 @@ def replay_delay(value, name):
     return value
 
 
-def _paced_actions(browser_id, code, delay_ms):
-    if not delay_ms:
-        return run_actions(browser_id, code)
-    for line in code:
-        run_actions(browser_id, [line])
-        time.sleep(delay_ms / 1000)
+def replay_delays(action_delay_ms=DEFAULT_ACTION_DELAY_MS, step_delay_ms=DEFAULT_STEP_DELAY_MS, fast=False):
+    """The two viewing pauses of a replay. Fast mode is one switch that sets both to 0; application waits (`timeout_s`, settle) are not viewing pauses and stay."""
+    if fast:
+        return 0, 0
+    return replay_delay(action_delay_ms, "action_delay_ms"), replay_delay(step_delay_ms, "step_delay_ms")
+
+
+class _Clock:
+    """Where a replay spends its time: viewing pauses, calls into the browser (each one starts a playwright-cli process) and the rest."""
+
+    def __init__(self):
+        self.started = time.monotonic()
+        self.steps, self.pause_s, self.call_s, self.calls = [], 0.0, 0.0, 0
+        self.step = None
+
+    def begin(self, n):
+        self.step = {"n": n, "actions_s": 0.0, "check_s": 0.0, "pause_s": 0.0, "calls": 0}
+        self.steps.append(self.step)
+
+    def run(self, browser_id, lines, kind="actions_s"):
+        began = time.monotonic()
+        try:
+            return run_actions(browser_id, lines)
+        finally:
+            spent = time.monotonic() - began
+            self.call_s += spent
+            self.calls += 1
+            self.step[kind] += spent
+            self.step["calls"] += 1
+
+    def pause(self, ms):
+        if ms:
+            time.sleep(ms / 1000)
+            self.pause_s += ms / 1000
+            self.step["pause_s"] += ms / 1000
+
+    def report(self):
+        total = time.monotonic() - self.started
+        r = lambda value: round(value, 2)
+        return {"total_s": r(total), "pause_s": r(self.pause_s), "call_s": r(self.call_s), "calls": self.calls,
+                "steps": [{k: (r(v) if isinstance(v, float) else v) for k, v in step.items()} for step in self.steps]}
 
 
 def replay(session, case, headed=True, action_delay_ms=DEFAULT_ACTION_DELAY_MS,
-           step_delay_ms=DEFAULT_STEP_DELAY_MS):
-    """Open the saved script in a separate browser, keeping the original test session."""
-    action_delay_ms = replay_delay(action_delay_ms, "action_delay_ms")
-    step_delay_ms = replay_delay(step_delay_ms, "step_delay_ms")
+           step_delay_ms=DEFAULT_STEP_DELAY_MS, fast=False):
+    """Open the saved script in a separate browser, keeping the original test session. The outcome goes to replay.json (Replay PASS/FAIL); the live result is not touched."""
+    action_delay_ms, step_delay_ms = replay_delays(action_delay_ms, step_delay_ms, fast)
     item = _strategy_case(session, case)
     path = script_file(session, case)
     if not path.is_file():
         raise GateError(f"{case} has no saved script.")
-    blocks, problems = parse_script(path.read_text(encoding="utf-8"), item["steps"])
-    if problems:
-        raise GateError("\n".join(problems))
     key = hashlib.sha256(f"{session.ws}:{session.id}:{case}".encode("utf-8")).hexdigest()[:16]
     browser_id = f"replay-{key}"
     prefix = workspace.load(session.ws).get("test_prefix") or "ZZ_AUTOTEST_"
-    replay_prefix = f"{prefix}r{uuid.uuid4().hex[:10]}_"
+    stamp = uuid.uuid4().hex[:10]
+    replay_prefix = f"{prefix}r{stamp}_"
+    run = {"run_id": f"r{stamp}", "prefix": replay_prefix, "headed": headed, "fast": bool(fast),
+           "action_delay_ms": action_delay_ms, "step_delay_ms": step_delay_ms}
+    clock, failed = _Clock(), None
+    blocks, problems = parse_script(path.read_text(encoding="utf-8"), item["steps"])
     timeout = 1000 * (item.get("timeout_s") or 8)
     try:
+        if problems:
+            raise GateError("\n".join(problems))
         profile = open_browser(session, case, headed=headed, browser_id=browser_id)
         for block in blocks:
+            clock.begin(block["n"])
             try:
                 if block.get("profile") and block["profile"] != profile:
                     profile = open_browser(session, case, headed=headed, profile_override=block["profile"],
                                            browser_id=browser_id)
                 code = [line.replace(prefix, replay_prefix) for line in block["code"]]
                 shows = block["shows"].replace(prefix, replay_prefix)
-                _paced_actions(browser_id, code, action_delay_ms)
-                run_actions(browser_id, [literal_check(shows, timeout)])
-                if step_delay_ms:
-                    time.sleep(step_delay_ms / 1000)
+                if action_delay_ms:
+                    for line in code:
+                        clock.run(browser_id, [line])
+                        clock.pause(action_delay_ms)
+                else:
+                    clock.run(browser_id, code)
+                clock.run(browser_id, [SETTLE, literal_check(shows, timeout)], "check_s")
+                clock.pause(step_delay_ms)
             except GateError as error:
+                failed = block["n"]
                 raise GateError(f"Step {block['n']} in {path.name}: {error}") from error
+    except GateError as error:
+        replays.record(session, case, "FAIL", reason=str(error)[:600], failed_step=failed, timing=clock.report(), **run)
+        raise
     finally:
         if not headed:
             try:
                 _run(browser_id, "close")
             except GateError:
                 pass
-    return {"session": session.id, "case": case, "status": "COMPLETED", "browser": sname(browser_id),
-            "action_delay_ms": action_delay_ms, "step_delay_ms": step_delay_ms}
+    timing = clock.report()
+    replays.record(session, case, "PASS", timing=timing, **run)
+    return {"session": session.id, "case": case, "status": "COMPLETED", "replay": "PASS", "browser": sname(browser_id),
+            "action_delay_ms": action_delay_ms, "step_delay_ms": step_delay_ms, "timing": timing}
+
+
+def replay_all(session, cases=None, headed=False, action_delay_ms=DEFAULT_ACTION_DELAY_MS,
+               step_delay_ms=DEFAULT_STEP_DELAY_MS, fast=False):
+    """Replay every case of the session that has a saved script (or the listed ones). Each outcome is recorded; one failure does not stop the rest."""
+    action_delay_ms, step_delay_ms = replay_delays(action_delay_ms, step_delay_ms, fast)
+    order = read_json(session.dir / "strategy.json")["order"]
+    wanted = [case for case in order if (cases is None or case in cases) and script_file(session, case).is_file()]
+    if not wanted:
+        raise GateError("This session has no saved scripts to replay.")
+    out = []
+    for case in wanted:
+        try:
+            result = replay(session, case, headed=headed, action_delay_ms=action_delay_ms, step_delay_ms=step_delay_ms)
+            out.append({"case": case, "replay": "PASS", "total_s": result["timing"]["total_s"]})
+        except GateError as error:
+            out.append({"case": case, "replay": "FAIL", "reason": str(error)[:300]})
+    return out
 
 
 def verify_replay(src, case, headed=False):
@@ -693,7 +847,7 @@ def verify_replay(src, case, headed=False):
                     pass                                              # not there yet: the frame is taken after the step instead
                 code = code[-1:]
             wait = literal_check(shows, 1000 * (item.get("timeout_s") or 8))
-            run_actions(browser_id, [*code, wait])
+            run_actions(browser_id, [*code, SETTLE, wait])
             step(new, case, b["n"], "PASS", f"The page showed: {shows}", frame)
         except GateError as error:
             failed = f"step {b['n']}: {str(error)[:200]}"
@@ -708,9 +862,10 @@ def verify_replay(src, case, headed=False):
     if headed:
         time.sleep(3)                                              # the user is watching: leave the last screen up for a moment
     if failed and not recorded:
+        diagnose(new, case, "automation", "Replay could not take a picture of the failing step: " + failed, tried="the step frame and the whole page body")
         end(new, case, "BLOCKED", "Replay could not take a picture: " + failed)
     elif failed:
-        end(new, case, "FAIL", "Replay: " + failed, script=str(path))
+        end(new, case, "FAIL", "Replay: " + failed, script=str(path), control="the saved script's own controls, replayed exactly as recorded")
     else:
         end(new, case, "PASS", "", script=str(path))
     return new, ("BLOCKED" if failed and not recorded else "FAIL" if failed else "PASS"), failed
@@ -732,7 +887,59 @@ def keep_script(session, case, script):
     return {"case": case}, f"Script of {case} kept at {target}."
 
 
-def end(session, case, status, reason, script=None):
+def diagnose(session, case, category, detail, tried="", need=""):
+    """A worker that is stuck says what it found, concretely, before it may close the case as BLOCKED or PENDING. The coordinator reads it in the shared notes.
+    category: automation = our script/selector/browser is the problem; precondition = the test lacks data, a document or a decision (needs the user)."""
+    from . import claims
+
+    session.require("EXECUTE")
+    attempt = _attempt(session, case)
+    if category not in ("automation", "precondition"):
+        raise GateError("category is automation (our selector, script or browser) or precondition (missing data, document or decision). An application defect is a FAIL with its evidence.")
+    if len(re.findall(r"\w+", detail or "")) < 6:
+        raise GateError("Describe the diagnosis in a sentence: which control or condition, what you saw, what you expected.")
+    if category == "automation" and len(re.findall(r"\w+", tried or "")) < 4:
+        raise GateError("An automation diagnosis lists what was already tried (--tried), for example the other locators and what each one matched.")
+    if category == "precondition" and len(re.findall(r"\w+", need or "")) < 3:
+        raise GateError("A precondition diagnosis says what is needed to continue (--need): the data, the document or the decision.")
+    events.append(session.dir, "diagnosis", case=case, attempt=attempt, category=category, detail=detail.strip(),
+                  **({"tried": tried.strip()} if tried else {}), **({"need": need.strip()} if need else {}))
+    owner = (claims.table(session).get(case) or {}).get("agent", "worker")
+    claims.add_note(session, owner, f"DIAGNOSIS [{category}] {detail.strip()}" + (f" | tried: {tried.strip()}" if tried else "") + (f" | needs: {need.strip()}" if need else ""), case=case)
+    return {"case": case, "category": category}, f"Diagnosis recorded and sent to the coordinator. Fix what you can; close as BLOCKED/PENDING only if it cannot be done: oqa live end {case} --status BLOCKED --category {category} --reason \"...\""
+
+
+_NUMBER = re.compile(r"\d[\d.,/:\-]*\d|\d{2,}")
+_QUOTED = re.compile(r"[\"'“‘「『]([^\"'”’」』]{2,60})[\"'”’」』]")
+_DOC_CODE = re.compile(r"\bERR[_-]?\d+\b", re.I)
+
+
+def _norm(text):
+    return re.sub(r"[\s\u00a0\u202f]+", " ", str(text)).strip().casefold()
+
+
+def specific_values(expected):
+    """What an expected result names concretely and independent of the UI language: numbers, counts, dates and quoted values that contain a digit. Message codes
+    that exist only in the design document (ERR_xxx) are not UI text and are never required to appear."""
+    text = _DOC_CODE.sub(" ", expected or "")
+    values = [m.group(0) for m in _NUMBER.finditer(text)]
+    values += [q for q in _QUOTED.findall(text) if any(c.isdigit() for c in q)]
+    return [v for v in dict.fromkeys(values) if len(v.strip()) >= 2 or v.isdigit() and len(v) >= 2]
+
+
+def check_specific(spec, shows, actual, code=""):
+    """A PASS must show the value the expectation names, not only that some generic label is on the page. When the expected result names a number, count, date or
+    quoted value, one of them has to be in the replay text, the observation or the saved assertion code."""
+    wanted = specific_values(spec.get("expected"))
+    if not wanted:
+        return
+    haystack = _norm(" ".join([shows or "", actual or "", code or ""]))
+    if not any(_norm(value) in haystack for value in wanted):
+        raise GateError(f"The expected result names specific values ({', '.join(wanted[:4])}) but neither `shows`, the observation nor the assertion code contains one. "
+                        "A label that is always on the page does not prove the outcome: assert the actual value (a count, a date, a field's content) and put it in --actual.")
+
+
+def end(session, case, status, reason, script=None, category=None, control=None):
     session.require("EXECUTE")
     attempt = _attempt(session, case)
     steps = _strategy_case(session, case)["steps"]
@@ -745,6 +952,24 @@ def end(session, case, status, reason, script=None):
         raise GateError("FAIL needs a step recorded as FAIL with its picture (oqa live step ... --status FAIL).")
     if status != "PASS" and not (reason or "").strip():
         raise GateError("Say why (--reason).")
+    category = "" if status == "PASS" else category or ""
+    if status == "FAIL":
+        if category not in ("", "application"):
+            raise GateError("FAIL means the application behaves differently from the expected result. A problem in our script or a missing precondition is BLOCKED/PENDING with a diagnosis.")
+        if len(re.findall(r"\w+", control or "")) < 4:
+            raise GateError("Before a functional FAIL, verify you operated the right control: --control says which element was used (its label or locator) and how you confirmed it is the one "
+                            "the testcase means (snapshot, role, position), for example that you clicked the link inside the cell rather than the empty cell area.")
+        category = "application"
+    elif status in ("BLOCKED", "PENDING"):
+        diagnoses = [e for e in events.read(session.dir) if e["kind"] == "diagnosis" and e.get("case") == case and e.get("attempt") == attempt]
+        if not diagnoses:
+            raise GateError(f"{status} needs a concrete diagnosis first, so the coordinator can help instead of the case being closed because a selector was not found or time ran out: "
+                            f"oqa live diagnose {case} --category automation|precondition --detail \"...\" --tried \"...\" (precondition: --need \"...\").")
+        category = category or diagnoses[-1]["category"]
+        if category not in ("automation", "precondition"):
+            raise GateError(f"{status} is an automation issue or a missing test precondition: --category automation|precondition.")
+        if diagnoses[-1]["category"] != category:
+            raise GateError(f"The diagnosis says {diagnoses[-1]['category']}; the conclusion says {category}. Diagnose again or use the same category.")
     complete = bool(steps) and all(done.get(step["n"], {}).get("verified_script") for step in steps)
     if status == "PASS" or (status == "FAIL" and (script or complete)):
         source = Path(script).expanduser() if script else None
@@ -767,8 +992,9 @@ def end(session, case, status, reason, script=None):
         if s["n"] not in done:
             events.append(session.dir, "step", case=case, attempt=attempt, n=s["n"], status="SKIPPED", caption=s["action"], expected=s["expected"], actual="not run", checks=0, images=[])
     failed = next((n for n, e in sorted(done.items()) if e["status"] == "FAIL"), None)
-    events.append(session.dir, "attempt_finished", case=case, attempt=attempt, status=status, reason=reason or "", script_sha="live", **({"failed_step": failed} if failed else {}))
-    session.finish_case(case, status, reason or "")
+    events.append(session.dir, "attempt_finished", case=case, attempt=attempt, status=status, reason=reason or "", script_sha="live", **({"failed_step": failed} if failed else {}),
+                  **({"category": category} if category else {}), **({"control": control.strip()} if control else {}))
+    session.finish_case(case, status, reason or "", category)
     try:
         _run(browser_case(session, case), "close")
     except GateError:

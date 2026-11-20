@@ -173,25 +173,33 @@ class Dashboard(LocalApp):
                 built = report.build(session, workspace.load(session.ws))
                 return 200, {"ok": True, "main": built["download"]}
             if method == "POST" and path == "/api/replay":
-                action_delay = live.replay_delay(body.get("action_delay_ms", live.DEFAULT_ACTION_DELAY_MS), "action_delay_ms")
-                step_delay = live.replay_delay(body.get("step_delay_ms", live.DEFAULT_STEP_DELAY_MS), "step_delay_ms")
+                fast = body.get("fast") is True
+                action_delay, step_delay = live.replay_delays(body.get("action_delay_ms", live.DEFAULT_ACTION_DELAY_MS),
+                                                              body.get("step_delay_ms", live.DEFAULT_STEP_DELAY_MS), fast)
                 session = self._session(body)
                 case = str(body.get("case", ""))
                 state = session.state()
-                if state["phase"] not in ("REPORT", "DONE") and case not in state["results"]:
+                if state["phase"] not in ("REPORT", "DONE") and case not in state["results"] and case != "all":
                     return 200, {"error": "Case này chưa test xong, chưa chạy lại được."}
-                script = live.script_file(session, case)
-                if not script.is_file():
-                    return 200, {"error": "Case này chưa có script đã lưu (chỉ case PASS mới lưu script)."}
-                log = session.dir / "logs" / f"replay-{script.stem}.log"
+                if case == "all":
+                    if state["phase"] not in ("REPORT", "DONE"):
+                        return 200, {"error": "Phiên này chưa test xong, chưa chạy lại hàng loạt được."}
+                    name = "all"
+                else:
+                    script = live.script_file(session, case)
+                    if not script.is_file():
+                        return 200, {"error": "Case này chưa có script đã lưu (chỉ case PASS mới lưu script)."}
+                    name = script.stem
+                log = session.dir / "logs" / f"replay-{name}.log"
                 log.parent.mkdir(exist_ok=True)
                 entry = Path(__file__).resolve().parent.parent / "oqa.py"
                 with log.open("ab") as out:
                     subprocess.Popen([sys.executable, str(entry), "live", "replay", case, "--ws", session.ws, "--session", session.id,
-                                      "--action-delay-ms", str(action_delay), "--step-delay-ms", str(step_delay)], stdout=out, stderr=out,
+                                      "--action-delay-ms", str(action_delay), "--step-delay-ms", str(step_delay), *(["--fast"] if fast else [])],
+                                     stdout=out, stderr=out,
                                      stdin=subprocess.DEVNULL, start_new_session=True,
                                      creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
-                return 200, {"ok": True, "message": "Đang mở browser để chạy lại script của case này."}
+                return 200, {"ok": True, "message": "Đang mở browser để chạy lại " + ("tất cả script của phiên này." if case == "all" else "script của case này.")}
             if method == "POST" and path == "/api/delete_session":
                 session = self._session(body)
                 state = session.state()

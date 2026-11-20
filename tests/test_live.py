@@ -8,7 +8,7 @@ import pytest
 pytest.importorskip("playwright")
 
 from odoofake import approve, fake, live  # noqa: E402,F401  (fixtures and helpers)
-from oqa import events, live as livemod  # noqa: E402
+from oqa import events, live as livemod, replays  # noqa: E402
 from oqa.state import GateError  # noqa: E402
 
 FAKE = '''#!{python}
@@ -135,7 +135,13 @@ def test_a_failed_step_closes_the_case_and_marks_the_rest_as_not_run(live, pw):
         livemod.step(session, "T-1", 3, "PASS", "the form showed the customer", target=".o_form_view")
     with pytest.raises(GateError, match="Say why"):
         livemod.end(session, "T-1", "FAIL", "")
-    livemod.end(session, "T-1", "FAIL", "Không có nút New trên màn hình đơn hàng")
+    with pytest.raises(GateError, match="right control"):
+        livemod.end(session, "T-1", "FAIL", "Không có nút New trên màn hình đơn hàng")          # a functional FAIL says which control was operated and how it was verified
+    with pytest.raises(GateError, match="script or a missing precondition"):
+        livemod.end(session, "T-1", "FAIL", "selector broke", category="automation", control="the New button by role")
+    livemod.end(session, "T-1", "FAIL", "Không có nút New trên màn hình đơn hàng",
+                control="getByRole button New, checked in the snapshot of the order list toolbar")
+    assert session.state()["results"]["T-1"]["category"] == "application"
     statuses = [e["status"] for e in events.read(session.dir) if e["kind"] == "step"]
     assert statuses == ["PASS", "FAIL", "SKIPPED", "SKIPPED"]
     assert session.state()["results"]["T-1"]["status"] == "FAIL"
@@ -200,4 +206,75 @@ def test_dashboard_style_replay_runs_saved_actions_in_headed_browser(live, tmp_p
     assert "ZZ_AUTOTEST_r0123456789_order" in str(calls[1:])
     assert len(calls) == 9
     assert session.state() == before and events.read(session.dir) == history
+    assert replays.status(session, "T-1") == "PASS"
     assert set(session.dir.parent.iterdir()) == sessions
+
+
+def test_blocked_and_pending_need_a_concrete_diagnosis_with_the_right_category(live, pw):
+    session, ws, store = live
+    approve(session, ws, store)
+    livemod.start(session, "T-1")
+    with pytest.raises(GateError, match="concrete diagnosis"):
+        livemod.end(session, "T-1", "BLOCKED", "selector not found")
+    with pytest.raises(GateError, match="category is automation"):
+        livemod.diagnose(session, "T-1", "application", "the button is missing from the toolbar of the order list")
+    with pytest.raises(GateError, match="already tried"):
+        livemod.diagnose(session, "T-1", "automation", "the Save button locator matches two buttons in the dialog", tried="")
+    livemod.diagnose(session, "T-1", "automation", "the Save button locator matches two buttons in the dialog",
+                     tried="role button Save, then .o_form_button_save, then the dialog footer")
+    from oqa import claims
+    assert "DIAGNOSIS [automation]" in claims.notes(session)[-1]["text"]
+    with pytest.raises(GateError, match="diagnosis says automation"):
+        livemod.end(session, "T-1", "PENDING", "needs data", category="precondition")
+    livemod.end(session, "T-1", "BLOCKED", "locator is ambiguous in the dialog")
+    assert session.state()["results"]["T-1"] == {"status": "BLOCKED", "attempts": 1, "reason": "locator is ambiguous in the dialog", "category": "automation"}
+
+
+def test_a_reopened_conclusion_stays_in_the_history(live, pw):
+    session, ws, store = live
+    approve(session, ws, store)
+    livemod.start(session, "T-1")
+    livemod.diagnose(session, "T-1", "precondition", "the case needs an archived ledger that does not exist yet", need="an archived ledger record")
+    livemod.end(session, "T-1", "PENDING", "waiting for data")
+    session.hint("T-1", "create the archived ledger first")
+    history = session.state()["history"]["T-1"]
+    assert history[0]["status"] == "PENDING" and history[0]["category"] == "precondition" and "archived ledger" in history[0]["superseded_by"]
+    from oqa import view
+    assert view.case_records(session)[0]["history"] == history
+
+
+def test_handover_keeps_the_open_attempt_its_steps_and_the_recovery_budget(live, pw):
+    from oqa import claims
+    session, ws, store = live
+    approve(session, ws, store)
+    with session.update() as state:
+        state["channel"] = "path"
+    assert claims.claim(session, "worker-1", "T-1")[0] == "T-1"
+    livemod.start(session, "T-1")
+    livemod.step(session, "T-1", 1, "PASS", "the order list showed three rows", target=".o_list_view")
+    attempts = dict(session.state()["attempts"])
+    with pytest.raises(GateError, match="Say why"):
+        livemod.handover(session, "T-1", "stuck")
+    result, text = livemod.handover(session, "T-1", "worker-1 stalled after step 1, continue with step 2")
+    assert result["steps_recorded"] == [1] and "kept" in text
+    assert claims.claim(session, "worker-2", "T-1")[0] == "T-1"                       # a handed-over case is free for the next worker
+    info, text = livemod.start(session, "T-1")
+    assert info["resumed"] and info["next_step"] == 2 and "Do not redo" in text
+    assert session.state()["attempts"] == attempts                                     # no attempt, no recovery budget spent
+    livemod.step(session, "T-1", 2, "PASS", "the order form showed the customer", target=".o_list_view")
+    assert [e["n"] for e in events.read(session.dir) if e["kind"] == "step"] == [1, 2]
+
+
+def test_a_pass_must_show_the_specific_value_the_expectation_names():
+    spec = {"expected": "Pager shows 1-1 / 1 and ERR_092 is raised; date 2026/01/01"}
+    assert livemod.specific_values(spec["expected"]) == ["1-1", "2026/01/01"]
+    with pytest.raises(GateError, match="specific values"):
+        livemod.check_specific(spec, "Ledger", "the list is visible")
+    livemod.check_specific(spec, "1-1 / 1", "")
+    livemod.check_specific(spec, "Ledger", "the date shows 2026/01/01")
+    livemod.check_specific({"expected": "ERR_092 message is shown"}, "warning", "")        # a code that exists only in the design document is not required on screen
+
+
+def test_literal_check_compares_text_after_normalising_whitespace():
+    code = livemod.literal_check("1-1 / 1", 3000)
+    assert "replace(/[\\s\\u00a0\\u202f]+/g" in code and "includes(norm(text))" in code

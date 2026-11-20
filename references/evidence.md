@@ -30,3 +30,11 @@ Do not satisfy this by taking two copies of the final screen or adding a fixed n
 4. Inspect raw and annotated images before closing the case: verify field values are readable, frames touch the correct controls, no dialog hides the assertion, and adjacent images with the same screen show distinct relevant regions/states. Recapture incorrect or missing evidence while that state is still available. Never reconstruct an earlier screen and present it as the original action.
 
 The dashboard gallery and Excel evidence sheet retain all pictures. Supplemental pictures attached after a recorded step are appended and do not replace the original evidence. Older sessions without an `evidence` field remain readable; new analyses must fill the field and split actions before approval. For a step with an evidence plan, PASS requires a visible post-action target; the tool refuses to substitute a before picture for its result. Extra captures within an old compound step are live evidence; automatic replay verification follows the saved step boundaries. Plan separate steps when those intermediate states must also be reproduced on replay.
+
+## What a PASS must prove
+
+- Wait for the state, then judge it: after Save, Discard or any onchange the form is still re-rendering. Wait for an observable condition (the Save button hidden, the value shown) before the assertion. Replay does this too, with a bounded settle before each check.
+- Assert the specific value the expectation names: the count `1-1 / 1`, the date, the field content. A label that is always on the page (`Archived` tag on any record, a column title) does not prove the outcome. When the expected result names numbers, dates or quoted values, `oqa live step` refuses a PASS whose `--shows`, `--actual` and assertion code contain none of them.
+- The picture shows the expectation and the right target: frame the value or message that proves it, after the action, not the control that was clicked.
+- Do not require a literal message code. ERR_xxx exists in the design document; the UI shows the message text in its language. Match the text and meaning.
+- Corrected conclusions and replaced pictures stay on record (case history, supplemental evidence); never overwrite old evidence to make a case look clean.

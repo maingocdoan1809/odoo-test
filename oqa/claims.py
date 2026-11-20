@@ -44,8 +44,8 @@ def _fresh(entry, log, case):
 
 def _unclaimed_activity(log, case):
     last = next((event["kind"] for event in reversed(log) if event.get("case") == case
-                 and event["kind"] in ("case_started", "step", "attempt_finished", "explore")), None)
-    return last not in (None, "attempt_finished") and _now() - _last_activity(log, case) < LEASE_S
+                 and event["kind"] in ("case_started", "step", "attempt_finished", "explore", "handover")), None)
+    return last not in (None, "attempt_finished", "handover") and _now() - _last_activity(log, case) < LEASE_S
 
 
 def table(session):
@@ -114,6 +114,20 @@ def release(session, case, missing_ok=False):
                 return
             raise GateError(f"Case {case} is not claimed.")
         del data[case]
+        write_json(_file(session), data)
+
+
+def assign(session, case, agent):
+    """Give a case straight to a named agent (a handover): the lease starts now."""
+    if not agent:
+        raise GateError("Name the worker that takes the case.")
+    with locked(_file(session)):
+        data = read_json(_file(session), {}) or {}
+        state, log = session.state(), events.read(session.dir)
+        active = {c: e for c, e in data.items() if c not in state["results"] and _fresh(e, log, c) and c != case}
+        if len(active) >= MAX_WORKERS:
+            raise GateError(f"All {MAX_WORKERS} case worker slots are occupied.")
+        data[case] = {"agent": agent, "at": _now()}
         write_json(_file(session), data)
 
 

@@ -13,8 +13,18 @@ function delayOption(name, fallback) {
   }
   return value;
 }
-const actionDelay = delayOption("OQA_ACTION_DELAY_MS", 700);
-const stepDelay = delayOption("OQA_STEP_DELAY_MS", 1500);
+const fast = process.env.OQA_FAST === "1";
+const actionDelay = fast ? 0 : delayOption("OQA_ACTION_DELAY_MS", 700);
+const stepDelay = fast ? 0 : delayOption("OQA_STEP_DELAY_MS", 1500);
+// Wait for the page to stop changing before a step is judged (Save, Discard and onchange re-render the form). An application wait, not a viewing pause.
+const settle = page => page.waitForFunction(() => new Promise(resolve => {
+  const started = performance.now(); let last = started;
+  const watch = new MutationObserver(() => { last = performance.now(); });
+  watch.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+  const tick = () => { const now = performance.now(); const busy = document.querySelector(".o_loading_indicator, .o_blockUI, .o_form_saving, .o_loading");
+    if ((now - last >= 300 && !busy) || now - started >= 3000) { watch.disconnect(); resolve(true); } else setTimeout(tick, 100); };
+  tick();
+}), null, { timeout: 8000 });
 const pause = ms => ms ? new Promise(resolve => setTimeout(resolve, ms)) : Promise.resolve();
 const manifest = JSON.parse(await readFile(new URL("./cases.json", import.meta.url), "utf8"));
 const caseId = process.argv[2];
@@ -80,7 +90,8 @@ try {
       } else {
         await execute(code);
       }
-      await page.waitForFunction(text => document.body.innerText.includes(text), fresh(step.shows));
+      await settle(page);
+      await page.waitForFunction(text => { const norm = value => value.replace(/[\s\u00a0\u202f]+/g, ' ').trim(); return norm(document.body.innerText).includes(norm(text)); }, fresh(step.shows));
       await page.screenshot({ path: `${runDir}/step-${step.n}.png` });
       await pause(stepDelay);
     } catch (error) {

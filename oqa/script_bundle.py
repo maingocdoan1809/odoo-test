@@ -43,6 +43,7 @@ The browser is visible by default; set OQA_HEADLESS=1 for unattended runs.
 OQA_ACTION_DELAY_MS sets the pause after each action (default 700).
 OQA_STEP_DELAY_MS sets the pause after each checked step (default 1500).
 Both accept whole milliseconds from 0 to 60000; 0 disables the pause.
+OQA_FAST=1 is fast mode: both pauses are 0 whatever the two values above say.
 These viewing pauses do not change application assertion timeouts.
 The archive may contain test fixture values. Keep it within your test team.
 """)

@@ -20,7 +20,10 @@ Kinds and their required fields (every event also has `ts` and `kind`):
   built            case, steps                                                 the script was built from the verified steps: the case waits to be run
   probe            url, count [case, filter]                                  the assistant looked at the real page (oqa probe)
   explore          case, step, ok [code, url, error]                           the assistant tried code for a step on the real page (oqa try)
-  case_finished    case, status, attempts [reason]                           the case's final result
+  case_finished    case, status, attempts [reason, category]                  the case's final result; category = application | automation | precondition
+  diagnosis        case, attempt, category, detail [tried, need]              a worker stuck on a case says what it found (BLOCKED / PENDING need one first)
+  handover         case, attempt, reason [from, to]                           a running case is passed to another worker: the open attempt and its steps are kept
+  data_created     case, attempt, model, field, key [record_id, via]          a record this run made, so it can be cleaned up afterwards
   session_finished counts
 """
 import json
@@ -56,10 +59,14 @@ KINDS = {
     "probe": ("url", "count"),
     "explore": ("case", "step", "ok"),
     "case_finished": ("case", "status", "attempts"),
+    "diagnosis": ("case", "attempt", "category", "detail"),
+    "handover": ("case", "attempt", "reason"),
+    "data_created": ("case", "attempt", "model", "field", "key"),
     "session_finished": ("counts",),
 }
 USER_KINDS = ("confirmed", "answered", "ref_added", "hint", "stopped", "resumed")        # what only the user does: the assistant waits for these
 STEP_STATUSES = ("PASS", "FAIL", "SKIPPED")
+CATEGORIES = ("application", "automation", "precondition")    # what a non-PASS conclusion means: the application is wrong, our automation is, or the test lacks what it needs
 CASE_STATUSES = ("PASS", "FAIL", "PENDING", "BLOCKED", "NOT EXECUTED")
 
 

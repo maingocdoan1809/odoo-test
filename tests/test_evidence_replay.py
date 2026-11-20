@@ -80,7 +80,7 @@ def test_replay_pauses_after_each_action_and_checked_step(session, ws, monkeypat
     assert result["session"] == session.id and session.state() == before
     assert [kind for kind, value in calls[:6]] == ["run", "pause", "run", "pause", "run", "pause"]
     assert [value for kind, value in calls if kind == "pause"] == [1, 1, 2] * len(item["steps"])
-    assert "includes" in calls[4][1][0]
+    assert any("includes" in line for line in calls[4][1])
     calls.clear()
     live.replay(session, "ORD-001", action_delay_ms=0, step_delay_ms=0)
     assert all(kind == "run" for kind, value in calls)
@@ -145,3 +145,74 @@ def test_run_does_not_reuse_a_session_that_started_execution(session, ws, workbo
     args = cli.build_parser().parse_args(["run", "start", "--file", str(workbook), "--ws", ws["name"], "--no-open"])
     result, _ = cli.cmd_run(args)
     assert result["session"] != session.id and session.state()["phase"] == "EXECUTE"
+
+
+def _saved_script(session, case="ORD-001"):
+    item = read_json(session.dir / "analysis.json")["cases"][0]
+    script = "\n".join(f"// step {step['n']}\n// frame: #result\n// shows: Saved\n"
+                       "await page.goto('http://localhost/example');\nawait page.locator('#save').click();"
+                       for step in item["steps"])
+    path = live.script_file(session, case)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(script, encoding="utf-8")
+    return item
+
+
+def test_replay_result_is_kept_apart_from_the_live_result(session, ws, monkeypatch):
+    from oqa import replays
+    approved(session, ws)
+    _saved_script(session)
+    with session.update() as state:
+        state["results"]["ORD-001"] = {"status": "PASS", "attempts": 1}
+    live_before = session.state()["results"]
+    assert replays.status(session, "ORD-001") == "NOT RUN"
+    monkeypatch.setattr(live, "open_browser", lambda *a, **kw: "Admin")
+    monkeypatch.setattr(live, "run_actions", lambda browser, lines: "")
+    live.replay(session, "ORD-001", action_delay_ms=0, step_delay_ms=0)
+    assert replays.status(session, "ORD-001") == "PASS"
+    saved = replays.latest(session, "ORD-001")
+    assert saved["timing"]["calls"] >= 2 and saved["fast"] is False
+    def refuse(browser, lines):
+        if any("includes" in line for line in lines):
+            raise GateError("timeout waiting for Saved")
+    monkeypatch.setattr(live, "run_actions", refuse)
+    with pytest.raises(GateError):
+        live.replay(session, "ORD-001", action_delay_ms=0, step_delay_ms=0)
+    assert replays.status(session, "ORD-001") == "FAIL"
+    assert replays.latest(session, "ORD-001")["failed_step"] == 1
+    assert len(replays.load(session)["ORD-001"]["runs"]) == 2
+    assert session.state()["results"] == live_before                    # a failed replay never rewrites the live PASS
+    record = view.case_records(session)[0]
+    assert (record["live_status"], record["replay_status"], record["status"]) == ("PASS", "FAIL", "PASS")
+    assert view.replay_counts([record]) == {"FAIL": 1}
+
+
+def test_fast_mode_sets_both_viewing_pauses_to_zero(session, ws, monkeypatch):
+    approved(session, ws)
+    _saved_script(session)
+    assert live.replay_delays(1000, 2000, fast=True) == (0, 0)
+    assert live.replay_delays(1000, 2000) == (1000, 2000)
+    calls = []
+    monkeypatch.setattr(live, "open_browser", lambda *a, **kw: "Admin")
+    monkeypatch.setattr(live, "run_actions", lambda browser, lines: "")
+    monkeypatch.setattr(live.time, "sleep", lambda seconds: calls.append(seconds))
+    result = live.replay(session, "ORD-001", action_delay_ms=1000, step_delay_ms=2000, fast=True)
+    assert calls == [] and result["action_delay_ms"] == 0 and result["step_delay_ms"] == 0
+    from oqa import replays
+    assert replays.latest(session, "ORD-001")["fast"] is True
+
+
+def test_report_and_view_show_live_and_replay_separately(session, ws, monkeypatch):
+    from oqa import replays
+    approved(session, ws)
+    _saved_script(session)
+    with session.update() as state:
+        state["results"]["ORD-001"] = {"status": "PASS", "attempts": 1}
+    replays.record(session, "ORD-001", "FAIL", reason="step 2 timed out", failed_step=2, timing={"total_s": 4.0, "pause_s": 0.0, "call_s": 3.5, "calls": 5, "steps": []})
+    book = openpyxl.load_workbook(report.build(session, ws)["evidence_only"])
+    cells = [str(cell.value) for sheet in book for row in sheet.iter_rows() for cell in row if cell.value is not None]
+    assert any("FAIL" == text for text in cells) and any(text.startswith("Replay") or text == "Replay" for text in cells)
+    summary = book[book.sheetnames[0]]
+    headers = [cell.value for row in summary.iter_rows() for cell in row if cell.value in ("Replay", "Live result", "Replay result")]
+    assert "Replay" in headers
+    assert any("step 2 timed out" in text for text in cells)

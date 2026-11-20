@@ -30,6 +30,9 @@ LABELS = {
         "r_after": "Sau lần {n}", "r_cause": "nguyên nhân", "r_evidence": "căn cứ", "r_change": "đã sửa", "r_reread": "hiểu lại case", "verdict": "Kết luận", "step": "Bước", "action": "Thao tác",
         "expected": "Kết quả mong đợi", "actual": "Thực tế", "nchecks": "Kiểm tra", "evidence": "Ảnh evidence", "attempt": "Lần", "failed": "Bước lỗi", "reason": "Lý do",
         "notrun": "Chưa chạy", "none": "(không có)", "case_sheet": "Mở sheet",
+        "live": "Kết quả Live", "replay": "Replay", "replay_head": "Kết quả Replay", "replay_time": "Thời gian Replay", "replay_why": "Lý do Replay lỗi", "kind": "Loại kết luận", "history": "Lịch sử kết luận",
+        "replay_note": "Replay chỉ cho biết script đã lưu còn tái hiện được lần chạy Live hay không; không thay đổi kết quả Live.", "replay_totals": "Replay", "not_run": "NOT RUN",
+        "kinds": {"application": "Lỗi ứng dụng", "automation": "Lỗi automation", "precondition": "Thiếu điều kiện kiểm thử"},
         "ok": "Đạt: {n} bước đều đã chạy, có đối chiếu với kết quả mong đợi và có ảnh evidence.", "fail": "Không đạt{at}: {why}", "pending": "Chờ bạn quyết định: {why}",
         "blocked": "Không thực hiện được: {why}", "notrun_text": "Chưa chạy trong lần test này{why}", "retry": " Đã phải chạy {n} lần (các lần trước lỗi, xem mục 5).",
     },
@@ -43,6 +46,9 @@ LABELS = {
         "r_after": "After run {n}", "r_cause": "cause", "r_evidence": "evidence", "r_change": "changed", "r_reread": "now reads the case as", "verdict": "Conclusion", "step": "Step", "action": "Action",
         "expected": "Expected result", "actual": "Actual", "nchecks": "Checks", "evidence": "Evidence picture", "attempt": "Run", "failed": "Failed step", "reason": "Reason",
         "notrun": "Not run", "none": "(none)", "case_sheet": "Open sheet",
+        "live": "Live result", "replay": "Replay", "replay_head": "Replay result", "replay_time": "Replay time", "replay_why": "Why the replay failed", "kind": "Kind of conclusion", "history": "Conclusion history",
+        "replay_note": "A replay only shows whether the saved script still reproduces the live run; it never changes the live result.", "replay_totals": "Replay", "not_run": "NOT RUN",
+        "kinds": {"application": "Application defect", "automation": "Automation issue", "precondition": "Missing test precondition"},
         "ok": "Passed: all {n} steps ran, each was checked against its expected result and has an evidence picture.", "fail": "Failed{at}: {why}", "pending": "Waiting for your decision: {why}",
         "blocked": "Could not be done: {why}", "notrun_text": "Not run in this test{why}", "retry": " It took {n} runs (the earlier ones failed, see section 5).",
     },
@@ -52,6 +58,19 @@ NOT_RUN_COLOR = "EDEDED"
 IMAGE_WIDTH = 440
 WIDTHS = {"A": 22, "B": 40, "C": 40, "D": 40, "E": 10, "F": 11, "G": 64}
 TEXT_CHARS = 200            # roughly how many characters fit on one line of a merged B:G cell
+
+
+def replay_label(record):
+    return record["replay_status"] if record["live_status"] in ("PASS", "FAIL") else "-"
+
+
+def replay_text(record, t):
+    saved = record.get("replay")
+    if not saved:
+        return t["not_run"]
+    timing = saved.get("timing") or {}
+    spent = f" · {timing['total_s']}s ({timing['pause_s']}s pause, {timing['calls']} calls)" if timing else ""
+    return f"{saved['status']} · {saved['at']}{' · fast' if saved.get('fast') else ''}{spent}"
 
 
 def shown(status, t):
@@ -149,7 +168,16 @@ def write_case(sheet, session: Session, record, t):
     if record["questions"]:
         line("asked", "\n".join(f"• {q}" for q in record["questions"]))
     section("s3")
-    line("result", label, color=label)
+    line("live", label, color=label)
+    if record.get("category"):
+        line("kind", t["kinds"].get(record["category"], record["category"]))
+    line("replay_head", replay_label(record), color=replay_label(record))
+    line("replay_time", replay_text(record, t) + "\n" + t["replay_note"])
+    if (record.get("replay") or {}).get("status") == "FAIL":
+        line("replay_why", record["replay"].get("reason", ""))
+    if record.get("history"):
+        line("history", "\n".join(f"• {h.get('at', '')} {h['status']}" + (f" ({t['kinds'].get(h['category'], h['category'])})" if h.get("category") else "")
+                                  + (f": {h['reason']}" if h.get("reason") else "") for h in record["history"]))
     line("runs", len(record["attempts"]))
     if record["hints"]:
         line("hints", "\n".join(f"• {h['text']}" for h in record["hints"]))
@@ -208,22 +236,23 @@ def write_summary(sheet, session: Session, ws, records, t, sheet_names):
     for record in records:
         label = shown(record["status"], t)
         counts[label] = counts.get(label, 0) + 1
-    widths = {"A": 10, "B": 14, "C": 34, "D": 32, "E": 44, "F": 44, "G": 12, "H": 12, "I": 8, "J": 9, "K": 54}
+    widths = {"A": 10, "B": 14, "C": 34, "D": 32, "E": 44, "F": 44, "G": 12, "H": 12, "I": 14, "J": 8, "K": 9, "L": 54}
     for column, width in widths.items():
         sheet.column_dimensions[column].width = width
-    sheet.merge_cells("A1:K1")
+    sheet.merge_cells("A1:L1")
     sheet["A1"] = f"{t['title']}: {Path(state['file']).name}"
     sheet["A1"].font = Font(bold=True, size=15)
     version = (state.get("connect") or {}).get("version")
     facts = [("file", state["file"]), ("system", f"{ws['url']}" + (f" · db {ws['db']}" if ws.get("db") else "") + (f" · Odoo {version}" if version else "")),
              ("session", f"{ws['name']} / {session.id}"), ("started", state["created"]), ("finished", log[-1]["ts"] if log else ""),
-             ("totals", " · ".join(f"{k} {v}" for k, v in sorted(counts.items())) + f"  ({len(records)})")]
+             ("totals", "Live: " + " · ".join(f"{k} {v}" for k, v in sorted(counts.items())) + f"  ({len(records)})"),
+             ("replay_totals", " · ".join(f"{k} {v}" for k, v in sorted(view.replay_counts(records).items())) or t["not_run"])]
     for offset, (key, value) in enumerate(facts, 2):
         sheet.cell(offset, 1, t[key]).font = Font(bold=True)
-        sheet.merge_cells(start_row=offset, start_column=3, end_row=offset, end_column=11)
+        sheet.merge_cells(start_row=offset, start_column=3, end_row=offset, end_column=12)
         sheet.cell(offset, 3, value)
     top = len(facts) + 3
-    headers = ("no", "category", "name", "pre", "src_steps", "src_exp", "profile", "result", "runs", "checks", "remark")
+    headers = ("no", "category", "name", "pre", "src_steps", "src_exp", "profile", "live", "replay", "runs", "checks", "remark")
     for column, key in enumerate(headers, 1):
         cell = sheet.cell(top, column, t[key])
         cell.font = Font(bold=True, color="FFFFFF")
@@ -236,15 +265,16 @@ def write_summary(sheet, session: Session, ws, records, t, sheet_names):
         label = shown(record["status"], t)
         total_checks = sum(s.get("checks") or 0 for s in last["steps"]) if last else 0
         values = (record["id"], " / ".join(x for x in (record["source"]["category"], record["source"]["type"]) if x), record["title"], record["source"]["pre"],
-                  "\n".join(f"{i}. {s}" for i, s in enumerate(record["source"]["steps"], 1)), record["source"]["expected"], record["profile"], label,
+                  "\n".join(f"{i}. {s}" for i, s in enumerate(record["source"]["steps"], 1)), record["source"]["expected"], record["profile"], label, replay_label(record),
                   len(record["attempts"]) or "", total_checks or "", conclusion(record, last, t))
         for column, value in enumerate(values, 1):
             sheet.cell(row, column, value).alignment = wrap
         paint(sheet.cell(row, 8), label)
+        paint(sheet.cell(row, 9), replay_label(record))
         link = sheet.cell(row, 1)
         link.hyperlink = f"#'{sheet_names[record['id']]}'!A1"
         link.font = Font(color="0563C1", underline="single")
-        sheet.row_dimensions[row].height = max(height_for(values[4], 46), height_for(values[10], 56), height_for(values[5], 46))
+        sheet.row_dimensions[row].height = max(height_for(values[4], 46), height_for(values[11], 56), height_for(values[5], 46))
     sheet.freeze_panes = sheet.cell(top + 1, 4)
     sheet.sheet_view.zoomScale = 90
 
@@ -290,8 +320,8 @@ def build(session: Session, ws):
         shutil.copy2(main, folder / ("Result_" + main.name))
     except Exception as error:                                       # the evidence workbook above is still there
         back = {"path": "", "in_place": False, "backup": "", "note": f"could not write into the testcase file: {error}"}
-    lines = [f"# {Path(session.state()['file']).name}", "", ", ".join(f"{k} {v}" for k, v in sorted(totals.items())), ""]
-    lines += [f"- {r['id']} [{r['status']}] {r['title']}" + (f": {r['reason']}" if r["reason"] else "") for r in records]
+    lines = [f"# {Path(session.state()['file']).name}", "", "Live: " + ", ".join(f"{k} {v}" for k, v in sorted(totals.items())), "Replay: " + (", ".join(f"{k} {v}" for k, v in sorted(view.replay_counts(records).items())) or "NOT RUN"), ""]
+    lines += [f"- {r['id']} [Live {r['status']} / Replay {replay_label(r)}] {r['title']}" + (f": {r['reason']}" if r["reason"] else "") for r in records]
     (folder / "SUMMARY.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return {"folder": str(folder), "main": str(main), "evidence_only": str(evidence), "download": ("Result_" + Path(back["path"]).name) if back.get("path") else Path(evidence).name, "testcase_file": back, "files": [str(main), str(evidence), str(folder / "SUMMARY.md")], "counts": totals}
 

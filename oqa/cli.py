@@ -350,6 +350,34 @@ def cmd_fixture(args):
     from . import fixtures
 
     session = Session.open(args.ws, args.session)
+    if args.action == "key":
+        if not args.case:
+            raise GateError("Key needs --case.")
+        key = fixtures.run_key(session, args.case, args.label or "")
+        return {"key": key}, key
+    if args.action == "cleanup":
+        if not args.case:
+            raise GateError("Cleanup needs --case: its profile and browser are used to find the records.")
+        rows = fixtures.cleanup(session, args.case, run=args.run, apply=args.apply)
+        lines = [f"{row['model']} {row['key']}: " + (row.get("error") or (f"{row['found']} found" + (", removed" if row["removed"] else ""))) for row in rows]
+        return {"records": rows, "applied": bool(args.apply)}, "\n".join(lines) + ("" if args.apply else "\nDry run: add --apply to remove these records.") if rows else "This session created no tracked data."
+    if args.action in ("ui", "ref"):
+        if not args.case:
+            raise GateError(f"{args.action} needs --case.")
+        if args.action == "ref":
+            model = fixtures.preset_model(session, args.screen)
+            name = fixtures.check_reference(session, args.case, model, args.value or "")
+            return {"model": model, "name": name}, f"{model}: {name} exists once and is used read-only."
+        if not args.key or not (args.values or args.values_json):
+            raise GateError("ui needs --key and --values or --values-json.")
+        try:
+            values = json.loads(args.values_json) if args.values_json else read_json(args.values)
+        except (ValueError, OSError) as error:
+            raise GateError(f"Read fixture values: {error}") from error
+        data = fixtures.ui_create(session, args.case, args.screen, args.key, values)
+        if args.out:
+            Path(args.out).write_text(data["code"] + "\n", encoding="utf-8")
+        return data, f"Created {data['model']} {data['key']} through the form; its steps are part of the next replay step."
     if args.action == "apply":
         if not args.case or not args.key or not (args.values or args.values_json):
             raise GateError("Apply needs --case, --key and either --values or --values-json.")
@@ -441,6 +469,10 @@ def cmd_live(args):
         return live.start(session, args.case)
     if args.action == "recover":
         return live.recover(session, args.case, args.reason or "")
+    if args.action == "handover":
+        return live.handover(session, args.case, args.reason or "", args.to or "")
+    if args.action == "diagnose":
+        return live.diagnose(session, args.case, args.category, args.detail or "", args.tried or "", args.need or "")
     if args.action == "profile":
         return live.select_profile(session, args.case, args.profile)
     code = args.code
@@ -458,10 +490,18 @@ def cmd_live(args):
     if args.action == "script":
         return live.keep_script(session, args.case, args.script)
     if args.action == "replay":
+        if args.case == "all":
+            rows = live.replay_all(session, headed=not args.headless, action_delay_ms=args.action_delay_ms,
+                                   step_delay_ms=args.step_delay_ms, fast=args.fast)
+            bad = [row for row in rows if row["replay"] != "PASS"]
+            lines = [f"{row['case']}: Replay {row['replay']}" + (f" ({row['total_s']}s)" if row["replay"] == "PASS" else f" - {row['reason']}") for row in rows]
+            return {"replays": rows, "failed": len(bad)}, "\n".join(lines) + f"\nReplay PASS {len(rows) - len(bad)}/{len(rows)}."
         result = live.replay(session, args.case, headed=not args.headless,
-                             action_delay_ms=args.action_delay_ms, step_delay_ms=args.step_delay_ms)
-        return result, f"Saved script completed for {args.case}."
-    return live.end(session, args.case, args.status, args.reason or "", args.script)
+                             action_delay_ms=args.action_delay_ms, step_delay_ms=args.step_delay_ms, fast=args.fast)
+        t = result["timing"]
+        return result, (f"Saved script completed for {args.case}: Replay PASS in {t['total_s']}s "
+                        f"({t['pause_s']}s viewing pauses, {t['call_s']}s in {t['calls']} browser calls).")
+    return live.end(session, args.case, args.status, args.reason or "", args.script, category=args.category, control=args.control)
 
 
 
@@ -472,7 +512,7 @@ def cmd_live(args):
 
 def cmd_finish(args):
     session = Session.open(args.ws, args.session)
-    session.declare(args.case, args.status, args.reason)
+    session.declare(args.case, args.status, args.reason, args.category or "")
     return {"case": args.case, "status": args.status}, f"{args.case} recorded as {args.status}. Next: " + session.summary()["next"]
 
 
@@ -867,9 +907,13 @@ def build_parser():
     p.add_argument("--screen", default="")
     p.add_argument("--issue", default="")
     p = add("fixture", cmd_fixture, "plan and create approved test records")
-    p.add_argument("action", choices=["plan", "apply", "advise"])
-    p.add_argument("screen")
+    p.add_argument("action", choices=["plan", "apply", "advise", "ui", "ref", "key", "cleanup"])
+    p.add_argument("screen", nargs="?", default="", help="a screen/model, or ledger | license_user | contract; not needed for key and cleanup")
     p.add_argument("--case")
+    p.add_argument("--label", help="key: a short name for the record within the case")
+    p.add_argument("--value", help="ref: the exact name of an existing record to rely on (read only)")
+    p.add_argument("--run", help="cleanup: a replay's run id (rXXXXXXXXXX) instead of the live run")
+    p.add_argument("--apply", action="store_true", help="cleanup: really remove the tracked records (default: list them)")
     p.add_argument("--values", help="apply: JSON file with model values")
     p.add_argument("--values-json", help="apply: inline JSON object of model values")
     p.add_argument("--key", help="apply: unique writable field with the workspace test prefix")
@@ -915,8 +959,8 @@ def build_parser():
     p = add("notes", cmd_notes, "read what the agents shared")
     p.add_argument("--limit", type=int, default=30)
     p = add("live", cmd_live, "run a case live in its own playwright-cli browser: start | shot | step | end")
-    p.add_argument("action", choices=["start", "act", "profile", "shot", "step", "end", "replay", "script", "recover"])
-    p.add_argument("case")
+    p.add_argument("action", choices=["start", "act", "profile", "shot", "step", "end", "replay", "script", "recover", "diagnose", "handover"])
+    p.add_argument("case", help="the case id; `replay all` replays every saved script of the session")
     p.add_argument("--n", type=int, help="the step number (shot, step)")
     p.add_argument("--status", help="step: PASS or FAIL; end: PASS, FAIL, BLOCKED or PENDING")
     p.add_argument("--actual", help="step: what the page showed, in a few words (compared with the expected result)")
@@ -928,6 +972,13 @@ def build_parser():
                    help="replay: pause after each action in milliseconds (0 disables)")
     p.add_argument("--step-delay-ms", type=int, default=live.DEFAULT_STEP_DELAY_MS,
                    help="replay: pause after each checked step in milliseconds (0 disables)")
+    p.add_argument("--category", choices=["application", "automation", "precondition"], help="end/diagnose: what the conclusion means (FAIL is always application; BLOCKED/PENDING are automation or precondition)")
+    p.add_argument("--control", help="end FAIL: the control that was operated and how it was verified to be the one the testcase means")
+    p.add_argument("--detail", help="diagnose: what you found, concretely")
+    p.add_argument("--tried", help="diagnose (automation): what was already tried")
+    p.add_argument("--need", help="diagnose (precondition): what is needed to continue")
+    p.add_argument("--to", help="handover: the worker that takes the running case")
+    p.add_argument("--fast", action="store_true", help="replay: fast mode, both viewing pauses 0 (application waits are unchanged)")
     p.add_argument("--caption", help="shot: describe the checkpoint shown in this evidence picture")
     p.add_argument("--verified-code", help="step: file containing only the confirmed Playwright actions")
     p.add_argument("--from-pre", action="store_true", help="shot: attach a saved live pre-action picture to an already recorded step")
@@ -940,6 +991,7 @@ def build_parser():
     p.add_argument("case")
     p.add_argument("--status", required=True, choices=["FAIL", "BLOCKED", "PENDING"])
     p.add_argument("--reason", required=True)
+    p.add_argument("--category", choices=["automation", "precondition"], help="BLOCKED/PENDING: automation issue or missing test precondition")
     p = add("sitemap", cmd_sitemap, "the map of this Odoo's screens: build it once, then find a screen, its buttons or the way between two screens")
     p.add_argument("what", choices=["build", "show", "find", "buttons", "fields", "path", "codegen"])
     p.add_argument("target", nargs="?", help="find: words; buttons / fields: a screen (key or words); path: the screen to reach")

@@ -369,6 +369,7 @@ class Session:
                 raise GateError(f"{case} already passed.")
             refs.register_from_text(self, text, by="answer", case=case)          # a hint that points at a file ("use C:\data\x.xlsx") makes it a reference too
             state.setdefault("hints", {}).setdefault(case, []).append({"text": text, "at": time.strftime("%Y-%m-%d %H:%M:%S"), "by": by})
+            self.archive_result(state, case, f"reopened by the user's hint: {text}")
             existing_result = state["results"].pop(case, None)
             last = self._log(case)["last"]
             if not state.get("channel") or existing_result or (last and last["attempt"] == state.get("runs", {}).get(case)):
@@ -403,8 +404,18 @@ class Session:
                 state["seen"] = len(log)
             return news
 
-    def finish_case(self, case, status, reason=""):
-        """Record the end of a case. When every case of the strategy has a result, the session moves to REPORT."""
+    @staticmethod
+    def archive_result(state, case, why):
+        """A conclusion that is replaced or reopened stays on record: what it said, when, and what superseded it. Evidence pictures are never deleted either."""
+        old = state["results"].get(case)
+        if old:
+            state.setdefault("history", {}).setdefault(case, []).append({**old, "at": time.strftime("%Y-%m-%d %H:%M:%S"), "superseded_by": (why or "")[:300]})
+
+    def finish_case(self, case, status, reason="", category=""):
+        """Record the end of a case. When every case of the strategy has a result, the session moves to REPORT.
+        `category` says what kind of conclusion it is (see events.CATEGORIES): an application defect, an automation issue, or a missing test precondition."""
+        if category and category not in events.CATEGORIES:
+            raise GateError(f"category must be one of {', '.join(events.CATEGORIES)}")
         if status not in events.CASE_STATUSES:
             raise GateError(f"status must be one of {', '.join(events.CASE_STATUSES)}")
         with self.update() as state:
@@ -416,12 +427,13 @@ class Session:
             attempts = state["attempts"].get(case, 0)
             if not attempts and status in ("PASS", "FAIL"):
                 raise GateError(f"{case} was never run; there is nothing to record.")
-            state["results"][case] = {"status": status, "attempts": attempts, **({"reason": reason} if reason else {})}
+            self.archive_result(state, case, f"new conclusion {status}")
+            state["results"][case] = {"status": status, "attempts": attempts, **({"reason": reason} if reason else {}), **({"category": category} if category else {})}
             if state.get("channel"):
                 from . import claims
 
                 claims.release(self, case, missing_ok=True)
-            events.append(self.dir, "case_finished", case=case, status=status, attempts=attempts, **({"reason": reason} if reason else {}))
+            events.append(self.dir, "case_finished", case=case, status=status, attempts=attempts, **({"reason": reason} if reason else {}), **({"category": category} if category else {}))
             memory.remember_result(self.ws, memory.stem_of(state["file"]), case, status, reason, self.id)
             if all(c in state["results"] for c in order):
                 self._enter(state, "REPORT", "Every case has a result; building the report")
@@ -433,7 +445,7 @@ class Session:
             events.append(self.dir, "session_finished", counts=counts)
             self._enter(state, "DONE", "Report written; the session is finished")
 
-    def declare(self, case, status, reason):
+    def declare(self, case, status, reason, category=""):
         """The assistant's own verdict when it stops working on a case: FAIL (the application is wrong: needs a run that failed with evidence),
         BLOCKED (cannot be done here) or PENDING (needs the user). PASS can only come from a run."""
         if status not in ("FAIL", "BLOCKED", "PENDING"):
@@ -445,7 +457,11 @@ class Session:
             attempts = [e for e in mine if e["kind"] == "attempt_finished"]
             if not attempts or attempts[-1]["status"] != "FAIL" or not any(e["kind"] == "step" and e["status"] == "FAIL" and e["images"] for e in mine):
                 raise GateError(f"FAIL needs a run of {case} that failed with a picture of the failing step. Run it first.")
-        self.finish_case(case, status, reason)
+        if status in ("BLOCKED", "PENDING") and category not in ("automation", "precondition"):
+            raise GateError(f"{status} is for an automation issue or a missing test precondition: pass --category automation|precondition (an application defect is FAIL).")
+        if status == "FAIL":
+            category = "application"
+        self.finish_case(case, status, reason, category)
 
     def summary(self):
         state = self.state()

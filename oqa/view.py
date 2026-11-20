@@ -2,7 +2,7 @@
 they can never disagree about a case, a step or a picture."""
 import time
 
-from . import claims, events, knowledge, live, paths, refs
+from . import claims, events, knowledge, live, paths, refs, replays
 from .state import MAX_REPAIRS, PHASES, Session
 from .store import read_json
 
@@ -114,6 +114,7 @@ def case_records(session: Session):
     ordered += [c["id"] for c in cases if c["id"] not in ordered]
     out = []
     owners = claims.table(session)
+    saved_replays = replays.load(session)
     worked = [e for e in log if e["kind"] in WORK and e.get("case")]
     current = worked[-1]["case"] if worked else None          # the case the assistant touched last: the one being worked on, if any is
     for ident in ordered:
@@ -154,7 +155,8 @@ def case_records(session: Session):
         else:
             status = "NEW"
         repairs = [{k: e[k] for k in ("ts", "attempt", "cause", "evidence", "change", "reanalysis", "probed", "timeout_s", "unchanged_reason") if k in e} for e in mine if e["kind"] == "repair"]
-        out.append({"id": ident, "can_replay": live.script_file(session, ident).is_file(), "title": case["title"], "row": case["row"], "reuse": item.get("reuse", ""), "repairs": repairs, "timeout_s": state.get("timeouts", {}).get(ident) or item.get("timeout_s"),
+        saved = (saved_replays.get(ident) or {}).get("latest")
+        out.append({"id": ident, "live_status": status, "replay_status": (saved or {}).get("status", replays.NOT_RUN), "replay": saved, "history": (state.get("history") or {}).get(ident, []), "category": (result or {}).get("category", ""), "can_replay": live.script_file(session, ident).is_file(), "title": case["title"], "row": case["row"], "reuse": item.get("reuse", ""), "repairs": repairs, "timeout_s": state.get("timeouts", {}).get(ident) or item.get("timeout_s"),
                     "source": {"sheet": case.get("sheet", ""), "original_id": case.get("original_id", case["id"]), "category": case.get("category", ""), "type": case.get("type", ""), "pre": case.get("pre", ""), "steps": case.get("steps", []),
                               "expected": case.get("expected", ""), "note": case.get("note", ""), "role": case.get("role", "")}, "profile": item.get("profile", ""), "verdict": item.get("verdict", held.get(ident, {}).get("verdict", "")),
                     "explore": explore, "owner": (owners.get(ident) or {}).get("agent", ""), "owner_fresh": bool((owners.get(ident) or {}).get("fresh")), "status": status, "reason": (result or {}).get("reason") or held.get(ident, {}).get("reason", ""), "attempts": attempts,
@@ -174,6 +176,15 @@ def counts(records):
     out = {}
     for r in records:
         out[r["status"]] = out.get(r["status"], 0) + 1
+    return out
+
+
+def replay_counts(records):
+    """Replay PASS / FAIL / NOT RUN over the cases that were run live (a case without a script is NOT RUN)."""
+    out = {}
+    for r in records:
+        if r["live_status"] in ("PASS", "FAIL"):
+            out[r["replay_status"]] = out.get(r["replay_status"], 0) + 1
     return out
 
 
@@ -216,7 +227,7 @@ def session_view(session: Session):
     strategy_md = session.dir / "strategy.md"
     return {"workspace": session.ws, "session": session.id, "file": state["file"], "phase": current, "phases": phases, "waiting": state["waiting"], "stopped": state.get("stopped"), "can_stop": current != "DONE" and not state.get("stopped"),
             "confirmed": bool(state["confirmation"]), "created": state["created"], "updated": log[-1]["ts"] if log else state["created"], "idle_hours": round(hours, 1), "idle": hours >= IDLE_HOURS, "now": latest["text"] if latest else "",
-            "counts": counts(records), "total": len(records), "cases": records, "activity": activity(log), "free_cases": claims.free_cases(session) if current == "EXECUTE" else [], "notes": claims.notes(session, 12), "connect": state.get("connect"),
+            "counts": counts(records), "replay_counts": replay_counts(records), "total": len(records), "cases": records, "activity": activity(log), "free_cases": claims.free_cases(session) if current == "EXECUTE" else [], "notes": claims.notes(session, 12), "connect": state.get("connect"),
             "reports": reports(session), "strategy": strategy_md.read_text(encoding="utf-8") if strategy_md.exists() else "", "can_confirm": current == "CONFIRM" and bool(state.get("strategy_sha")) and (session.dir / "strategy.json").exists()
             and state["strategy_sha"] is not None, "knowledge": len(knowledge.search(session.ws)),
             "refs": [{k: i.get(k) for k in ("name", "path", "kind", "by", "case")} for i in refs.items(session)]}

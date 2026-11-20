@@ -31,11 +31,17 @@ TOOLS = [
     schema("step", "Record observed PASS/FAIL and a screenshot for a planned step. Include code and shows for replay.",
            (*strings("status", "actual", "target", "code", "shows"), ("n", "integer", {})),
            ("n", "status", "actual", "target", "code", "shows")),
-    schema("end", "Close the case. Supply a reason for FAIL, BLOCKED or PENDING.",
-           strings("status", "reason"), ("status",)),
+    schema("end", "Close the case. FAIL = the application differs from the expectation: give reason and control (which element you operated and how you verified it is the intended one). "
+                  "BLOCKED/PENDING need a prior diagnose and a reason.",
+           strings("status", "reason", "category", "control"), ("status",)),
+    schema("diagnose", "When stuck, tell the coordinator exactly what you found. category automation (selector, script, browser; list what you tried) or precondition (missing data/document/decision; say what is needed). "
+                       "Do not close BLOCKED/PENDING just because a selector was not found or time passed.",
+           strings("category", "detail", "tried", "need"), ("category", "detail")),
     schema("context", "Read refreshed case context, sitemap hints and coordinator notes.", strings("screen", "issue")),
-    schema("fixture", "Find fixture fields (plan), ask the data agent (advise), or create a prefixed record (apply). For apply, key is the field name and values_json maps fields to values.",
-           (*strings("action", "screen", "key", "need", "values_json"),
+    schema("fixture", "Find fixture fields (plan), ask the data agent (advise), create a prefixed record (apply), create it through the form (ui; screen may be ledger, license_user or contract), "
+                      "get this run's unique key (key, label optional), or check an existing record to use read-only (ref, with value). For apply and ui, key is the field name and values_json maps fields to values; "
+                      "a many2one value is {\"$ref\": \"existing name\"} or {\"$fixture\": \"key\"}, a relative date {\"$date\": -180}.",
+           (*strings("action", "screen", "key", "need", "values_json", "label", "value"),
             ("values", "object", {"additionalProperties": True})), ("action", "screen")),
     schema("goto_fixture", "Open a record created by fixture apply, by its stable key value. Returns the replay action.",
            strings("action_url", "key"), ("action_url", "key")),
@@ -88,11 +94,22 @@ def _call(session, case, agent, name, args):
     if name == "end":
         if args["status"] not in ("PASS", "FAIL", "BLOCKED", "PENDING"):
             raise GateError("Choose PASS, FAIL, BLOCKED or PENDING.")
-        return live.end(session, case, args["status"], args.get("reason", ""))[1]
+        return live.end(session, case, args["status"], args.get("reason", ""), category=args.get("category") or None, control=args.get("control") or None)[1]
+    if name == "diagnose":
+        return live.diagnose(session, case, args["category"], args["detail"], args.get("tried", ""), args.get("need", ""))[1]
     if name == "note":
         claims.add_note(session, agent, args["text"], case=case)
         return "Note shared with the coordinator."
     if name == "fixture":
+        if args["action"] == "key":
+            return fixtures.run_key(session, case, args.get("label", ""))
+        if args["action"] == "ref":
+            model = fixtures.preset_model(session, args["screen"])
+            return f"{model}: {fixtures.check_reference(session, case, model, args.get('value', ''))} exists once; use it read-only."
+        if args["action"] == "ui":
+            values = json.loads(args["values_json"]) if args.get("values_json") else args.get("values")
+            result = fixtures.ui_create(session, case, args["screen"], args["key"], values)
+            return json.dumps({"model": result["model"], "key": result["key"]}, ensure_ascii=False)
         if args["action"] == "apply":
             values = json.loads(args["values_json"]) if args.get("values_json") else args.get("values")
             result = fixtures.apply(session, case, args["screen"], args["key"], values)
