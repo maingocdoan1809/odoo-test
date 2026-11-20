@@ -173,6 +173,8 @@ class Dashboard(LocalApp):
                 built = report.build(session, workspace.load(session.ws))
                 return 200, {"ok": True, "main": built["download"]}
             if method == "POST" and path == "/api/replay":
+                action_delay = live.replay_delay(body.get("action_delay_ms", live.DEFAULT_ACTION_DELAY_MS), "action_delay_ms")
+                step_delay = live.replay_delay(body.get("step_delay_ms", live.DEFAULT_STEP_DELAY_MS), "step_delay_ms")
                 session = self._session(body)
                 case = str(body.get("case", ""))
                 state = session.state()
@@ -185,7 +187,8 @@ class Dashboard(LocalApp):
                 log.parent.mkdir(exist_ok=True)
                 entry = Path(__file__).resolve().parent.parent / "oqa.py"
                 with log.open("ab") as out:
-                    subprocess.Popen([sys.executable, str(entry), "live", "replay", case, "--ws", session.ws, "--session", session.id], stdout=out, stderr=out,
+                    subprocess.Popen([sys.executable, str(entry), "live", "replay", case, "--ws", session.ws, "--session", session.id,
+                                      "--action-delay-ms", str(action_delay), "--step-delay-ms", str(step_delay)], stdout=out, stderr=out,
                                      stdin=subprocess.DEVNULL, start_new_session=True,
                                      creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
                 return 200, {"ok": True, "message": "Đang mở browser để chạy lại script của case này."}

@@ -233,3 +233,25 @@ def test_rerunning_a_case_needs_a_saved_script_and_a_screen(session, up, tmp_pat
     assert "chưa có script" in up.call("/api/replay", body)[1]["error"]
     case = next(c for c in up.call(f"/api/session?ws=demo&id={session.id}")[1]["cases"] if c["id"] == "ORD-001")
     assert case["can_replay"] is False
+
+
+def test_replay_api_passes_pacing_to_runner_and_rejects_invalid_values(session, up, tmp_path, monkeypatch):
+    from oqa import live
+
+    at_confirm(session, tmp_path)
+    session.confirm_current("test")
+    with session.update() as state:
+        state["results"]["ORD-001"] = {"status": "PASS", "attempts": 1}
+    script = live.script_file(session, "ORD-001")
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text("// saved", encoding="utf-8")
+    launched = []
+    monkeypatch.setattr(dashboard_server.subprocess, "Popen", lambda command, **kw: launched.append(command))
+    body = {"ws": session.ws, "id": session.id, "case": "ORD-001", "action_delay_ms": 1200, "step_delay_ms": 2400}
+    assert up.call("/api/replay", body)[1]["ok"]
+    command = launched[0]
+    assert command[command.index("--action-delay-ms") + 1] == "1200"
+    assert command[command.index("--step-delay-ms") + 1] == "2400"
+    for value in (-1, 60001, True, "1200", 1.5):
+        assert up.call("/api/replay", {**body, "step_delay_ms": value})[1]["error"]
+    assert len(launched) == 1

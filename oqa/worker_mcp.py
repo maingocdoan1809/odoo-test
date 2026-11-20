@@ -26,8 +26,8 @@ TOOLS = [
            (*strings("command", "code"), ("args", "array", {"items": {"type": "string"}}),
             ("record", "boolean", {"description": "Keep this verified run-code fragment in the next step's replay."})), ("command",)),
     schema("profile", "Switch to a signed-in workspace profile required by the case.", strings("name"), ("name",)),
-    schema("evidence_before", "Capture a stable element before an action removes it.",
-           (*strings("target"), ("n", "integer", {})), ("n", "target")),
+    schema("evidence_before", "Capture a checkpoint before the next action. Repeat for intermediate states; all pictures are retained.",
+           (*strings("target", "caption"), ("n", "integer", {})), ("n", "target")),
     schema("step", "Record observed PASS/FAIL and a screenshot for a planned step. Include code and shows for replay.",
            (*strings("status", "actual", "target", "code", "shows"), ("n", "integer", {})),
            ("n", "status", "actual", "target", "code", "shows")),
@@ -81,7 +81,7 @@ def _call(session, case, agent, name, args):
     if name == "profile":
         return live.select_profile(session, case, args["name"])[1]
     if name == "evidence_before":
-        return live.shot(session, case, args["n"], args["target"])[1]
+        return live.shot(session, case, args["n"], args["target"], caption=args.get("caption"))[1]
     if name == "step":
         return live.step(session, case, args["n"], args["status"], args["actual"], args["target"],
                          args["code"], args["shows"])[1]

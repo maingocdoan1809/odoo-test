@@ -3,6 +3,7 @@ Odoo is not like other apps here: the page after login differs by version (/web,
 stops a script. Each of those is reported as a sentence that says what to do, not as a timeout."""
 import json
 from pathlib import Path
+from urllib.parse import urljoin
 
 from . import browser, knowledge
 from .secrets import SecretStore
@@ -41,7 +42,7 @@ def login(page, ws, profile, store: SecretStore):
     password = store.get(secret_ref(ws["name"], profile["name"]))
     if password is None:
         raise LoginFailed(f"no password is saved for profile {profile['name']}: run oqa init and enter it")
-    page.goto(ws["url"] + "/web/login" + (f"?db={ws['db']}" if ws.get("db") else ""), wait_until="domcontentloaded")
+    page.goto(urljoin(ws["url"], "/web/login") + (f"?db={ws['db']}" if ws.get("db") else ""), wait_until="domcontentloaded")
     page.wait_for_selector(ARRIVED, state="attached", timeout=SLOW_MS)
     if page.locator(".o_web_client").count():                # a valid session is already stored: the server sent us straight to the web client
         return {"landing_url": page.url, "title": page.title(), "version": page.evaluate(VERSION_JS) or ""}
@@ -74,7 +75,7 @@ def reuse_session(session: Session, context, page, ws, profile):
             continue
         context.clear_cookies()
         context.add_cookies(state.get("cookies", []))
-        page.goto(ws["url"] + "/web", wait_until="domcontentloaded")
+        page.goto(urljoin(ws["url"], "/web"), wait_until="domcontentloaded")
         page.wait_for_selector(ARRIVED, state="attached", timeout=SLOW_MS)
         if page.locator(".o_web_client").count():
             page.wait_for_selector(".o_web_client", state="visible", timeout=SLOW_MS)

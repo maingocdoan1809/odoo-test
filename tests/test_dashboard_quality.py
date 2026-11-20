@@ -67,7 +67,7 @@ def served(session, tmp_path):
     return urls.get(timeout=5)
 
 
-@pytest.mark.parametrize("width", [375, 800, 1440])
+@pytest.mark.parametrize("width", [320, 375, 800, 1100, 1280, 1440, 1920])
 def test_no_horizontal_scroll_every_control_is_named_and_the_console_is_clean(served, width):
     with browser.launch(True) as new_page:
         _, page = new_page()
@@ -83,6 +83,53 @@ def test_no_horizontal_scroll_every_control_is_named_and_the_console_is_clean(se
         page.keyboard.press("Tab")
         assert page.evaluate("document.activeElement !== document.body"), "nothing can be focused with the keyboard"
         assert not errors, errors
+
+
+def test_long_case_content_stays_readable_and_table_scroll_survives_redraw(served):
+    """A realistic long list must scroll inside its panel, with all columns reachable."""
+    with browser.launch(True) as new_page:
+        _, page = new_page()
+        page.goto(served)
+        page.wait_for_selector("tr.case")
+        data = page.evaluate("S.view")
+        import copy
+        original = data["cases"][0]
+        data["cases"] = [dict(copy.deepcopy(original), id=f"ORD-{i:03}") for i in range(40)]
+        data["cases"][0].update(
+            title="Kiểm tra toàn bộ nội dung testcase dài với nhiều điều kiện và kết quả mong đợi. " * 6,
+            profile="Profile_" + "Administrator" * 8,
+        )
+        data["total"] = len(data["cases"])
+        page.route("**/api/session?**", lambda route: route.fulfill(json=data))
+        page.evaluate("v => { S.view = v; S.sig = JSON.stringify(v); S.caseId = v.cases[0].id; renderMain(); }", data)
+        for width in (320, 375, 800, 1280, 1440, 1920):
+            page.set_viewport_size({"width": width, "height": 900})
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
+            assert page.eval_on_selector("#main", "e => e.scrollWidth <= e.clientWidth + 1"), width
+            assert page.eval_on_selector("tr.case .title", "e => e.scrollHeight <= e.clientHeight + 1"), "title is clipped"
+            assert page.eval_on_selector("tr.case td:nth-child(3)", "e => e.scrollWidth <= e.clientWidth + 1"), "profile is clipped"
+            assert page.eval_on_selector(".case-table-scroll", "e => e.scrollHeight > e.clientHeight"), "long list cannot scroll"
+            panel = page.locator(".case-list").bounding_box()
+            detail = page.locator("#detail").bounding_box()
+            if width < 1600:
+                assert detail["y"] >= panel["y"] + panel["height"] - 1, "detail squeezes the table"
+            else:
+                assert detail["x"] >= panel["x"] + panel["width"], "wide layout wastes available space"
+
+        page.set_viewport_size({"width": 375, "height": 667})
+        assert page.eval_on_selector(".case-table-scroll", "e => e.scrollWidth > e.clientWidth")
+        page.eval_on_selector(".case-table-scroll", "e => { e.scrollLeft = e.scrollWidth; e.scrollTop = 160; }")
+        before = page.eval_on_selector(".case-table-scroll", "e => [e.scrollLeft, e.scrollTop]")
+        page.evaluate("renderMain()")
+        assert page.eval_on_selector(".case-table-scroll", "e => [e.scrollLeft, e.scrollTop]") == before
+        assert page.eval_on_selector(".case-table-scroll", """e => {
+            const panel = e.getBoundingClientRect(), last = e.querySelector('th:last-child').getBoundingClientRect();
+            return last.left >= panel.left && last.right <= panel.right + 1 && Math.abs(last.top - panel.top) <= 1;
+        }"""), "the result column or sticky header is unreachable"
+        for collapsed in (True, False):
+            page.evaluate("value => toggleRail(value)", collapsed)
+            assert page.eval_on_selector("#main", "e => e.clientHeight > 200 && e.scrollHeight > e.clientHeight")
+            assert page.eval_on_selector("#main", "e => e.getBoundingClientRect().bottom <= innerHeight + 1")
 
 
 def test_the_page_does_not_move_while_it_is_being_read(session, served):
@@ -108,6 +155,33 @@ def test_the_page_does_not_move_while_it_is_being_read(session, served):
 
 
 VIETNAMESE = "ồấẫậẳằễệổỗộờởỡợừửữựỳỵỷỹặẵẩầ"          # stacked diacritics: the letters a font without full Vietnamese support draws from another font
+
+
+def test_replay_speed_controls_persist_and_submit_the_selected_delays(served):
+    with browser.launch(True) as new_page:
+        _, page = new_page()
+        page.goto(served)
+        page.wait_for_selector("tr.case")
+        data = page.evaluate("S.view")
+        data["cases"][0].update(status="PASS", can_replay=True)
+        page.route("**/api/session?**", lambda route: route.fulfill(json=data))
+        page.evaluate("v => { S.view = v; S.caseId = v.cases[0].id; renderMain(); }", data)
+        action = page.get_by_label("Nghỉ sau thao tác (ms)", exact=True)
+        step = page.get_by_label("Nghỉ sau bước (ms)", exact=True)
+        action.fill("1200")
+        step.fill("2400")
+        step.press("Tab")
+        page.evaluate("renderMain()")
+        assert action.input_value() == "1200" and step.input_value() == "2400"
+        assert page.evaluate("JSON.parse(localStorage.getItem('oqaReplayTiming')).step_delay_ms") == 2400
+        for width in (320, 1280):
+            page.set_viewport_size({"width": width, "height": 900})
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
+        page.route("**/api/replay?**", lambda route: route.fulfill(json={"ok": True, "message": "Replay started"}))
+        with page.expect_request("**/api/replay?**") as request:
+            page.get_by_role("button", name="Chạy lại testcase", exact=True).click()
+        assert request.value.post_data_json["action_delay_ms"] == 1200
+        assert request.value.post_data_json["step_delay_ms"] == 2400
 
 
 def test_every_font_stack_really_draws_vietnamese(served):

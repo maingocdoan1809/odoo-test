@@ -93,11 +93,13 @@ def _match(cell):
     return None
 
 
-def read_workbook(path):
+def read_workbook(path, sheet_name=None):
     """(sheet title, header row, [raw case dicts], {key: column}). Raises SchemaError when no testcase table is found."""
     import openpyxl
     book = openpyxl.load_workbook(path, data_only=True, read_only=False)
     for sheet in book:
+        if sheet_name is not None and sheet.title != sheet_name:
+            continue
         for header in range(1, 16):
             cols = {}
             for col in range(1, sheet.max_column + 1):
@@ -110,7 +112,17 @@ def read_workbook(path):
                     ident = sheet.cell(row, cols["no"]).value
                     if ident in (None, ""):
                         continue
-                    item = {k: ("" if sheet.cell(row, c).value is None else str(sheet.cell(row, c).value).strip()) for k, c in cols.items()}
+                    def value(col):
+                        cell = sheet.cell(row, col)
+                        if cell.value is None:
+                            for area in sheet.merged_cells.ranges:
+                                if cell.coordinate in area:
+                                    return sheet.cell(area.min_row, area.min_col).value
+                        return cell.value
+                    item = {k: ("" if value(c) is None else str(value(c)).strip()) for k, c in cols.items()}
+                    # Japanese UTS tables split the heading and detailed title across C/D.
+                    if cols.get("view", 3) == 3 and "cls" not in cols and cols.get("act", 0) > 4:
+                        item["view"] = str(value(4) or value(3) or "").strip()
                     item["no"] = str(ident).strip()
                     item["_row"] = row
                     rows.append(item)
@@ -179,14 +191,45 @@ def select(cases_doc, spec):
     return out
 
 
-def build(path, reference_dirs=()):
+def build(path, reference_dirs=(), selection=None, sheet_name=None):
     """cases.json content for a testcase workbook."""
     path = Path(path)
     if not path.is_file():
         raise SchemaError(f"file not found: {path}", "testcase file")
     if path.suffix.lower() not in (".xlsx", ".xlsm"):
         raise SchemaError("only .xlsx / .xlsm testcase files are read", path.name)
-    sheet, header, rows, columns = read_workbook(path)
+    if selection and "!" in selection:
+        combined, tables, seen, documents = [], {}, set(), {}
+        for part in re.split(r"[,;\n]", selection):
+            name, sep, area = part.strip().rpartition("!")
+            match = re.fullmatch(r"[A-Za-z]+(\d+):[A-Za-z]+(\d+)", area)
+            if not sep or not match:
+                raise SchemaError("Use Sheet!A64:R64 for every selected region", "cases")
+            name = name.strip("'")
+            if name not in documents:
+                documents[name] = build(path, reference_dirs, sheet_name=name)
+            doc = documents[name]
+            first, last = map(int, match.groups())
+            chosen = [c for c in doc["cases"] if first <= c["row"] <= last]
+            if not chosen:
+                raise SchemaError(f"No testcase in {part}", "cases")
+            tables[name] = {k: doc["source"][k] for k in ("header_row", "columns")}
+            for case in chosen:
+                case = dict(case)
+                case["original_id"] = case["id"]
+                case["id"] = f"{name}__{case['id']}"
+                case["case_refs"] = []
+                if case["id"] not in seen:
+                    seen.add(case["id"])
+                    combined.append(case)
+        doc["cases"] = combined
+        doc["source"]["tables"] = tables
+        doc["source"]["sheet"] = next(iter(tables))
+        doc["source"].update(tables[doc["source"]["sheet"]])
+        doc["warnings"] = []
+        doc["selection"] = {"of": len(combined), "ids": [c["id"] for c in combined], "regions": selection}
+        return doc
+    sheet, header, rows, columns = read_workbook(path, sheet_name)
     folders = [path.parent] + [Path(d) for d in reference_dirs]
     ids = [r["no"] for r in rows]
     warnings = [f"ID '{i}' appears {ids.count(i)} times; the first occurrence is used" for i in dict.fromkeys(ids) if ids.count(i) > 1]

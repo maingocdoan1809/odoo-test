@@ -19,6 +19,7 @@ from . import VERSION, autostart, build_id, analysis, claims, connect, memory, d
 from .secrets import SecretStoreUnavailable, default_store
 from .state import MAX_REPAIRS, GateError, Session
 from .store import SchemaError, read_json, write_json
+from . import live
 from .sitemap_i18n import text as sitemap_text
 
 REFUSED = (GateError, SchemaError, paths.PathError, knowledge.KnowledgeError, SecretStoreUnavailable, connect.LoginFailed, sitemap.SitemapError)
@@ -82,16 +83,37 @@ def cmd_session(args):
     if not args.file:
         raise GateError("Say which testcase file: oqa session new --file <path to .xlsx> [--cases A,B]")
     path = Path(args.file).expanduser().resolve()
-    cases = intake.build(path, config["reference_dirs"])
+    regions = args.cases if args.cases and "!" in args.cases else None
+    cases = intake.build(path, config["reference_dirs"], selection=regions)
     if args.what == "cases":
         return {"cases": [{"id": c["id"], "title": c["title"], "steps": len(c["steps"])} for c in cases["cases"]]}, "\n".join(
             f"{c['id']:14} {len(c['steps']):2} step(s)  {c['title']}" for c in cases["cases"]) + f"\n{len(cases['cases'])} case(s) in {path.name}. Pick some with: oqa session new --file <it> --cases \"A,B\" (ids, A..C ranges or words of the title)."
-    cases = intake.select(cases, args.cases)
-    channel = getattr(args, "channel", None)
-    session = Session.create(ws, path, cases, channel=channel)
+    cases = intake.select(cases, None if regions else args.cases)
+    channel = getattr(args, "channel", None) or ("path" if regions else None)
+    session = None
+    reused = False
+    if getattr(args, "reuse_pending", False):
+        # Both review rounds belong to the intake already in progress.
+        pointer = paths.workspace_dir(ws) / "current"
+        requested = args.session or os.environ.get(paths.SESSION_ENV) or (pointer.read_text(encoding="utf-8").strip() if pointer.exists() else None)
+        if requested:
+            candidate = Session(ws, requested)
+            state = candidate.state()
+            previous = candidate.cases()
+            scope = lambda doc: [(case["id"], case.get("sheet"), case["row"]) for case in doc["cases"]]
+            if (state["phase"] in ("ANALYZE", "CONNECT", "CONFIRM")
+                    and not state.get("stopped") and state.get("channel") == channel
+                    and Path(state["file"]).resolve() == path
+                    and previous["source"]["sha256"] == cases["source"]["sha256"]
+                    and scope(previous) == scope(cases)):
+                session = candidate
+                reused = True
+                # References may have become available between the two review rounds.
+                write_json(session.dir / "cases.json", cases)
+    session = session or Session.create(ws, path, cases, channel=channel)
     missing = [(c["id"], r["text"]) for c in cases["cases"] for r in c["refs"] if r["status"] == "missing"]
     chosen = cases.get("selection")
-    lines = [f"Session {session.id} in workspace {ws}: {len(cases['cases'])} cases " + (f"chosen out of {chosen['of']} " if chosen else "read ") + f"from {path.name} (sheet {cases['source']['sheet']}); the file is used as it is, nothing new is written."]
+    lines = [f"{'Reusing session' if reused else 'Session'} {session.id} in workspace {ws}: {len(cases['cases'])} cases " + (f"chosen out of {chosen['of']} " if chosen else "read ") + f"from {path.name} (sheet {cases['source']['sheet']}); the file is used as it is, nothing new is written."]
     lines += [f"  warning: {w}" for w in cases["warnings"]]
     lines += [f"  reference not found: {case} mentions {name}" for case, name in missing]
     lines += memory.summary(ws, memory.stem_of(path), [c["id"] for c in cases["cases"]])
@@ -100,7 +122,7 @@ def cmd_session(args):
     if channel is None:
         lines.append("Dashboard " + ("is opening in the user's browser (started for you)." if started else "is already running: `oqa dashboard` opens it on this session."))
     lines.append("Next: " + Session.open(ws, session.id).summary()["next"])
-    return {"dashboard_started": started, "session": session.id, "workspace": ws, "cases": len(cases["cases"]), "warnings": cases["warnings"], "missing_refs": [{"case": c, "file": f} for c, f in missing]}, "\n".join(lines)
+    return {"dashboard_started": started, "session": session.id, "reused": reused, "workspace": ws, "cases": len(cases["cases"]), "warnings": cases["warnings"], "missing_refs": [{"case": c, "file": f} for c, f in missing]}, "\n".join(lines)
 
 
 def cmd_run(args):
@@ -113,6 +135,7 @@ def cmd_run(args):
     if selected is None:
         raise GateError("Workspace selection timed out. Run oqa run start again.")
     args.ws, args.what = selected["workspace"], "new"
+    args.reuse_pending = not args.new_session
     return cmd_session(args)
 
 
@@ -413,7 +436,6 @@ def _case_in_strategy(session, case):
 
 def cmd_live(args):
     """EXECUTE with playwright-cli: the case's own browser, the outcome of each step with a picture framed by oqa (see oqa/live.py)."""
-    from . import live
     session = Session.open(args.ws, args.session)
     if args.action == "start":
         return live.start(session, args.case)
@@ -430,13 +452,14 @@ def cmd_live(args):
     if args.action == "act":
         return live.act(session, args.case, args.browser_command, args.browser_arg, code)
     if args.action == "shot":
-        return live.shot(session, args.case, args.n, args.target)
+        return live.shot(session, args.case, args.n, args.target, from_pre=args.from_pre, caption=args.caption)
     if args.action == "step":
         return live.step(session, args.case, args.n, args.status, args.actual or "", args.target, code, args.shows)
     if args.action == "script":
         return live.keep_script(session, args.case, args.script)
     if args.action == "replay":
-        result = live.replay(session, args.case, headed=not args.headless)
+        result = live.replay(session, args.case, headed=not args.headless,
+                             action_delay_ms=args.action_delay_ms, step_delay_ms=args.step_delay_ms)
         return result, f"Saved script completed for {args.case}."
     return live.end(session, args.case, args.status, args.reason or "", args.script)
 
@@ -859,6 +882,7 @@ def build_parser():
     p.add_argument("--channel", choices=["path", "addin"], default="path")
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--no-open", action="store_true")
+    p.add_argument("--new-session", action="store_true", help="start a separate run instead of reusing this workbook's pending review session")
     p = add("analyze", cmd_analyze, "get the analysis template, or hand in the analysis")
     p.add_argument("--template", action="store_true")
     p.add_argument("--submit", metavar="FILE")
@@ -900,7 +924,13 @@ def build_parser():
     p.add_argument("--script", help="end PASS or live script: the file with the Playwright code playwright-cli printed for your actions (kept as the case's script)")
     p.add_argument("--reason", help="end: why, when the case is not PASS")
     p.add_argument("--headless", action="store_true", help="replay: no visible window (the default shows the browser)")
+    p.add_argument("--action-delay-ms", type=int, default=live.DEFAULT_ACTION_DELAY_MS,
+                   help="replay: pause after each action in milliseconds (0 disables)")
+    p.add_argument("--step-delay-ms", type=int, default=live.DEFAULT_STEP_DELAY_MS,
+                   help="replay: pause after each checked step in milliseconds (0 disables)")
+    p.add_argument("--caption", help="shot: describe the checkpoint shown in this evidence picture")
     p.add_argument("--verified-code", help="step: file containing only the confirmed Playwright actions")
+    p.add_argument("--from-pre", action="store_true", help="shot: attach a saved live pre-action picture to an already recorded step")
     p.add_argument("--code", help="act or step: one verified Playwright action per line")
     p.add_argument("--shows", help="step: expected page text for replay")
     p.add_argument("--browser-command", help="act: playwright-cli operation in this case's browser")

@@ -39,6 +39,11 @@ Alternatively set OQA_STORAGE_STATE to the path of an existing signed-in browser
 For a case that changes roles, OQA_PROFILES is an environment JSON object keyed by profile.
 Each entry accepts login/password or storageState. Supply values at runtime.
 Run node replay.mjs CASE. Evidence goes into a new folder under evidence/.
+The browser is visible by default; set OQA_HEADLESS=1 for unattended runs.
+OQA_ACTION_DELAY_MS sets the pause after each action (default 700).
+OQA_STEP_DELAY_MS sets the pause after each checked step (default 1500).
+Both accept whole milliseconds from 0 to 60000; 0 disables the pause.
+These viewing pauses do not change application assertion timeouts.
 The archive may contain test fixture values. Keep it within your test team.
 """)
     return content.getvalue()

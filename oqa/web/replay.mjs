@@ -5,6 +5,17 @@ import { randomUUID } from "node:crypto";
 import { chromium } from "playwright";
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+function delayOption(name, fallback) {
+  const raw = process.env[name] ?? String(fallback);
+  const value = Number(raw);
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value) || value > 60000) {
+    throw new Error(`${name} must be a whole number from 0 to 60000 milliseconds.`);
+  }
+  return value;
+}
+const actionDelay = delayOption("OQA_ACTION_DELAY_MS", 700);
+const stepDelay = delayOption("OQA_STEP_DELAY_MS", 1500);
+const pause = ms => ms ? new Promise(resolve => setTimeout(resolve, ms)) : Promise.resolve();
 const manifest = JSON.parse(await readFile(new URL("./cases.json", import.meta.url), "utf8"));
 const caseId = process.argv[2];
 if (!Object.hasOwn(manifest.cases, caseId)) {
@@ -22,7 +33,7 @@ const installedEdge = process.platform === "win32" &&
   [process.env["ProgramFiles(x86)"], process.env.ProgramFiles].some(
     root => root && existsSync(join(root, "Microsoft", "Edge", "Application", "msedge.exe")),
   );
-const browser = await chromium.launch(installedEdge ? { channel: "msedge" } : {});
+const browser = await chromium.launch({ headless: process.env.OQA_HEADLESS === "1", ...(installedEdge ? { channel: "msedge" } : {}) });
 try {
   const accounts = JSON.parse(process.env.OQA_PROFILES || "{}");
   const initial = manifest.cases[caseId].profile;
@@ -55,8 +66,11 @@ try {
     const page = await signIn(step.profile || initial);
     const code = step.code.map(line => fresh(line.replaceAll(original.origin, base.origin)));
     const execute = async lines => {
-      const action = new AsyncFunction("page", lines.join("\n"));
-      await action(page);
+      for (const line of lines) {
+        const action = new AsyncFunction("page", line);
+        await action(page);
+        await pause(actionDelay);
+      }
     };
     try {
       if (step.before && code.length) {
@@ -68,6 +82,7 @@ try {
       }
       await page.waitForFunction(text => document.body.innerText.includes(text), fresh(step.shows));
       await page.screenshot({ path: `${runDir}/step-${step.n}.png` });
+      await pause(stepDelay);
     } catch (error) {
       await page.screenshot({ path: `${runDir}/step-${step.n}-failed.png` }).catch(() => {});
       throw new Error(`Case ${caseId}, step ${step.n}`, { cause: error });

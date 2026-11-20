@@ -47,6 +47,8 @@ KINDS = {
     "action_recorded": ("case", "attempt", "code"),
     "profile_selected": ("case", "attempt", "profile"),
     "step": ("case", "attempt", "n", "status", "caption", "expected", "actual", "images"),
+    "step_evidence": ("case", "attempt", "n", "images"),
+    "evidence_captured": ("case", "attempt", "n", "images"),
     "attempt_finished": ("case", "attempt", "status", "reason"),
     "repair": ("case", "attempt", "cause", "evidence", "change"),
     "try_started": ("case", "step"),
@@ -74,6 +76,10 @@ def validate(kind, data):
                 problems.append("a PASS or FAIL step needs at least one picture, each with 'raw' and 'annotated' (the red-box one)")
     if kind == "case_finished" and not problems and data["status"] not in CASE_STATUSES:
         problems.append(f"case status must be one of {', '.join(CASE_STATUSES)}")
+    if kind in ("step_evidence", "evidence_captured") and not problems:
+        images = data["images"]
+        if not isinstance(images, list) or not images or not all(isinstance(i, dict) and i.get("raw") and i.get("annotated") for i in images):
+            problems.append("supplemental evidence needs raw and annotated image pairs")
     if problems:
         raise SchemaError(problems, "event")
 

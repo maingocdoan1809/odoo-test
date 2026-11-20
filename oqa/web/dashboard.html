@@ -16,15 +16,25 @@
     --display:"Be Vietnam Pro", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
     --sans:"Be Vietnam Pro", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
     --mono:"JetBrains Mono", "Cascadia Mono", Consolas, "Courier New", "DejaVu Sans Mono", monospace;
+    --scrollbar-track:var(--sunk); --scrollbar-thumb:color-mix(in srgb, var(--muted) 80%, var(--sunk));
   }
   @media (prefers-color-scheme: dark) { :root {
     --bg:#181715; --surface:#1f1e1b; --sunk:#1b1a17; --card:#252320; --line:#34322d; --line-soft:#2b2a26;
     --ink:#faf9f5; --body:#d8d5cd; --muted:#a09d96; --accent:#cc785c; --accent-active:#a9583e; --accent-ink:#ffffff; --ring:rgba(204,120,92,.28);
     --dark:#12110f; --dark-soft:#12110f; --dark-elev:#252320; --on-dark:#faf9f5; --on-dark-soft:#a09d96;
     --pass:#5db872; --fail:#e26f6f; --pending:#d4a017; --blocked:#a09d96; --running:#5db8a6; --repairing:#e8a55a; --planned:#8e8b82; } }
-  * { box-sizing:border-box; }
+  * { box-sizing:border-box; scrollbar-width:thin; scrollbar-color:var(--scrollbar-thumb) var(--scrollbar-track); }
+  @supports selector(::-webkit-scrollbar) {
+    * { scrollbar-width:auto; scrollbar-color:auto; }
+    ::-webkit-scrollbar { width:10px; height:10px; }
+    ::-webkit-scrollbar-track { background:var(--scrollbar-track); border-radius:999px; }
+    ::-webkit-scrollbar-thumb { background:var(--scrollbar-thumb); border:2px solid var(--scrollbar-track); border-radius:999px; min-height:32px; min-width:32px; }
+    ::-webkit-scrollbar-thumb:hover { background:var(--accent); }
+    ::-webkit-scrollbar-thumb:active { background:var(--accent-active); }
+    ::-webkit-scrollbar-corner { background:var(--scrollbar-track); }
+  }
   html, body { height:100%; }
-  body { margin:0; background:var(--bg); color:var(--body); font:14px/1.55 var(--sans); font-variant-numeric:tabular-nums; }
+  body { margin:0; height:100dvh; display:flex; flex-direction:column; background:var(--bg); color:var(--body); font:14px/1.55 var(--sans); font-variant-numeric:tabular-nums; }
   button { font:inherit; color:inherit; }
   :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   .mono { font-family:var(--mono); font-size:13px; white-space:nowrap; }
@@ -32,7 +42,7 @@
   h1, h2, h3 { color:var(--ink); }
   [hidden] { display:none !important; }
 
-  .top { height:64px; display:flex; align-items:center; gap:14px; padding:0 32px; background:var(--bg); border-bottom:1px solid var(--line); }
+  .top { min-height:64px; flex-shrink:0; display:flex; align-items:center; gap:14px; padding:0 24px; background:var(--bg); border-bottom:1px solid var(--line); }
   .top b { font:400 22px/1 var(--display); letter-spacing:-.3px; color:var(--ink); }
   .live { margin-left:auto; display:flex; align-items:center; gap:8px; color:var(--muted); }
   .dot { width:8px; height:8px; border-radius:50%; background:var(--planned); }
@@ -46,7 +56,7 @@
   @media (prefers-reduced-motion: reduce) { .spin { animation:pulse 1.8s ease-in-out infinite; border-top-color:var(--c); } }
   @media (prefers-reduced-motion: reduce) { .dot.on { animation:none; } }
 
-  .layout { display:grid; grid-template-columns:320px minmax(0,1fr); height:calc(100% - 64px); }
+  .layout { display:grid; flex:1; min-height:0; grid-template-columns:260px minmax(0,1fr); grid-template-rows:minmax(0,1fr); }
   .layout.collapsed { grid-template-columns:48px minmax(0,1fr); }
   .layout.collapsed .rail header h2, .layout.collapsed .rail header select, .layout.collapsed #history { display:none; }
   .layout.collapsed .rail header { padding:14px 8px; align-items:center; }
@@ -57,7 +67,7 @@
   .histrow .del:hover { opacity:1; color:var(--bad, #b3261e); background:var(--bg); }
   .replay { border:1px solid var(--accent); background:var(--card); color:var(--accent); border-radius:6px; padding:6px 14px; cursor:pointer; font:inherit; }
   .replay:disabled { opacity:.5; cursor:default; }
-  .rail { background:var(--sunk); border-right:1px solid var(--line); overflow:auto; }
+  .rail { min-width:0; min-height:0; background:var(--sunk); border-right:1px solid var(--line); overflow:auto; }
   .rail header { padding:20px 20px 14px; display:flex; flex-direction:column; gap:12px; position:sticky; top:0; background:var(--sunk); border-bottom:1px solid var(--line); }
   .rail h2 { margin:0; font:500 12px/1.4 var(--sans); letter-spacing:1.5px; text-transform:uppercase; color:var(--muted); }
   select { width:100%; height:40px; padding:0 12px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); font:inherit; }
@@ -65,7 +75,7 @@
   .hist { width:100%; text-align:left; border:0; border-bottom:1px solid var(--line-soft); background:transparent; padding:16px 20px; cursor:pointer; display:block; }
   .hist[aria-current=true] { background:var(--card); box-shadow:inset 4px 0 0 var(--accent); }
   .hist .name { font-weight:500; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .hist .sub { display:flex; justify-content:space-between; gap:8px; color:var(--muted); font-size:13px; margin:2px 0 10px; }
+  .hist .sub { display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 8px; color:var(--muted); font-size:13px; margin:2px 0 10px; overflow-wrap:anywhere; }
   .tag { font:500 12px/1.4 var(--sans); padding:2px 10px; background:var(--card); border-radius:9999px; color:var(--ink); white-space:nowrap; }
   .hist .tag { background:var(--bg); }
   .tag.attn { background:var(--accent); color:var(--accent-ink); text-transform:uppercase; letter-spacing:1.5px; font-size:11px; }
@@ -78,14 +88,15 @@
   .bar i, .sq { background:var(--c); }
   .sq { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:8px; vertical-align:baseline; }
 
-  main { overflow:auto; padding:40px max(40px, calc((100% - 1200px) / 2)) 80px; }
+  main { min-width:0; min-height:0; overflow:auto; padding:20px 24px 32px; overflow-wrap:anywhere; container:dashboard / inline-size; }
   .empty { max-width:460px; margin:12vh auto; text-align:center; color:var(--muted); }
   .empty b { display:block; font:400 28px/1.2 var(--display); letter-spacing:-.3px; color:var(--ink); margin-bottom:10px; }
   h1 { margin:0; font:400 36px/1.15 var(--display); letter-spacing:-.5px; overflow-wrap:anywhere; }
-  .meta { display:flex; flex-wrap:wrap; gap:4px 20px; color:var(--muted); margin:10px 0 28px; }
+  .meta { display:flex; flex-wrap:wrap; gap:4px 20px; color:var(--muted); margin:8px 0 20px; }
+  .meta .mono { white-space:normal; }
   .meta b { color:var(--ink); font-weight:500; }
 
-  .track { display:grid; grid-template-columns:repeat(6, 1fr); gap:6px; margin-bottom:32px; }
+  .track { display:grid; grid-template-columns:repeat(6, minmax(0,1fr)); gap:6px; margin-bottom:20px; }
   .track div { padding:10px 0 0; border-top:2px solid var(--line); color:var(--muted); font-size:13px; }
   .track .done { border-color:var(--ink); color:var(--ink); }
   .track .current { border-color:var(--accent); color:var(--ink); font-weight:500; }
@@ -126,7 +137,9 @@
   .btn:disabled { opacity:.5; cursor:default; }
   pre.strategy { margin:14px 0 0; padding:20px 24px; max-height:300px; overflow:auto; background:var(--dark-soft); color:var(--on-dark); border-radius:12px; white-space:pre-wrap; font:400 13px/1.65 var(--mono); }
   .err { color:var(--fail); margin-top:8px; white-space:pre-wrap; }
-  .head { display:flex; gap:16px; align-items:flex-start; justify-content:space-between; }
+  .head { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-start; justify-content:space-between; }
+  .head h1 { min-width:0; flex:1 1 240px; }
+  .head .btn { flex-shrink:0; }
   .reports { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:0 0 28px; }
   a.btn { text-decoration:none; display:inline-flex; align-items:center; color:var(--ink); }
   a.btn.primary { color:var(--accent-ink); }
@@ -143,26 +156,42 @@
   .note dt { color:var(--muted); } .note dd { margin:0; }
   .said { margin-top:8px; padding:8px 12px; border-left:3px solid var(--accent); border-radius:0 8px 8px 0; background:var(--bg); overflow-wrap:anywhere; }
 
-  .split { display:grid; grid-template-columns:minmax(0,1.05fr) minmax(0,1fr); gap:24px; align-items:start; }
-  @media (max-width:1100px) { .layout { grid-template-columns:1fr; } .rail { max-height:240px; border-right:0; border-bottom:1px solid var(--line); } .split { grid-template-columns:1fr; } }
-  @media (max-width:767px) { main { padding:24px 20px 48px; } h1 { font-size:28px; } .top { padding:0 20px; } .summary strong { font-size:32px; } }
-  .panel { background:var(--surface); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .split { display:grid; grid-template-columns:minmax(0,1fr); gap:16px; align-items:start; }
+  .panel { min-width:0; background:var(--surface); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .case-list header { display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:4px 12px; padding:12px 16px; border-bottom:1px solid var(--line); }
+  .case-list h2 { margin:0; font:500 16px/1.4 var(--sans); }
+  .case-list header span { font-size:12px; color:var(--muted); }
+  .case-list { container:case-list / inline-size; }
+  .case-scroll-hint { display:none; }
+  .case-table-scroll { max-height:clamp(260px, 58dvh, 640px); overflow:auto; scrollbar-gutter:stable; }
+  .case-table-scroll:focus-visible { outline-offset:-3px; }
+  .case-table { min-width:840px; table-layout:fixed; }
+  .case-table col:nth-child(1) { width:132px; }
+  .case-table col:nth-child(3) { width:112px; }
+  .case-table col:nth-child(4) { width:140px; }
+  .case-table col:nth-child(5) { width:64px; }
+  .case-table col:nth-child(6) { width:180px; }
+  .case-table .case-id { white-space:normal; overflow-wrap:anywhere; }
   table { width:100%; border-collapse:collapse; }
-  th { text-align:left; font:500 12px/1.4 var(--sans); letter-spacing:1.5px; text-transform:uppercase; color:var(--muted); padding:14px 16px; border-bottom:1px solid var(--line); background:var(--sunk); position:sticky; top:0; }
-  td { padding:14px 16px; border-bottom:1px solid var(--line-soft); vertical-align:middle; }
+  th { text-align:left; font:500 12px/1.4 var(--sans); letter-spacing:.8px; text-transform:uppercase; color:var(--muted); padding:12px; border-bottom:1px solid var(--line); background:var(--sunk); position:sticky; top:0; z-index:1; }
+  td { padding:12px; border-bottom:1px solid var(--line-soft); vertical-align:middle; }
   tr.case { cursor:pointer; }
+  tr.case:hover td { background:var(--sunk); }
+  tr.case:focus-visible { outline-offset:-2px; }
   tr.case[aria-selected=true] td { background:var(--card); } tr.case[aria-selected=true] td:first-child { box-shadow:inset 4px 0 0 var(--accent); }
   tr.case:last-child td { border-bottom:0; }
-  .ticks { display:inline-flex; gap:3px; vertical-align:middle; margin-right:8px; }
-  .ticks i { width:6px; height:14px; border-radius:3px; background:var(--c, transparent); border:1px solid var(--line); }
+  .ticks { display:inline-flex; flex-wrap:wrap; max-width:100%; gap:3px; vertical-align:middle; margin-right:8px; }
+  .ticks i { flex-shrink:0; width:6px; height:14px; border-radius:3px; background:var(--c, transparent); border:1px solid var(--line); }
   .ticks i.p { --c:var(--pass); border-color:var(--pass); } .ticks i.f { --c:var(--fail); border-color:var(--fail); }
   .status { white-space:nowrap; font-weight:500; color:var(--c); }
-  .title { overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; color:var(--ink); }
+  .title { color:var(--ink); overflow-wrap:anywhere; }
 
-  .detail { padding:28px; position:sticky; top:0; max-height:calc(100vh - 120px); overflow:auto; }
+  .detail { padding:20px; }
   .detail h2 { margin:0 0 6px; font:400 26px/1.2 var(--display); letter-spacing:-.4px; }
+  .detail .mono, .refs-panel .mono, .lb-free .mono { white-space:normal; overflow-wrap:anywhere; }
   .chips { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 18px; }
-  .tabs { display:flex; gap:0; margin:6px 0 14px; border-bottom:1px solid var(--line); }
+  .tabs { display:flex; gap:0; max-width:100%; overflow-x:auto; margin:6px 0 14px; border-bottom:1px solid var(--line); }
+  .tabs button { flex-shrink:0; }
   .tabs button { background:none; border:0; border-bottom:2px solid transparent; padding:10px 16px; cursor:pointer; color:var(--muted); font-weight:500; }
   .tabs button[aria-selected=true] { color:var(--ink); border-color:var(--accent); }
   .workspace-tabs { margin:0; border:0; }
@@ -188,6 +217,49 @@
   .lb-bar button[aria-pressed=true] { background:var(--on-dark); color:var(--dark); }
   .lb-body { flex:1; overflow:auto; display:flex; justify-content:center; align-items:flex-start; padding:0 24px 24px; }
   .lb-body img { max-width:100%; height:auto; background:#fff; border-radius:8px; }
+
+  /* Use the available main width, including when the history rail is collapsed. */
+  @container case-list (max-width:855px) { .case-scroll-hint { display:inline; } }
+  @container dashboard (min-width:1180px) {
+    .split { grid-template-columns:minmax(0,1.45fr) minmax(380px,1fr); }
+    .detail { position:sticky; top:0; max-height:calc(100dvh - 104px); overflow:auto; }
+  }
+  @container dashboard (max-width:600px) {
+    .step { grid-template-columns:24px minmax(0,1fr); gap:10px; padding:14px 0; }
+    .step > .thumb, .step > .noimg { grid-column:2; }
+    .note dl { grid-template-columns:minmax(0,1fr); gap:2px; }
+    .note dd { margin-bottom:8px; }
+    .chips .tag { white-space:normal; overflow-wrap:anywhere; }
+  }
+  @media (max-width:1100px) {
+    .layout, .layout.collapsed { grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr); }
+    .rail { max-height:180px; border-right:0; border-bottom:1px solid var(--line); }
+    .rail header { padding:10px 16px; gap:8px; }
+    .layout.collapsed .rail header { padding:8px 12px; }
+    .hist { padding:10px 16px; }
+    .site-map-active .layout { grid-template-rows:minmax(0,1fr); }
+  }
+  @media (max-width:767px) {
+    main { padding:16px 12px 24px; }
+    h1 { font-size:26px; }
+    .top { flex-wrap:wrap; gap:2px 12px; padding:10px 12px 0; }
+    .top .workspace-tabs { order:3; flex-basis:100%; }
+    .workspace-tabs button { flex:1; }
+    .rail { max-height:156px; }
+    .track { grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+    .summary { gap:8px 16px; }
+    .summary strong { font-size:30px; }
+    .meta { gap:4px 12px; font-size:12px; }
+    .meta .mono { font-size:12px; }
+    .attn-panel, .refs-panel, .liveboard, .hint-box, .detail { padding:16px; margin-bottom:16px; }
+    .detail h2 { font-size:22px; }
+    .reports { gap:8px; margin-bottom:16px; }
+    .btn { height:auto; min-height:40px; max-width:100%; padding:8px 14px; white-space:normal; }
+    .lb-bar { flex-wrap:wrap; gap:8px; padding:12px; }
+    .lb-bar .grow { flex-basis:100%; }
+    .lb-bar button { padding:0 12px; }
+    .lb-body { padding:0 12px 12px; }
+  }
 </style>
 </head>
 <body>
@@ -197,7 +269,7 @@
 </nav><div class="live" aria-live="polite"><span class="dot" id="dot"></span><span id="liveText">đang tải…</span></div></div>
 <div class="layout">
   <aside class="rail">
-    <header><div class="railtop"><h2>Lịch sử test</h2><button id="railToggle" type="button" aria-label="Thu gọn danh sách" title="Thu gọn / mở rộng">«</button></div><select id="wsFilter" aria-label="Lọc theo workspace"></select></header>
+    <header><div class="railtop"><h2>Lịch sử test</h2><button id="railToggle" type="button" aria-expanded="true" aria-controls="history wsFilter" aria-label="Thu gọn danh sách" title="Thu gọn / mở rộng">«</button></div><select id="wsFilter" aria-label="Lọc theo workspace"></select></header>
     <div id="history"></div>
   </aside>
   <main id="main" role="tabpanel" aria-labelledby="tab-progress"></main>
@@ -216,6 +288,13 @@ const PHASE = { ANALYZE: "Phân tích", CONNECT: "Kết nối", CONFIRM: "Xác n
 const STATUS = { INTERRUPTED: "Bị bỏ dở", STOPPED: "Đã dừng", PASS: "PASS", FAIL: "FAIL", PENDING: "PENDING", BLOCKED: "BLOCKED", RUNNING: "Đang chạy", REPAIRING: "Đang sửa lỗi", EXPLORING: "Đang xác thực", PLANNED: "Chờ xác thực", BUILT: "Chờ chạy", VERIFIED: "Đã xác thực", TRYING: "Đang thử", HELD: "Cần xử lý trước", NEW: "Mới", "NOT EXECUTED": "Chưa chạy" };
 const ORDER = ["PASS", "FAIL", "REPAIRING", "RUNNING", "EXPLORING", "BUILT", "INTERRUPTED", "STOPPED", "PENDING", "BLOCKED", "PLANNED", "HELD", "NEW", "NOT EXECUTED"];
 const S = { sig: "", histSig: "", open: {}, draft: {}, hintError: "", sessions: [], ws: "", sel: null, view: null, caseId: null, attempt: null, raw: false, gallery: [], index: 0, error: "", busy: false };
+S.replayTiming = { action_delay_ms: 700, step_delay_ms: 1500 };
+try {
+  const saved = JSON.parse(localStorage.getItem("oqaReplayTiming") || "{}");
+  for (const key of Object.keys(S.replayTiming)) {
+    if (Number.isInteger(saved[key]) && saved[key] >= 0 && saved[key] <= 60000) S.replayTiming[key] = saved[key];
+  }
+} catch (e) {}
 S.workspaces = []; S.tab = "progress";
 const M = { ws: "", lang: "", q: "", kind: "", key: "", mode: "buttons", view: "", match: "", required: false, data: null, results: null, screen: null, loading: false, error: "", request: 0, detailRequest: 0 };
 const $ = id => document.getElementById(id);
@@ -235,11 +314,11 @@ function bar(counts, total) {
 }
 
 /** Replacing a panel's HTML empties it for an instant, and the browser then forgets how far it was scrolled. Put every scroll position back after a redraw. */
-function scrollers() { return ["#main", ".detail", "pre.strategy", ".rail"].map(sel => document.querySelector(sel)); }
+function scrollers() { return ["#main", ".detail", ".case-table-scroll", "pre.strategy", ".rail"].map(sel => document.querySelector(sel)); }
 function keepScroll(draw) {
-  const before = scrollers().map(el => (el ? el.scrollTop : 0));
+  const before = scrollers().map(el => ({ top:el?.scrollTop || 0, left:el?.scrollLeft || 0 }));
   draw();
-  scrollers().forEach((el, i) => { if (el) el.scrollTop = before[i]; });
+  scrollers().forEach((el, i) => { if (el) { el.scrollTop = before[i].top; el.scrollLeft = before[i].left; } });
 }
 const isOpen = (key, fallback) => ((key in S.open ? S.open[key] : fallback) ? "open" : "");
 
@@ -250,6 +329,8 @@ function toggleRail(force) {
   const on = force === undefined ? !box.classList.contains("collapsed") : force;
   box.classList.toggle("collapsed", on);
   $("railToggle").textContent = on ? "»" : "«";
+  $("railToggle").setAttribute("aria-expanded", String(!on));
+  $("railToggle").setAttribute("aria-label", on ? "Mở rộng danh sách" : "Thu gọn danh sách");
   try { localStorage.setItem("oqaRailCollapsed", on ? "1" : "0"); } catch (e) {}
 }
 try { if (localStorage.getItem("oqaRailCollapsed") === "1") window.addEventListener("DOMContentLoaded", () => toggleRail(true)); } catch (e) {}
@@ -338,7 +419,7 @@ function drawMain() {
   else if (v.can_confirm) attention = `<section class="attn-panel"><h3>Chiến lược đang chờ bạn duyệt</h3><div class="muted">Xem lại thứ tự, dữ liệu dự phòng và các bước. AI chỉ bắt đầu test sau khi bạn xác nhận.</div>
       <details data-key="strategy" ${isOpen("strategy", true)}><summary>Chiến lược</summary><pre class="strategy">${esc(v.strategy)}</pre></details><div style="margin-top:10px"><button class="btn primary" id="confirm" ${S.busy ? "disabled" : ""}>Xác nhận và bắt đầu test</button></div><div class="err">${esc(S.error)}</div></section>`;
   const rows = v.cases.map(k => `<tr class="case ${cls(k.status)}" tabindex="0" data-id="${esc(k.id)}" aria-selected="${k.id === S.caseId}">
-      <td class="mono">${esc(k.id)}</td><td><div class="title">${esc(k.title)}</div></td><td>${esc(k.profile) || '<span class="muted">-</span>'}</td><td>${ticks(k)}</td>
+      <td class="mono case-id">${esc(k.id)}</td><td><div class="title">${esc(k.title)}</div></td><td>${esc(k.profile) || '<span class="muted">-</span>'}</td><td>${ticks(k)}</td>
       <td>${k.attempts.length || '<span class="muted">-</span>'}</td><td><span class="status">${dot(k.status)}${esc(STATUS[k.status] || k.status)}</span>
       ${k.review_pending ? '<span class="tag attn">Need confirm</span>' : k.review_skipped ? '<span class="tag">Đã bỏ qua</span>' : k.verdict === "ready" && v.phase === "ANALYZE" ? '<span class="tag">Ready</span>' : ""}</td></tr>`).join("");
   $("main").innerHTML = `
@@ -353,7 +434,8 @@ function drawMain() {
     ${attention}
     ${refsPanel(v)}
     ${v.phase === "EXECUTE" ? liveBoard(v) + activityPanel(v) : ""}
-    <div class="split"><div class="panel"><table><thead><tr><th>Case</th><th>Nội dung</th><th>Profile</th><th>Bước</th><th>Lần</th><th>Kết quả</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="split"><section class="panel case-list" aria-labelledby="caseListTitle"><header><h2 id="caseListTitle">Danh sách case (${total})</h2><span>Chọn case để xem chi tiết<span class="case-scroll-hint"> · Cuộn ngang để xem đủ cột</span></span></header>
+    <div class="case-table-scroll" role="region" aria-label="Danh sách case, cuộn ngang để xem đủ các cột" tabindex="0"><table class="case-table"><colgroup><col><col><col><col><col><col></colgroup><thead><tr><th scope="col">Case</th><th scope="col">Nội dung</th><th scope="col">Profile</th><th scope="col">Bước</th><th scope="col">Lần</th><th scope="col">Kết quả</th></tr></thead><tbody>${rows}</tbody></table></div></section>
     <div class="panel detail" id="detail"></div></div>`;
   renderDetail();
   restoreDrafts();
@@ -374,7 +456,7 @@ function drawDetail(box) {
   const ex = k.explore || { verified: [], trying: null };
   const steps = att ? att.steps : k.planned.map(p => ({ ...p, images: [], actual: "",
     status: ex.trying && ex.trying.step === p.n ? "TRYING" : ex.verified.includes(p.n) ? "VERIFIED" : "PENDING", mode: ex.trying && ex.trying.step === p.n ? ex.trying.mode : "" }));
-  S.gallery = steps.flatMap(s => s.images.map(im => ({ ...im, caption: `Bước ${s.n}: ${s.caption}` })));
+  S.gallery = steps.flatMap(s => s.images.map(im => ({ ...im, caption: im.caption || `Bước ${s.n}: ${s.caption}` })));
   const chips = [k.profile && `Profile ${k.profile}`, k.depends_on.length && `Tiếp từ ${k.depends_on.join(", ")}`, k.clarity && `Rõ ràng ${k.clarity}/5`, k.sufficiency && `Đủ dữ kiện ${k.sufficiency}/5`, `dòng ${k.row}`].filter(Boolean)
     .map(t => `<span class="tag">${esc(t)}</span>`).join("");
   const tabs = k.attempts.length > 1 ? `<div class="tabs" role="tablist">${k.attempts.map(a => `<button role="tab" data-attempt="${a.n}" aria-selected="${att && a.n === att.n}"><i class="sq ${cls(a.status)}"></i>Lần ${a.n} · ${esc(STATUS[a.status] || a.status)}${a.from_step > 1 ? ` · từ bước ${a.from_step}` : ""}</button>`).join("")}</div>` : "";
@@ -383,6 +465,7 @@ function drawDetail(box) {
     const first = s.images[0];
     const thumb = first ? `<button class="thumb ${s.status === "FAIL" ? "fail" : ""}" data-g="${(g += s.images.length) - s.images.length + 1}" style="background-image:url('${img(first.annotated)}')" aria-label="Phóng to ảnh bước ${s.n}"><span>${s.images.length > 1 ? s.images.length + " ảnh" : "xem"}</span></button>` : `<div class="noimg">${{ PENDING: att ? "chưa chạy" : "chờ xác thực", RUNNING: "đang chạy…", TRYING: "đang thử…", VERIFIED: "đã thử trên trang thật" }[s.status] || "không có ảnh"}</div>`;
     return `<div class="step ${cls(s.status)}"><div class="n">${LIVE.includes(s.status) ? dot(s.status) : s.n}</div><div><div class="cap">${esc(s.caption)}</div>${s.status === "RUNNING" ? `<div class="live-note">Đang chạy bước này…</div>` : s.status === "TRYING" ? `<div class="live-note">${s.mode === "replay" ? "Đang đưa trang tới bước này…" : "Đang thử trên trang thật…"}</div>` : ""}<div class="exp">Mong đợi: ${esc(s.expected)}${s.checks != null && s.status !== "PENDING" ? ` <span class="tag">${s.checks} kiểm tra</span>` : ""}${s.carried ? ' <span class="tag">giữ từ lần trước</span>' : ""}</div>
+      ${s.evidence ? `<div class="exp">Ảnh cần chụp: ${esc(s.evidence)}</div>` : ""}
       ${s.actual && s.status !== "PENDING" ? `<div class="act">${s.status === "PASS" ? "Thực tế: " : ""}${esc(s.actual)}</div>` : ""}</div>${thumb}</div>`;
   }).join("");
   const base = (k.edge_cases.length || k.edge_none || k.data_needs.length || k.questions.length || k.timeout_s) ? `<ul>
@@ -420,7 +503,11 @@ function reviewBox(k) {
 function replayBar(k) {
   if (!["PASS", "FAIL"].includes(k.status)) return "";
   const note = k.can_replay ? "Mở browser và chạy script đã lưu của case này." : "Chưa có script đã lưu.";
-  return `<div class="replaybar" style="margin:10px 0"><button class="replay" data-replay="${esc(k.id)}" ${k.can_replay ? "" : "disabled"} title="${esc(note)}">Chạy lại testcase</button> <span class="muted" id="replayMsg">${esc(note)}</span></div>`;
+  return `<div class="replaybar" style="margin:10px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+    <label>Nghỉ sau thao tác (ms) <input data-replay-delay="action_delay_ms" aria-label="Nghỉ sau thao tác (ms)" type="number" min="0" max="60000" step="100" value="${S.replayTiming.action_delay_ms}" style="width:90px"></label>
+    <label>Nghỉ sau bước (ms) <input data-replay-delay="step_delay_ms" aria-label="Nghỉ sau bước (ms)" type="number" min="0" max="60000" step="100" value="${S.replayTiming.step_delay_ms}" style="width:90px"></label>
+    <button class="replay" data-replay="${esc(k.id)}" ${k.can_replay ? "" : "disabled"} title="${esc(note)}">Chạy lại testcase</button>
+    <span class="muted" id="replayMsg">${esc(note)} Đặt 0 để bỏ thời gian nghỉ; thời gian chờ ứng dụng giữ theo testcase.</span></div>`;
 }
 
 const reportUrl = name => `/api/report?ws=${encodeURIComponent(S.sel.ws)}&id=${encodeURIComponent(S.sel.id)}&name=${encodeURIComponent(name)}&t=${TOKEN}`;
@@ -525,7 +612,7 @@ document.addEventListener("click", async e => {
   const rep = e.target.closest("[data-replay]");
   if (rep && S.sel) {
     rep.disabled = true;
-    const r = await post("/api/replay", { ws: S.sel.ws, id: S.sel.id, case: rep.dataset.replay });
+    const r = await post("/api/replay", { ws: S.sel.ws, id: S.sel.id, case: rep.dataset.replay, ...S.replayTiming });
     const msg = $("replayMsg");
     if (msg) msg.textContent = r.error || r.message || "Đã bắt đầu.";
     setTimeout(() => { rep.disabled = false; refreshList(); }, 4000);
@@ -598,6 +685,14 @@ document.addEventListener("submit", e => {
   if (e.target.id === "mapDetailForm") { e.preventDefault(); return loadMapScreen(); }
 });
 document.addEventListener("change", e => {
+  if (e.target.dataset.replayDelay) {
+    if (!e.target.checkValidity() || !Number.isInteger(Number(e.target.value)) || e.target.value === "") {
+      e.target.value = S.replayTiming[e.target.dataset.replayDelay]; return;
+    }
+    S.replayTiming[e.target.dataset.replayDelay] = Number(e.target.value);
+    try { localStorage.setItem("oqaReplayTiming", JSON.stringify(S.replayTiming)); } catch (err) {}
+    return;
+  }
   if (e.target.id === "mapWorkspace") { S.ws = e.target.value; renderHistory(); return workspaceTab("site_map"); }
   if (e.target.id === "mapLanguage") { M.lang = e.target.value; return loadMap(); }
   if (e.target.id === "mapKind") { M.kind = e.target.value; G.searchOpen = !!(M.kind || M.q); return loadMap(); }

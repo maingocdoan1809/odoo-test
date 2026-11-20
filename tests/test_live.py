@@ -116,6 +116,13 @@ def test_a_case_is_run_live_with_a_frame_drawn_by_oqa(live, pw, tmp_path):
     assert livemod.script_file(session, "T-1").read_text(encoding="utf-8") == mine.read_text(encoding="utf-8")
     assert session.state()["results"]["T-1"]["status"] == "PASS"
     assert [e["status"] for e in events.read(session.dir) if e["kind"] == "step"] == ["PASS"] * 4
+    from oqa import view
+    prior = view.case_records(session)[0]["attempts"][0]["steps"][0]["images"]
+    livemod.shot(session, "T-1", 1, None, from_pre=True)
+    images = view.case_records(session)[0]["attempts"][0]["steps"][0]["images"]
+    assert len(images) == len(prior) + 1 and all(item in images for item in prior)
+    assert any("_supp_" in item["annotated"] for item in images)
+    assert session.state()["results"]["T-1"]["status"] == "PASS"
 
 
 def test_a_failed_step_closes_the_case_and_marks_the_rest_as_not_run(live, pw):
@@ -185,12 +192,12 @@ def test_dashboard_style_replay_runs_saved_actions_in_headed_browser(live, tmp_p
     monkeypatch.setattr(livemod, "open_browser", lambda *a, **kw: calls.append(kw) or "Admin")
     monkeypatch.setattr(livemod, "run_actions", lambda browser, code: calls.append(list(code)))
     monkeypatch.setattr(livemod.uuid, "uuid4", lambda: type("ReplayStamp", (), {"hex": "0123456789"})())
-    result = livemod.replay(session, "T-1")
+    result = livemod.replay(session, "T-1", action_delay_ms=0, step_delay_ms=0)
     assert result["session"] == session.id and result["status"] == "COMPLETED"
     assert calls[0]["headed"] is True and calls[0]["browser_id"].startswith("replay-")
     assert calls[1][:2] == ["await page.goto('http://x/web');",
                             "await page.getByRole('button', { name: 'Save' }).click();"]
     assert "ZZ_AUTOTEST_r0123456789_order" in str(calls[1:])
-    assert len(calls) == 5
+    assert len(calls) == 9
     assert session.state() == before and events.read(session.dir) == history
     assert set(session.dir.parent.iterdir()) == sessions

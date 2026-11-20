@@ -52,7 +52,7 @@ def template(cases_doc, workspace, session=None):
             "vague": case.get("vague", []),
             "vague_resolved": [{"phrase": v["phrase"], "concrete": "", "source": ""} for v in case.get("vague", [])],
             "data_needs": [], "data_considered": "", "edge_cases": [], "depends_on": list(case["case_refs"]), "reuse": "",
-            "steps": [{"n": i, "action": line, "expected": ""} for i, line in enumerate(case["steps"], 1)],
+            "steps": [{"n": i, "action": line, "expected": "", "evidence": ""} for i, line in enumerate(case["steps"], 1)],
             "_title": case["title"], "_expected": case["expected"],
         })
     out = {"schema_version": SCHEMA_VERSION, "cases": items}
@@ -131,6 +131,9 @@ def validate(analysis, cases_doc, workspace):
             for position, step in enumerate(steps, 1):
                 if not isinstance(step, dict) or step.get("n") != position or not str(step.get("action", "")).strip() or not str(step.get("expected", "")).strip():
                     problems.append(f"{at}: step {position} needs n={position}, an action and an expected result")
+                if isinstance(step, dict) and "evidence" in step and verdict == "ready":
+                    if not isinstance(step["evidence"], str) or not step["evidence"].strip():
+                        problems.append(f"{at}: step {position} needs evidence: describe the visible state and exact region to frame; split combined UI actions into separate steps")
         if "timeout_s" in c and not (isinstance(c["timeout_s"], int) and not isinstance(c["timeout_s"], bool) and MIN_TIMEOUT <= c["timeout_s"] <= MAX_TIMEOUT):
             problems.append(f"{at}: timeout_s must be a whole number of seconds from {MIN_TIMEOUT} to {MAX_TIMEOUT}")
         for dep in c.get("depends_on") or []:
@@ -284,7 +287,8 @@ def strategy(analysis, cases_doc, workspace):
         if resolved:
             lines.append(f"- {t['concrete']}: " + "; ".join(f"\"{v['phrase']}\" → {v['concrete']} [{v['source']}]" for v in resolved))
         lines.append(f"- {t['edge']}: " + ("; ".join(c.get("edge_cases") or []) or c.get("edge_cases_none_reason", "")))
-        lines += [f"- {t['steps']}:"] + [f"  {s['n']}. {s['action']} → {s['expected']}" for s in c["steps"]] + [""]
+        lines += [f"- {t['steps']}:"] + [f"  {s['n']}. {s['action']} → {s['expected']}"
+                  + (f" [Evidence: {s['evidence']}]" if s.get("evidence") else "") for s in c["steps"]] + [""]
     if excluded:
         lines += [f"## {t['skip']} ({len(excluded)})", ""] + [f"- {e['id']} [{e['verdict']}]: {e['reason']}" for e in excluded] + [""]
     return data, "\n".join(lines)

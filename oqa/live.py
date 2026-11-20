@@ -219,6 +219,8 @@ def start(session, case):
              f" If the click leaves the page, take the picture first: oqa live shot {case} --n N --target \"<locator>\"."]
     for step in item["steps"]:
         lines.append(f"  {step['n']}. {step['action']}   ->   {step['expected']}")
+        if step.get("evidence"):
+            lines.append(f"     Evidence: {step['evidence']}")
     return {"case": case, "attempt": attempt, "browser": browser_name}, "\n".join(lines)
 
 
@@ -228,9 +230,25 @@ def recover(session, case, reason):
 
     session.require("EXECUTE")
     _strategy_case(session, case)
-    attempt = _attempt(session, case)
     if len(reason.strip()) < 12:
         raise GateError("Describe the worker failure and what should change before recovery.")
+    state = session.state()
+    result = state.get("results", {}).get(case)
+    if result:
+        if state.get("attempts", {}).get(case, 0) >= 2:
+            raise GateError("This case has already used its one recovery attempt.")
+        attempt = state.get("runs", {}).get(case)
+        if not attempt:
+            raise GateError("There is no live worker attempt to recover.")
+        with session.update() as current:
+            current["results"].pop(case, None)
+        events.append(session.dir, "repair", case=case, attempt=attempt,
+                      cause="Coordinator diagnosed an incorrect worker conclusion",
+                      evidence=reason, change="Reassign and rerun with corrected interpretation/setup",
+                      previous_status=result["status"])
+        claims.release(session, case, missing_ok=True)
+        return {"case": case, "attempt": attempt}, f"Reopened {case} after worker diagnosis. Prior evidence is retained; reassign using oqa claim."
+    attempt = _attempt(session, case)
     try:
         _run(browser_case(session, case), "close")
     except GateError:
@@ -279,7 +297,8 @@ _BOX = (
     "el => { el.scrollIntoView({block: 'center', inline: 'center'}); const r = el.getBoundingClientRect(); "
     "return JSON.stringify({x: r.x, y: r.y, w: r.width, h: r.height, vw: innerWidth, vh: innerHeight}); }"
 )
-_CODE = ("async page => {{ const el = {locator}.first(); await el.scrollIntoViewIfNeeded({{timeout: 3000}}); const r = await el.boundingBox(); "
+_CODE = ("async page => {{ const el = {locator}; if (await el.count() !== 1) throw new Error('Evidence target must match exactly one element'); "
+         "await el.scrollIntoViewIfNeeded({{timeout: 3000}}); const r = await el.boundingBox(); "
          "const v = page.viewportSize(); return JSON.stringify(r ? {{x: r.x, y: r.y, w: r.width, h: r.height, vw: v.width, vh: v.height}} : null); }}")
 
 
@@ -333,17 +352,59 @@ def _scale(box, viewport, picture):
     return (int(x * k), int(y * k), max(int(w * k), 2), max(int(h * k), 2))
 
 
-def shot(session, case, n, target):
+def shot(session, case, n, target, from_pre=False, caption=None):
     session.require("EXECUTE")
-    attempt = _attempt(session, case)
+    attempt = session.state().get("runs", {}).get(case) if from_pre else _attempt(session, case)
+    if not isinstance(n, int) or not 1 <= n <= len(_strategy_case(session, case)["steps"]):
+        raise GateError("Choose a planned step number for the evidence.")
+    if from_pre:
+        if n not in _recorded(session, case, attempt):
+            raise GateError("A supplemental pre-action picture requires an already recorded step.")
+        folder = session.dir / "evidence" / re.sub(r"[^\w.-]+", "_", case) / f"a{attempt}"
+        source, meta = folder / f"s{n}_pre_raw.png", read_json(folder / f"s{n}_pre.json", {})
+        if not source.is_file() or not meta.get("box"):
+            raise GateError("There is no saved live pre-action picture for this step.")
+        suffix = uuid.uuid4().hex[:8]
+        raw, annotated = folder / f"s{n}_supp_{suffix}_raw.png", folder / f"s{n}_supp_{suffix}_annotated.png"
+        shutil.copyfile(source, raw)
+        evidence.annotate(raw, [meta["box"]], caption or f"{case} · step {n} · supplemental pre-action evidence", annotated)
+        error = evidence.check(raw, annotated)
+        if error:
+            raise GateError(error)
+        events.append(session.dir, "step_evidence", case=case, attempt=attempt, n=n, source="saved_live_shot",
+                      images=[{"raw": str(raw.relative_to(session.dir)), "annotated": str(annotated.relative_to(session.dir))}])
+        return {"case": case, "n": n}, f"Saved live pre-action picture attached to step {n}; earlier evidence and verdict are retained."
     browser_id = browser_case(session, case)
     found = _box(browser_id, target)
     if not found:
         raise GateError(f"Nothing visible matches {target!r}: read the page (snapshot) and name the element again.")
     folder = session.dir / "evidence" / re.sub(r"[^\w.-]+", "_", case) / f"a{attempt}"
-    _shot(browser_id, folder / f"s{n}_pre_raw.png")
-    box = _scale(found[0], found[1], folder / f"s{n}_pre_raw.png")
-    write_json(folder / f"s{n}_pre.json", {"box": box})
+    if n in _recorded(session, case, attempt):
+        suffix = uuid.uuid4().hex[:8]
+        raw, annotated = folder / f"s{n}_supp_{suffix}_raw.png", folder / f"s{n}_supp_{suffix}_annotated.png"
+        _shot(browser_id, raw)
+        evidence.annotate(raw, [_scale(found[0], found[1], raw)], caption or f"{case} · step {n} · supplemental live evidence", annotated)
+        error = evidence.check(raw, annotated)
+        if error:
+            raise GateError(error)
+        events.append(session.dir, "step_evidence", case=case, attempt=attempt, n=n, target=target,
+                      images=[{"raw": str(raw.relative_to(session.dir)), "annotated": str(annotated.relative_to(session.dir))}])
+        return {"case": case, "n": n}, f"Supplemental live evidence added to recorded step {n}; the earlier evidence is retained."
+    if n != len(_recorded(session, case, attempt)) + 1:
+        raise GateError("Capture evidence for the next planned step, in order.")
+    suffix = uuid.uuid4().hex[:8]
+    raw, annotated = folder / f"s{n}_pre_{suffix}_raw.png", folder / f"s{n}_pre_{suffix}_annotated.png"
+    _shot(browser_id, raw)
+    box = _scale(found[0], found[1], raw)
+    label = caption or f"{case} · step {n} · before action: {target}"
+    evidence.annotate(raw, [box], label, annotated)
+    # Keep every checkpoint; legacy paths identify the latest pre-action view.
+    shutil.copyfile(raw, folder / f"s{n}_pre_raw.png")
+    write_json(folder / f"s{n}_pre.json", {"box": box, "target": target})
+    rel = lambda p: p.relative_to(session.dir).as_posix()
+    events.append(session.dir, "evidence_captured", case=case, attempt=attempt, n=n,
+                  images=[{"raw": rel(raw), "annotated": rel(annotated), "caption": label,
+                           "target": target, "box": box}])
     return {"case": case, "n": n}, f"Picture of step {n} taken before the action (element framed). Now act, then: oqa live step {case} --n {n} --status PASS|FAIL --actual \"...\""
 
 
@@ -411,7 +472,9 @@ def step(session, case, n, status, actual, target=None, verified_code=None, show
         if found:
             _shot(browser_id, raw)
             boxes, how = [_scale(found[0], found[1], raw)], "now"
-    if boxes is None and (folder / f"s{n}_pre.json").exists():                  # the element is gone after the action: show the page where it was acted on
+    if boxes is None and status == "PASS" and spec.get("evidence"):
+        raise GateError(f"Step {n} needs a visible result target for its evidence plan. A pre-action picture alone cannot prove the outcome; capture the resulting field, status, message or parent view.")
+    if boxes is None and status == "PASS" and (folder / f"s{n}_pre.json").exists():  # compatibility for older plans with pre-action evidence only
         shutil.copyfile(folder / f"s{n}_pre_raw.png", raw)
         boxes, how = [tuple(read_json(folder / f"s{n}_pre.json")["box"])], "before"
     if boxes is None:
@@ -424,10 +487,17 @@ def step(session, case, n, status, actual, target=None, verified_code=None, show
         boxes = [(0, 0, width, height)]
     evidence.annotate(raw, boxes, f"Step {n}/{len(steps)} {status}: {spec['action']}", annotated, ok=status == "PASS")
     rel = lambda p: Path(p).relative_to(session.dir).as_posix()
+    images = [image for event in events.read(session.dir)
+              if event["kind"] == "evidence_captured" and event.get("case") == case
+              and event.get("attempt") == attempt and event.get("n") == n
+              for image in event["images"]]
+    if how != "before" or not images:
+        images.append({"raw": rel(raw), "annotated": rel(annotated),
+                       "caption": f"Step {n}: {actual.strip()}", "target": target, "box": boxes[0]})
     if script_step and how == "before":
         script_step.insert(2, "// frame-before: yes")
     events.append(session.dir, "step", case=case, attempt=attempt, n=n, status=status, caption=spec["action"], expected=spec["expected"], actual=actual.strip(),
-                  checks=1, images=[{"raw": rel(raw), "annotated": rel(annotated)}],
+                  checks=1, images=images,
                   **({"verified_script": script_step} if script_step else {}))
     return {"case": case, "n": n, "status": status, "frame": how}, f"Step {n} recorded as {status} (frame drawn by oqa, {how or 'whole screen'}). " + (
         f"Next: step {n + 1}." if status == "PASS" and n < len(steps) else f"Next: oqa live end {case} --status {'PASS' if status == 'PASS' else 'FAIL'} --reason \"...\"")
@@ -530,8 +600,29 @@ def clone_for_replay(src, cases):
     return new
 
 
-def replay(session, case, headed=True):
+DEFAULT_ACTION_DELAY_MS = 700
+DEFAULT_STEP_DELAY_MS = 1500
+
+
+def replay_delay(value, name):
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 60000:
+        raise GateError(f"{name} must be a whole number from 0 to 60000 milliseconds.")
+    return value
+
+
+def _paced_actions(browser_id, code, delay_ms):
+    if not delay_ms:
+        return run_actions(browser_id, code)
+    for line in code:
+        run_actions(browser_id, [line])
+        time.sleep(delay_ms / 1000)
+
+
+def replay(session, case, headed=True, action_delay_ms=DEFAULT_ACTION_DELAY_MS,
+           step_delay_ms=DEFAULT_STEP_DELAY_MS):
     """Open the saved script in a separate browser, keeping the original test session."""
+    action_delay_ms = replay_delay(action_delay_ms, "action_delay_ms")
+    step_delay_ms = replay_delay(step_delay_ms, "step_delay_ms")
     item = _strategy_case(session, case)
     path = script_file(session, case)
     if not path.is_file():
@@ -553,7 +644,10 @@ def replay(session, case, headed=True):
                                            browser_id=browser_id)
                 code = [line.replace(prefix, replay_prefix) for line in block["code"]]
                 shows = block["shows"].replace(prefix, replay_prefix)
-                run_actions(browser_id, [*code, literal_check(shows, timeout)])
+                _paced_actions(browser_id, code, action_delay_ms)
+                run_actions(browser_id, [literal_check(shows, timeout)])
+                if step_delay_ms:
+                    time.sleep(step_delay_ms / 1000)
             except GateError as error:
                 raise GateError(f"Step {block['n']} in {path.name}: {error}") from error
     finally:
@@ -562,7 +656,8 @@ def replay(session, case, headed=True):
                 _run(browser_id, "close")
             except GateError:
                 pass
-    return {"session": session.id, "case": case, "status": "COMPLETED", "browser": sname(browser_id)}
+    return {"session": session.id, "case": case, "status": "COMPLETED", "browser": sname(browser_id),
+            "action_delay_ms": action_delay_ms, "step_delay_ms": step_delay_ms}
 
 
 def verify_replay(src, case, headed=False):

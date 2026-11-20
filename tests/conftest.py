@@ -67,6 +67,7 @@ def filled(cases_doc, config, **per_case):
                     refs=[dict(r, status="ok") if r["path"] else dict(r, status="waived", note="the case runs without this file in this test") for r in case["refs"]])
         for step in case["steps"]:
             step["expected"] = "ok"
+            step["evidence"] = "Frame the control and its visible result for this action"
         case.update(per_case.get(case["id"], {}))
     return data
 

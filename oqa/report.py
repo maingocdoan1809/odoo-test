@@ -170,14 +170,19 @@ def write_case(sheet, session: Session, record, t):
             sheet.cell(row, column, value).alignment = wrap
         paint(sheet.cell(row, 6), step_label)
         height = max(height_for(step["caption"], 42), height_for(step["expected"], 42), height_for(step["actual"], 42))
-        picture = session.dir / step["images"][0]["annotated"] if step["images"] else None
-        if picture and picture.exists():
-            image = Image(str(picture))
-            image.height, image.width = round(image.height * IMAGE_WIDTH / image.width), IMAGE_WIDTH
-            sheet.add_image(image, f"G{row}")
-            height = max(height, image.height * 0.75 + 6)
-        sheet.row_dimensions[row].height = height
-        row += 1
+        for index, captured in enumerate(step["images"] or [{}]):
+            if index:
+                sheet.cell(row, 1, step["n"]).alignment = wrap
+                sheet.cell(row, 2, captured.get("caption") or step["caption"]).alignment = wrap
+            picture = session.dir / captured["annotated"] if captured.get("annotated") else None
+            image_height = 0
+            if picture and picture.exists():
+                image = Image(str(picture))
+                image.height, image.width = round(image.height * IMAGE_WIDTH / image.width), IMAGE_WIDTH
+                sheet.add_image(image, f"G{row}")
+                image_height = image.height * 0.75 + 6
+            sheet.row_dimensions[row].height = max(height if not index else 30, image_height)
+            row += 1
     section("s5")
     for column, key in enumerate(("attempt", "result", "failed", "reason"), 1):
         cell = sheet.cell(row, column, t[key])
@@ -332,22 +337,27 @@ def write_back(session: Session, ws, records, t):
     if not backup.exists():                                           # the first time only: it is what the user gave, not what we wrote
         shutil.copy2(source, backup)
     book = load_workbook(backup, keep_vba=source.suffix.lower() == ".xlsm")
-    table = book[sheet_name]
-    last = max((c for c in range(1, table.max_column + 1) if table.cell(header, c).value not in (None, "")), default=len(cols))
     result_fields = ("res", "date", "evid", "why")
-    new_columns = []
-    for key in result_fields:
-        if key not in cols:
-            last += 1
-            cols[key] = last
-            new_columns.append(last)
-            cell = table.cell(header, last, heads[key])
-            donor = table.cell(header, max(1, last - 1))
-            cell.font, cell.fill, cell.border, cell.alignment = copy(donor.font), copy(donor.fill), copy(donor.border), copy(donor.alignment)
-            table.column_dimensions[get_column_letter(last)].width = 18 if key != "why" else 40
+    layouts = {}
+    tables = cases_doc["source"].get("tables") or {sheet_name: {"header_row": header, "columns": cols}}
+    for table_name, layout in tables.items():
+        table, header, cols = book[table_name], layout["header_row"], dict(layout["columns"])
+        last = max(table.max_column, max(cols.values(), default=0))
+        new_columns = []
+        for key in result_fields:
+            if key not in cols:
+                last += 1
+                cols[key] = last
+                new_columns.append(last)
+                cell = table.cell(header, last, heads[key])
+                donor = table.cell(header, max(1, last - 1))
+                cell.font, cell.fill, cell.border, cell.alignment = copy(donor.font), copy(donor.fill), copy(donor.border), copy(donor.alignment)
+                table.column_dimensions[get_column_letter(last)].width = 18 if key != "why" else 40
+        layouts[table_name] = (table, header, cols, new_columns)
     used = {s.title.lower() for s in book.worksheets}
     names = {r["id"]: safe_sheet_name(r["id"], used) for r in records}
     for record in records:
+        table, header, cols, new_columns = layouts[record.get("source", {}).get("sheet", sheet_name)]
         write_case(book.create_sheet(names[record["id"]]), session, record, t)
         row = record["row"]
         if record["status"] in COLORS:
@@ -366,6 +376,8 @@ def write_back(session: Session, ws, records, t):
     if state.get("channel") == "path":
         target = source.with_name(f"{source.stem}.result-{session.id}{source.suffix}")
     elif state.get("channel") == "addin":
+        if len(layouts) > 1:
+            raise ValueError("Multi-sheet selections currently require channel path")
         from . import excel_writeback
 
         stage = session.dir / "logs"
