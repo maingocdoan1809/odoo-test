@@ -15,7 +15,9 @@ hooks:
 
 # odoo-test
 
-Use `python "<folder containing this SKILL.md>/oqa.py" <command>`, abbreviated as `oqa`. Keep the workspace and session ID from intake and pass them explicitly to worker commands. Use the workspace language.
+Use `python "<folder containing this SKILL.md>/oqa.py" <command>`, abbreviated as `oqa`. Keep the workspace and session ID from intake and pass them explicitly to worker commands. Write AI-authored testcase steps, expected results, analysis, questions and observations in Vietnamese. Quote exact Odoo text in its original language. For each replayable step, fill `captions.en` and `captions.ja` with a short equivalent of the Vietnamese action. Use the workspace's Evidence caption language for supplemental `--caption` text on screenshots.
+
+Give every analysed case a concise Vietnamese title that describes the behavior being checked, for example “Chặn số lượng âm khi lưu phiếu”. Keep the workbook ID for traceability. Use a short business term for `fixture_name` and a descriptive `--label` for each generated record, for example “phiếu hai dòng” and “mặt hàng đối chứng”. The tool supplies the `AUTO_TEST_` prefix and run suffix automatically.
 
 ## Workbook run
 
@@ -30,7 +32,7 @@ Public formats: [contract](references/contract.md). Odoo conventions: [Odoo refe
 
 Conclusions have a kind. FAIL means the application differs from the expectation and needs `--control` (the element operated and how it was verified to be the intended one). A script, selector or browser problem, or a missing precondition, is BLOCKED/PENDING and needs `oqa live diagnose CASE --category automation|precondition ...` first; never close because a selector was not found or time ran out. Message codes (ERR_xxx) live in the design document: compare the message text in the UI language (`oqa case context` lists each code's text), never require the literal code on screen. A PASS must show the value the expectation names (a count, date or content), not a label that is always there. To pass a running case to another worker without losing steps or spending recovery budget: `oqa live handover CASE --reason ... [--to WORKER]`, then the new worker runs `oqa live start CASE`.
 
-Live and Replay are separate results. Live PASS/FAIL is the run that produced the evidence; Replay PASS/FAIL/NOT RUN (`oqa live replay CASE|all`) only says whether the saved script still reproduces it, never overwrites Live, and is shown on the dashboard and in the Excel report. Fast mode (`--fast`, or the dashboard's "Chạy nhanh" switch) sets both viewing pauses to 0.
+Live and Replay are separate results. Live PASS/FAIL is the run that produced the evidence. Replay PASS/FAIL/CANCELLED/NOT RUN (`oqa live replay CASE|all`) is shown separately on the dashboard and in Excel. The visible replay shows the current step and closes its window when finished. Closing that window cancels the replay and stops any remaining cases in the batch. Fast mode (`--fast`, or the dashboard's "Chạy nhanh" switch) sets both viewing pauses to 0.
 
 Fixtures are created through the screen, never by ORM write or DOM edits: `oqa fixture key --case ID --label NAME` (a key unique to this run), `oqa fixture ui ledger|license_user|contract --case ID --key FIELD --values-json ...` (relations as `{"$ref": "existing record"}` read only or `{"$fixture": "key"}`; relative dates as `{"$date": -180}`), `oqa fixture ref MODEL --case ID --value NAME`, and `oqa fixture cleanup --case ID [--run rXXXX] [--apply]` for the data this run created.
 

@@ -2,6 +2,8 @@
 
 analysis.json = {schema_version, cases: [ {
     id, profile,
+    title          text                                 concise Vietnamese description of the behavior under test
+    fixture_name   text (optional)                      short Vietnamese business label for generated data
     verdict        ready | needs_user | blocked
     clarity        {score 1-5, notes}                    is the case understandable as written
     sufficiency    {score 1-5, missing: [text]}          does it carry the data to be run
@@ -20,7 +22,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from . import SCHEMA_VERSION, events, intake, memory, refs
+from . import SCHEMA_VERSION, events, intake, memory, record_names, refs
 from .store import SchemaError
 
 VERDICTS = ("ready", "needs_user", "blocked")
@@ -46,16 +48,22 @@ def template(cases_doc, workspace, session=None):
             path = r.get("path", "") if r["status"] == "found" else (refs.lookup(session, r["text"], folders) if session else "")
             entries.append({"kind": "file", "text": r["text"], "status": "ok" if path else "missing", "path": path, "note": path})
         items.append({
-            "id": case["id"], "previous": memory.recall(workspace["name"], stem, case["id"]), "profile": profiles[0] if len(profiles) == 1 else "", "verdict": "",
+            "id": case["id"], "title": "", "fixture_name": "", "previous": memory.recall(workspace["name"], stem, case["id"]), "profile": profiles[0] if len(profiles) == 1 else "", "verdict": "",
             "clarity": {"score": 0, "notes": ""}, "sufficiency": {"score": 0, "missing": []},
             "refs": entries,
             "vague": case.get("vague", []),
             "vague_resolved": [{"phrase": v["phrase"], "concrete": "", "source": ""} for v in case.get("vague", [])],
             "data_needs": [], "data_considered": "", "edge_cases": [], "depends_on": list(case["case_refs"]), "reuse": "",
-            "steps": [{"n": i, "action": line, "expected": "", "evidence": ""} for i, line in enumerate(case["steps"], 1)],
+            "steps": [{"n": i, "action": line, "expected": "", "evidence": "", "captions": {"en": "", "ja": ""}}
+                      for i, line in enumerate(case["steps"], 1)],
             "_title": case["title"], "_expected": case["expected"],
         })
-    out = {"schema_version": SCHEMA_VERSION, "cases": items}
+    out = {"schema_version": SCHEMA_VERSION, "cases": items,
+           "_writing": ("Viết tên, bước, mong đợi, phân tích và câu hỏi bằng tiếng Việt. Đặt title theo hành vi nghiệp vụ cần kiểm tra, "
+                        "ví dụ «Chặn số lượng âm khi lưu phiếu». Điền fixture_name bằng cụm ngắn mô tả dữ liệu, ví dụ «phiếu hai dòng». "
+                        "Giữ id từ file gốc để đối chiếu. Giữ nguyên nhãn và thông báo Odoo khi trích dẫn. "
+                        "Điền captions.en và captions.ja bằng chú thích ngắn tương đương cho từng bước."),
+           "_evidence_language": workspace.get("evidence_language", "vi")}
     if session:
         if session.state().get("channel"):
             from .store import read_json
@@ -65,7 +73,7 @@ def template(cases_doc, workspace, session=None):
             for item in items:
                 assessed = existing.get(item["id"])
                 if assessed:
-                    for field in ("profile", "verdict", "clarity", "sufficiency", "vague_resolved",
+                    for field in ("title", "fixture_name", "profile", "verdict", "clarity", "sufficiency", "vague_resolved",
                                   "data_needs", "data_considered", "edge_cases", "edge_cases_none_reason",
                                   "depends_on", "reuse", "steps", "reason", "questions", "timeout_s"):
                         if field in assessed:
@@ -95,6 +103,9 @@ def validate(analysis, cases_doc, workspace):
     info = {c["id"]: c for c in cases_doc["cases"]}
     for ident, c in by_id.items():
         at = f"case {ident}"
+        for field in ("title", "fixture_name"):
+            if field in c and not isinstance(c[field], str):
+                problems.append(f"{at}: {field} must be text")
         verdict = c.get("verdict")
         if verdict not in VERDICTS:
             problems.append(f"{at}: verdict must be one of {', '.join(VERDICTS)}")
@@ -134,6 +145,10 @@ def validate(analysis, cases_doc, workspace):
                 if isinstance(step, dict) and "evidence" in step and verdict == "ready":
                     if not isinstance(step["evidence"], str) or not step["evidence"].strip():
                         problems.append(f"{at}: step {position} needs evidence: describe the visible state and exact region to frame; split combined UI actions into separate steps")
+                if isinstance(step, dict) and "captions" in step:
+                    labels = step["captions"]
+                    if not isinstance(labels, dict) or any(k not in ("vi", "en", "ja") or not isinstance(v, str) for k, v in labels.items()):
+                        problems.append(f"{at}: step {position} captions must map vi, en or ja to text")
         if "timeout_s" in c and not (isinstance(c["timeout_s"], int) and not isinstance(c["timeout_s"], bool) and MIN_TIMEOUT <= c["timeout_s"] <= MAX_TIMEOUT):
             problems.append(f"{at}: timeout_s must be a whole number of seconds from {MIN_TIMEOUT} to {MAX_TIMEOUT}")
         for dep in c.get("depends_on") or []:
@@ -278,7 +293,7 @@ def strategy(analysis, cases_doc, workspace):
     lines = [f"# {t['title']}: {cases_doc['source']['name']}", "", f"## {t['run']} ({len(ordered)})", ""]
     for n, ident in enumerate(ordered, 1):
         c = by_id[ident]
-        lines += [f"### {n}. {ident}: {info[ident]['title']}", "",
+        lines += [f"### {n}. {record_names.title(info[ident], c, {})} ({ident})", "",
                   f"- {t['profile']}: {c['profile']} · {t['clarity']} {c['clarity']['score']}/5 · {t['suff']} {c['sufficiency']['score']}/5",
                   f"- {t['deps']}: {', '.join(c.get('depends_on') or []) or t['none']}" + (f" · {t['reuse']}: {c['reuse']}" if c.get("reuse") else "")]
         if c.get("data_needs"):

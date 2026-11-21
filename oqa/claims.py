@@ -74,7 +74,10 @@ def free_cases(session):
         if any(d not in state["results"] or state["results"][d]["status"] != "PASS" for d in analysis[c].get("depends_on") or []):
             continue                                              # its parent has not passed yet
         ready.append(c)
-    return sorted(ready, key=lambda c: (bool(analysis[c].get("data_needs")), _difficulty(analysis[c])))
+    from . import dispatch_requests
+
+    asked = set(dispatch_requests.pending(session))               # what the user asked for on the dashboard goes first; it takes no slot until a worker claims it
+    return sorted(ready, key=lambda c: (c not in asked, bool(analysis[c].get("data_needs")), _difficulty(analysis[c])))
 
 
 def claim(session, agent, want=None):

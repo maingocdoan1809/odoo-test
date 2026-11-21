@@ -20,10 +20,10 @@ def staged(session, ws, store, monkeypatch):
 
 
 def test_a_replay_on_an_environment_is_recorded_for_that_environment_only(session, staged):
-    live.replay(session, "ORD-001", action_delay_ms=0, step_delay_ms=0, env="staging")
+    live.replay(session, "ORD-001", headed=False, action_delay_ms=0, step_delay_ms=0, env="staging")
     assert staged == ["staging"]
     assert replays.status(session, "ORD-001") == "NOT RUN"                  # the session's own Replay column is the main environment's
-    live.replay(session, "ORD-001", action_delay_ms=0, step_delay_ms=0)
+    live.replay(session, "ORD-001", headed=False, action_delay_ms=0, step_delay_ms=0)
     assert replays.status(session, "ORD-001") == "PASS"
     saved = regression.load("demo")
     (key,) = saved
@@ -111,6 +111,8 @@ def test_the_scripts_zip_tells_the_runner_which_script_and_the_runner_writes_res
     archive = zipfile.ZipFile(io.BytesIO(script_bundle.build(session)))
     manifest = json.loads(archive.read("cases.json"))
     assert manifest["workspace"] == "demo" and manifest["cases"]["ORD-001"]["script"] == regression.scripts("demo")[0]["key"]
+    assert manifest["cases"]["ORD-001"]["fixtureStem"] == "AUTO_TEST_create-order_"
+    assert "ZZ_AUTOTEST_" in manifest["cases"]["ORD-001"]["fixtureSources"]
     runner = archive.read("replay.mjs").decode()
     assert "result.json" in runner and "process.exitCode = 1" in runner and "OQA_ENV" in runner
 
@@ -130,7 +132,7 @@ def _fake_browser(monkeypatch):
 
 def test_video_has_a_note_and_a_chapter_per_step_and_is_kept_by_its_mode(session, staged, monkeypatch):
     calls = _fake_browser(monkeypatch)
-    live.replay(session, "ORD-001", action_delay_ms=0, step_delay_ms=0, env="staging", video="on")
+    live.replay(session, "ORD-001", headed=False, action_delay_ms=0, step_delay_ms=0, env="staging", video="on")
     kept = replays.latest(session, "ORD-001") or {}
     run = regression.load("demo")[regression.scripts("demo")[0]["key"]]["staging"]["latest"]
     assert run["video"].endswith(".webm") and "staging-" in run["video"]
@@ -144,7 +146,7 @@ def test_video_has_a_note_and_a_chapter_per_step_and_is_kept_by_its_mode(session
 def test_video_in_fail_mode_is_dropped_when_the_run_passes_and_kept_when_it_fails(session, staged, monkeypatch):
     from pathlib import Path
     _fake_browser(monkeypatch)
-    live.replay(session, "ORD-001", action_delay_ms=0, step_delay_ms=0, env="staging", video="fail")
+    live.replay(session, "ORD-001", headed=False, action_delay_ms=0, step_delay_ms=0, env="staging", video="fail")
     key = regression.scripts("demo")[0]["key"]
     assert "video" not in regression.load("demo")[key]["staging"]["latest"]
     assert not list((Path(live.paths.workspace_dir("demo")) / "videos").rglob("*.webm"))
@@ -154,13 +156,13 @@ def test_video_in_fail_mode_is_dropped_when_the_run_passes_and_kept_when_it_fail
             raise GateError("timeout waiting for Saved")
     monkeypatch.setattr(live, "run_actions", refuse)
     with pytest.raises(GateError):
-        live.replay(session, "ORD-001", action_delay_ms=0, step_delay_ms=0, env="staging", video="fail")
+        live.replay(session, "ORD-001", headed=False, action_delay_ms=0, step_delay_ms=0, env="staging", video="fail")
     assert Path(regression.load("demo")[key]["staging"]["latest"]["video"]).is_file()
 
 
 def test_no_video_unless_asked_and_a_fast_regression_has_none_by_default(session, staged, monkeypatch):
     calls = _fake_browser(monkeypatch)
-    live.replay(session, "ORD-001", action_delay_ms=0, step_delay_ms=0)
+    live.replay(session, "ORD-001", headed=False, action_delay_ms=0, step_delay_ms=0)
     assert not [c for c in calls if c[0].startswith("video")]
     with pytest.raises(GateError, match="video must be"):
         live.replay(session, "ORD-001", video="always")

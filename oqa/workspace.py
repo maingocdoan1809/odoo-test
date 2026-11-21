@@ -3,12 +3,14 @@ credential store under `secret_ref(workspace, profile)`."""
 import re
 from urllib.parse import urlparse
 
-from . import SCHEMA_VERSION
+from . import SCHEMA_VERSION, captions
 from .paths import check_name, workspace_dir
 from .secrets import SecretStore
 from .store import SchemaError, read_json, write_json
 
 LANGUAGES = ("vi", "ja", "en")
+DEFAULT_TEST_PREFIX = "AUTO_TEST_"
+LEGACY_TEST_PREFIX = "ZZ_AUTOTEST_"
 PREFIX_RE = re.compile(r"^[A-Za-z0-9_-]{2,30}$")
 MAIN_ENV = "main"       # the workspace's own url/db; `environments` lists the others (staging, production...) that run the same scripts
 
@@ -19,7 +21,11 @@ def secret_ref(ws, profile, env=None):
 
 
 def blank(name=""):
-    return {"schema_version": SCHEMA_VERSION, "name": name, "url": "", "db": "", "profiles": [], "environments": [], "reference_dirs": [], "language": "vi", "test_prefix": "ZZ_AUTOTEST_"}
+    return {"schema_version": SCHEMA_VERSION, "name": name, "url": "", "db": "", "profiles": [], "environments": [], "reference_dirs": [], "language": "vi", "test_prefix": DEFAULT_TEST_PREFIX}
+
+
+def test_prefix(value):
+    return DEFAULT_TEST_PREFIX if value in (None, "", LEGACY_TEST_PREFIX) else value
 
 
 def normalize(raw):
@@ -47,7 +53,10 @@ def normalize(raw):
             environments.append({"name": str(e.get("name", "")).strip(), "url": env_url.rstrip("/"), "db": str(e.get("db", "")).strip(), "accounts": accounts})
     return {"schema_version": SCHEMA_VERSION, "name": text("name"), "url": url.rstrip("/"), "db": text("db"), "profiles": profiles, "environments": environments,
             "reference_dirs": [str(d).strip() for d in raw.get("reference_dirs") or [] if str(d).strip()],
-            "language": text("language", "vi") or "vi", "test_prefix": text("test_prefix", "ZZ_AUTOTEST_") or "ZZ_AUTOTEST_"}
+            "language": text("language", "vi") or "vi",
+            "evidence_language": text("evidence_language", "vi") or "vi",
+            "replay_caption_language": text("replay_caption_language", "vi") or "vi",
+            "test_prefix": test_prefix(text("test_prefix"))}
 
 
 def validate(ws):
@@ -97,6 +106,9 @@ def validate(ws):
             used.add(a.get("profile"))
     if ws.get("language") not in LANGUAGES:
         problems.append(f"Language must be one of {', '.join(LANGUAGES)}.")
+    for key in ("evidence_language", "replay_caption_language"):
+        if ws.get(key, "vi") not in captions.LANGUAGES:
+            problems.append(f"{key} must be vi, en or ja.")
     if not PREFIX_RE.match(ws.get("test_prefix", "")):
         problems.append("Test-data prefix: 2 to 30 letters, digits, - or _.")
     if problems:
@@ -126,7 +138,7 @@ def load(name):
     ws = read_json(workspace_dir(name) / "workspace.json")
     if ws is None:
         raise SchemaError(f"workspace '{name}' does not exist", "workspace")
-    return validate(ws)
+    return validate({**ws, "test_prefix": test_prefix(ws.get("test_prefix"))})
 
 
 def public_view(ws, store: SecretStore):

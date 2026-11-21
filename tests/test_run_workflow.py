@@ -161,3 +161,27 @@ def test_worker_mcp_only_serves_assigned_case(ws, workbook, monkeypatch):
 
     monkeypatch.setattr(worker_mcp.mcp_server, "serve", handle)
     worker_mcp.serve(session, "ORD-001", "assigned")
+
+
+def test_the_worker_prompt_can_be_built_and_keeps_its_literal_braces(session, tmp_path):
+    """The prompt is an f-string: a literal brace pair left single makes every dispatched worker crash before its first step."""
+    from oqa import dispatch
+    from test_flow import executing
+
+    executing(session, tmp_path)
+    prompt = dispatch._prompt(session, "ORD-001", "dispatch-1-1")
+    assert "Execute case ORD-001" in prompt and '{"$ref": ...}' in prompt and '{"name":"<the key>"' in prompt
+
+
+def test_a_bad_conclusion_reached_on_leftover_data_is_reopened_instead_of_accepted(session, tmp_path, monkeypatch):
+    from oqa import dispatch, events
+    from test_flow import executing
+
+    executing(session, tmp_path)
+    monkeypatch.setattr(dispatch.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(OSError("no model in this test")))
+    fail = {"status": "FAIL", "category": "application", "reason": "Site A was deleted without an error"}
+    assert dispatch.audit(session, "claude", "haiku", "ORD-001", fail) is None                        # nothing suspicious, the model cannot be reached: the conclusion stands
+    events.append(session.dir, "fixture_prepared", case="ORD-001", attempt=1, key="ZZ_AUTOTEST_ORD_ITEM", code="x", model="m", record_id=None)
+    assert "ZZ_AUTOTEST_ORD_ITEM" in dispatch.audit(session, "claude", "haiku", "ORD-001", fail)      # a fixed key: it may have found an earlier run's record
+    blocked = {"status": "BLOCKED", "category": "precondition", "reason": "A stale pre-existing record shows a second row"}
+    assert "left in the environment" in dispatch.audit(session, "claude", "haiku", "ORD-002", blocked)

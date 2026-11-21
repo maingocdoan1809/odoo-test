@@ -85,8 +85,8 @@ def test_no_horizontal_scroll_every_control_is_named_and_the_console_is_clean(se
         assert not errors, errors
 
 
-def test_long_case_content_stays_readable_and_table_scroll_survives_redraw(served):
-    """A realistic long list must scroll inside its panel, with all columns reachable."""
+def test_long_case_content_stays_readable_and_the_page_scroll_survives_redraw(served):
+    """A realistic long list makes the one page scroll, without clipping content or sideways scrollbars."""
     with browser.launch(True) as new_page:
         _, page = new_page()
         page.goto(served)
@@ -107,43 +107,54 @@ def test_long_case_content_stays_readable_and_table_scroll_survives_redraw(serve
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
             assert page.eval_on_selector("#main", "e => e.scrollWidth <= e.clientWidth + 1"), width
             assert page.eval_on_selector("tr.case .title", "e => e.scrollHeight <= e.clientHeight + 1"), "title is clipped"
-            assert page.eval_on_selector("tr.case td:nth-child(3)", "e => e.scrollWidth <= e.clientWidth + 1"), "profile is clipped"
-            assert page.eval_on_selector(".case-table-scroll", "e => e.scrollHeight > e.clientHeight"), "long list cannot scroll"
+            assert page.eval_on_selector("tr.case td:nth-child(3)", "e => e.scrollWidth <= e.clientWidth + 1"), "step progress is clipped"
             panel = page.locator(".case-list").bounding_box()
             detail = page.locator("#detail").bounding_box()
-            if width < 1600:
-                assert detail["y"] >= panel["y"] + panel["height"] - 1, "detail squeezes the table"
+            if width < 860:
+                assert detail["y"] >= panel["y"] + panel["height"] - 1, "narrow layout must stack detail below cases"
             else:
-                assert detail["x"] >= panel["x"] + panel["width"], "wide layout wastes available space"
+                assert detail["x"] >= panel["x"] + panel["width"], "two-pane layout must keep the steps beside the cases"
+            assert page.evaluate("document.documentElement.scrollHeight > innerHeight"), "the page scrolls as a whole"
 
         page.set_viewport_size({"width": 375, "height": 667})
-        assert page.eval_on_selector(".case-table-scroll", "e => e.scrollWidth > e.clientWidth")
-        page.eval_on_selector(".case-table-scroll", "e => { e.scrollLeft = e.scrollWidth; e.scrollTop = 160; }")
-        before = page.eval_on_selector(".case-table-scroll", "e => [e.scrollLeft, e.scrollTop]")
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
+        page.evaluate("window.scrollTo(0, 160)")
+        before = page.evaluate("window.scrollY")
         page.evaluate("renderMain()")
-        assert page.eval_on_selector(".case-table-scroll", "e => [e.scrollLeft, e.scrollTop]") == before
-        assert page.eval_on_selector(".case-table-scroll", """e => {
-            const panel = e.getBoundingClientRect(), last = e.querySelector('th:last-child').getBoundingClientRect();
-            return last.left >= panel.left && last.right <= panel.right + 1 && Math.abs(last.top - panel.top) <= 1;
-        }"""), "the result column or sticky header is unreachable"
+        assert page.evaluate("window.scrollY") == before, "the page scroll position was lost by the redraw"
         for collapsed in (True, False):
-            page.evaluate("value => toggleRail(value)", collapsed)
-            assert page.eval_on_selector("#main", "e => e.clientHeight > 200 && e.scrollHeight > e.clientHeight")
-            assert page.eval_on_selector("#main", "e => e.getBoundingClientRect().bottom <= innerHeight + 1")
+            page.evaluate("value => toggleCases(value)", collapsed)
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
+            assert page.evaluate("document.documentElement.scrollHeight > innerHeight")
+
+
+def test_case_list_sidebar_toggles_open_and_closed(served):
+    with browser.launch(True) as new_page:
+        _, page = new_page()
+        page.goto(served)
+        page.wait_for_selector("tr.case")
+        assert page.locator("#caseListBody").is_visible()
+        page.click("#caseToggle")
+        assert page.eval_on_selector(".layout", "e => e.classList.contains('cases-collapsed')")
+        assert not page.locator("#caseListBody").is_visible()
+        assert page.get_attribute("#caseToggle", "aria-expanded") == "false"
+        page.click("#caseToggle")
+        assert page.locator("#caseListBody").is_visible()
+        assert page.get_attribute("#caseToggle", "aria-expanded") == "true"
 
 
 def test_the_page_does_not_move_while_it_is_being_read(session, served):
     """A live page must not pull itself from under the reader: no redraw when nothing changed, scroll kept when something did, and nothing redrawn while text is selected."""
     with browser.launch(True) as new_page:
         _, page = new_page()
-        page.set_viewport_size({"width": 1000, "height": 420})
+        page.set_viewport_size({"width": 800, "height": 420})          # narrow layouts scroll as one page
         page.goto(served)
         page.wait_for_selector("tr.case")
-        page.evaluate("document.querySelector('tr.case').dataset.mark = 'x'; document.getElementById('main').scrollTop = 150")
-        assert page.evaluate("document.getElementById('main').scrollTop") == 150, "the page is too short to scroll: the test proves nothing"
+        page.evaluate("document.querySelector('tr.case').dataset.mark = 'x'; window.scrollTo(0, 150)")
+        assert page.evaluate("window.scrollY") > 0, "the page is too short to scroll: the test proves nothing"
         page.wait_for_timeout(4000)                                                  # two or more polls with identical data
         assert page.evaluate("document.querySelector('tr.case').dataset.mark") == "x", "the page was redrawn although nothing changed"
-        assert page.evaluate("document.getElementById('main').scrollTop") == 150
+        assert page.evaluate("window.scrollY") > 0
 
         page.evaluate("const r = document.createRange(); r.selectNodeContents(document.querySelector('tr.case .title')); const s = getSelection(); s.removeAllRanges(); s.addRange(r)")
         session.ask("Which customer?")                                              # the data changes while the person has text selected
@@ -151,7 +162,7 @@ def test_the_page_does_not_move_while_it_is_being_read(session, served):
         assert page.evaluate("document.querySelector('tr.case').dataset.mark") == "x", "the page was redrawn under a selection"
         page.evaluate("getSelection().removeAllRanges()")
         page.wait_for_selector(".attn-panel", timeout=5000)                         # once they let go, the change appears
-        assert page.evaluate("document.getElementById('main').scrollTop") == 150, "the scroll position was lost by the redraw"
+        assert page.evaluate("window.scrollY") == 150, "the scroll position was lost by the redraw"
 
 
 VIETNAMESE = "ồấẫậẳằễệổỗộờởỡợừửữựỳỵỷỹặẵẩầ"          # stacked diacritics: the letters a font without full Vietnamese support draws from another font
@@ -166,6 +177,8 @@ def test_replay_speed_controls_persist_and_submit_the_selected_delays(served):
         data["cases"][0].update(status="PASS", can_replay=True)
         page.route("**/api/session?**", lambda route: route.fulfill(json=data))
         page.evaluate("v => { S.view = v; S.caseId = v.cases[0].id; renderMain(); }", data)
+        page.get_by_text("Tuỳ chọn chạy lại", exact=True).click()
+        page.get_by_label("Ngôn ngữ chú thích", exact=True).select_option("ja")
         action = page.get_by_label("Nghỉ sau thao tác (ms)", exact=True)
         step = page.get_by_label("Nghỉ sau bước (ms)", exact=True)
         action.fill("1200")
@@ -182,6 +195,28 @@ def test_replay_speed_controls_persist_and_submit_the_selected_delays(served):
             page.get_by_role("button", name="Chạy lại testcase", exact=True).click()
         assert request.value.post_data_json["action_delay_ms"] == 1200
         assert request.value.post_data_json["step_delay_ms"] == 2400
+        assert request.value.post_data_json["caption_language"] == "ja"
+
+
+def test_scripts_play_opens_the_selected_script_with_its_caption_language(served, session):
+    with browser.launch(True) as new_page:
+        _, page = new_page()
+        row = {"case": "ORD-001", "title": "Tạo đơn hàng", "case_id": "ORD-001", "session": session.id,
+               "workbook": "orders", "results": {}}
+        page.route("**/api/regression?**", lambda route: route.fulfill(json={
+            "environments": ["staging"], "scripts": [row], "replay_caption_language": "en"}))
+        page.route("**/api/replay?**", lambda route: route.fulfill(json={"ok": True}))
+        page.goto(served)
+        page.get_by_role("tab", name="Scripts").click()
+        scripts = page.locator("#scriptsMain")
+        language = scripts.get_by_label("Ngôn ngữ chú thích", exact=True)
+        assert language.input_value() == "en"
+        language.select_option("ja")
+        with page.expect_request("**/api/replay?**") as request:
+            scripts.get_by_role("button", name="▶ staging", exact=True).click()
+        sent = request.value.post_data_json
+        assert (sent["id"], sent["case"], sent["env"], sent["caption_language"]) == (session.id, "ORD-001", "staging", "ja")
+        assert sent["step_delay_ms"] > 0
 
 
 def test_every_font_stack_really_draws_vietnamese(served):
@@ -227,4 +262,4 @@ def test_the_ai_repair_notes_are_shown_under_the_case_analysis(session, tmp_path
         page.wait_for_selector(".ai-notes .note")
         text = page.inner_text(".ai-notes .note")
         assert "sau lần 1" in text.lower() and "Save is inside the gear menu" in text and "the probe lists no Save button" in text and "20 giây" in text
-        assert "đã sửa 1 lần" in page.inner_text("#detail summary")
+        assert "đã sửa 1 lần" in page.inner_text("#detail summary:has-text('Phân tích của AI')")

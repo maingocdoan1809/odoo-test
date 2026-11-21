@@ -481,7 +481,8 @@ def cmd_regress(args):
         lines = ["  ".join(head)] + ["  ".join([row["key"]] + [f"{row['results'][e]['status']}" + (f" ({row['results'][e]['at']})" if row["results"][e].get("at") else "") for e in table["environments"]]) for row in table["scripts"]]
         return table, "\n".join(lines) if table["scripts"] else "No saved script in this workspace yet."
     wanted = [c.strip() for c in args.cases.split(",") if c.strip()] if args.cases else None
-    rows = regression.run(ws, args.env, wanted, headed=args.headed, video=args.video or default_video(args), action_delay_ms=args.action_delay_ms, step_delay_ms=args.step_delay_ms, fast=args.fast)
+    rows = regression.run(ws, args.env, wanted, headed=args.headed, video=args.video or default_video(args), action_delay_ms=args.action_delay_ms,
+                          step_delay_ms=args.step_delay_ms, fast=args.fast, caption_language=args.caption_language)
     bad = [row for row in rows if row["replay"] != "PASS"]
     lines = [f"{row['script']} on {row['env']}: {row['replay']}" + (f" ({row['total_s']}s)" if row["replay"] == "PASS" else f" - {row['reason']}") + (f"\n    video: {row['video']}" if row.get("video") else "") for row in rows]
     return {"environment": rows[0]["env"], "runs": rows, "failed": len(bad)}, "\n".join(lines) + f"\nRegression on {rows[0]['env']}: PASS {len(rows) - len(bad)}/{len(rows)}."
@@ -525,12 +526,16 @@ def cmd_live(args):
     if args.action == "replay":
         if args.case == "all":
             rows = live.replay_all(session, headed=not args.headless, action_delay_ms=args.action_delay_ms,
-                                   step_delay_ms=args.step_delay_ms, fast=args.fast, env=args.env, video=args.video or default_video(args))
+                                   step_delay_ms=args.step_delay_ms, fast=args.fast, env=args.env, video=args.video or default_video(args),
+                                   caption_language=args.caption_language)
             bad = [row for row in rows if row["replay"] != "PASS"]
             lines = [f"{row['case']}: Replay {row['replay']}" + (f" ({row['total_s']}s)" if row["replay"] == "PASS" else f" - {row['reason']}") for row in rows]
             return {"replays": rows, "failed": len(bad)}, "\n".join(lines) + f"\nReplay PASS {len(rows) - len(bad)}/{len(rows)}."
         result = live.replay(session, args.case, headed=not args.headless,
-                             action_delay_ms=args.action_delay_ms, step_delay_ms=args.step_delay_ms, fast=args.fast, env=args.env, video=args.video or default_video(args))
+                             action_delay_ms=args.action_delay_ms, step_delay_ms=args.step_delay_ms, fast=args.fast, env=args.env,
+                             video=args.video or default_video(args), caption_language=args.caption_language)
+        if result["replay"] == "CANCELLED":
+            return {**result, "failed": 1}, result["reason"]
         t = result["timing"]
         return result, (f"Saved script completed for {args.case}: Replay PASS in {t['total_s']}s "
                         f"({t['pause_s']}s viewing pauses, {t['call_s']}s in {t['calls']} browser calls).")
@@ -672,7 +677,7 @@ def cmd_prepare(args):
     from .odoo_ui import Odoo
     started = time.monotonic()
     with probe.signed_in(None, ws, default_store(), args.profile, headless=True) as page:
-        o = Odoo(page, ws["url"], ws.get("test_prefix") or "ZZ_AUTOTEST_")
+        o = Odoo(page, ws["url"], ws["test_prefix"])
         data = sitemap.build(o.rpc, args.profile or ws["profiles"][0]["name"], page.evaluate(connect.VERSION_JS) or "", languages=args.languages, lang=lang)
     sitemap.save(ws["name"], data)
     folder, written, skipped = _write_snippets(ws["name"], data, lang)
@@ -688,7 +693,7 @@ def cmd_sitemap(args):
         session, ws = _session_and_workspace(args)
         lang = sitemap.output_language(args.lang or ws.get("language"))
         with probe.signed_in(session, ws, default_store(), args.profile, headless=not args.headed) as page:
-            o = Odoo(page, ws["url"], ws.get("test_prefix") or "ZZ_AUTOTEST_")
+            o = Odoo(page, ws["url"], ws["test_prefix"])
             data = sitemap.build(o.rpc, args.profile or ws["profiles"][0]["name"], page.evaluate(connect.VERSION_JS) or "", languages=args.languages, lang=lang)
         file = sitemap.save(ws["name"], data)
         m = data["meta"]
@@ -780,11 +785,11 @@ def cmd_publish(args):
     shutil.copytree(root, target, ignore=shutil.ignore_patterns(".git", ".venv", "tests", "test_skill", "__pycache__", ".pytest_cache", "*.pyc", "pytest.ini", ".gitignore", "CLAUDE.md"))
     lines.append(f"Skill folder now matches {root}: {target}")
     built = plugin.build(Path.home() / ".odoo-test" / "plugin")
-    done = subprocess.run(["claude", "plugin", "update", f"{plugin.NAME}@{plugin.NAME}-local"], capture_output=True, text=True) if shutil.which("claude") else None
+    done = subprocess.run(["claude", "plugin", "update", f"{plugin.NAME}@{plugin.NAME}-local"], capture_output=True, text=True, encoding="utf-8", errors="replace") if shutil.which("claude") else None
     lines.append(f"Plugin rebuilt at {built}" + (f" ({(done.stdout + done.stderr).strip().splitlines()[-1]})" if done and (done.stdout + done.stderr).strip() else ""))
-    if shutil.which("claude") and f"{plugin.NAME}@{plugin.NAME}-local" not in subprocess.run(["claude", "plugin", "list"], capture_output=True, text=True).stdout:
+    if shutil.which("claude") and f"{plugin.NAME}@{plugin.NAME}-local" not in (subprocess.run(["claude", "plugin", "list"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout or ""):
         for step in (["marketplace", "add", str(built.parent)], ["install", f"{plugin.NAME}@{plugin.NAME}-local"]):
-            run = subprocess.run(["claude", "plugin", *step], capture_output=True, text=True)
+            run = subprocess.run(["claude", "plugin", *step], capture_output=True, text=True, encoding="utf-8", errors="replace")
             lines.append(("Plugin: " if run.returncode == 0 else "Plugin step failed: ") + " ".join(step[:2]) + (f" - {(run.stdout + run.stderr).strip().splitlines()[-1]}" if (run.stdout + run.stderr).strip() else ""))
     lines.append("Open a new Claude Code window to use the new version.")
     return {"skill": str(target), "plugin": str(built)}, "\n".join(lines)
@@ -996,6 +1001,7 @@ def build_parser():
     p.add_argument("--matrix", action="store_true", help="only show the latest result of each script on each environment")
     p.add_argument("--cases", help="only these case ids, comma-separated")
     p.add_argument("--headed", action="store_true", help="show the browser (regression runs without a window by default)")
+    p.add_argument("--caption-language", choices=("vi", "en", "ja"), help="override the workspace caption language")
     p.add_argument("--action-delay-ms", type=int, default=0, help="pause after each action in milliseconds (default 0)")
     p.add_argument("--step-delay-ms", type=int, default=0, help="pause after each checked step in milliseconds (default 0)")
     p.add_argument("--fast", action="store_true", help="both viewing pauses 0")
@@ -1027,6 +1033,7 @@ def build_parser():
     p.add_argument("--video", choices=list(live.VIDEO_MODES), help="replay: video with a note of each step: off (default) | on | fail (keep it only if the replay fails)")
     p.add_argument("--fast", action="store_true", help="replay: fast mode, both viewing pauses 0 (application waits are unchanged)")
     p.add_argument("--caption", help="shot: describe the checkpoint shown in this evidence picture")
+    p.add_argument("--caption-language", choices=["vi", "en", "ja"], help="replay: override the workspace caption language")
     p.add_argument("--verified-code", help="step: file containing only the confirmed Playwright actions")
     p.add_argument("--from-pre", action="store_true", help="shot: attach a saved live pre-action picture to an already recorded step")
     p.add_argument("--code", help="act or step: one verified Playwright action per line")

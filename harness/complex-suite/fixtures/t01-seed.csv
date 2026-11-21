@@ -1,0 +1,4 @@
+Name,Code,Site,Cost
+Seed one,{run}-A,{site},5
+Seed two,{run}-B,{site},8
+Seed three,{run}-C,{site},13

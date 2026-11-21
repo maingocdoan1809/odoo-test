@@ -6,282 +6,359 @@
 <link rel="icon" href="data:,">
 <title>Odoo Test: tiến độ</title>
 <style>
-  /* Warm editorial look: a cream canvas, coral used sparingly, a serif for headings, dark surfaces for code. No external fonts: the stacks fall back to what the computer has. */
+  /* Neutral test-tool look: cool grey canvas, white work surfaces, ONE blue accent for actions, red/green/amber only for results. No external fonts: the stacks fall back to what the computer has. */
   /*__FONT_FACES__*/
   :root {
-    --bg:#faf9f5; --surface:#faf9f5; --sunk:#f5f0e8; --card:#efe9de; --line:#e6dfd8; --line-soft:#ebe6df;
-    --ink:#141413; --body:#3d3d3a; --muted:#6c6a64; --accent:#cc785c; --accent-active:#a9583e; --accent-ink:#ffffff; --ring:rgba(204,120,92,.18);
-    --dark:#181715; --dark-soft:#1f1e1b; --dark-elev:#252320; --on-dark:#faf9f5; --on-dark-soft:#a09d96;
-    --pass:#2f7a45; --fail:#b23c3c; --pending:#8a5a00; --blocked:#6c6a64; --running:#2b7a6b; --repairing:#a9583e; --planned:#7d7a72;
+    --bg:#f5f6f8; --surface:#ffffff; --sunk:#eff1f4; --card:#f8f9fb; --line:#d9dde4; --line-soft:#e7eaef;
+    --ink:#14171f; --body:#2d323d; --muted:#586072; --accent:#2563eb; --accent-active:#1d4ed8; --accent-ink:#ffffff; --accent-soft:#eaf1ff; --ring:rgba(37,99,235,.25);
+    --dark:#14171f; --dark-soft:#1b1f28; --dark-elev:#252a35; --on-dark:#eceef2; --on-dark-soft:#9aa3b2;
+    --pass:#1a7f37; --fail:#c62828; --pending:#8f5a00; --blocked:#566070; --running:#0b6e8a; --repairing:#b45309; --planned:#667085;
     --display:"Be Vietnam Pro", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
     --sans:"Be Vietnam Pro", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
     --mono:"JetBrains Mono", "Cascadia Mono", Consolas, "Courier New", "DejaVu Sans Mono", monospace;
-    --scrollbar-track:var(--sunk); --scrollbar-thumb:color-mix(in srgb, var(--muted) 80%, var(--sunk));
+    --scrollbar-track:var(--sunk); --scrollbar-thumb:color-mix(in srgb, var(--muted) 60%, var(--sunk));
   }
   @media (prefers-color-scheme: dark) { :root {
-    --bg:#181715; --surface:#1f1e1b; --sunk:#1b1a17; --card:#252320; --line:#34322d; --line-soft:#2b2a26;
-    --ink:#faf9f5; --body:#d8d5cd; --muted:#a09d96; --accent:#cc785c; --accent-active:#a9583e; --accent-ink:#ffffff; --ring:rgba(204,120,92,.28);
-    --dark:#12110f; --dark-soft:#12110f; --dark-elev:#252320; --on-dark:#faf9f5; --on-dark-soft:#a09d96;
-    --pass:#5db872; --fail:#e26f6f; --pending:#d4a017; --blocked:#a09d96; --running:#5db8a6; --repairing:#e8a55a; --planned:#8e8b82; } }
+    --bg:#0f1218; --surface:#161a21; --sunk:#11141a; --card:#1b2029; --line:#2b313c; --line-soft:#222833;
+    --ink:#eceef2; --body:#c9ced8; --muted:#9aa3b2; --accent:#3b82f6; --accent-active:#2563eb; --accent-ink:#ffffff; --accent-soft:#17233b; --ring:rgba(59,130,246,.35);
+    --dark:#0b0d11; --dark-soft:#0b0d11; --dark-elev:#1b2029; --on-dark:#eceef2; --on-dark-soft:#9aa3b2;
+    --pass:#4cc472; --fail:#f27878; --pending:#e0b341; --blocked:#9aa3b2; --running:#4fb8d6; --repairing:#f0a05a; --planned:#8b93a3; } }
   * { box-sizing:border-box; scrollbar-width:thin; scrollbar-color:var(--scrollbar-thumb) var(--scrollbar-track); }
-  @supports selector(::-webkit-scrollbar) {
-    * { scrollbar-width:auto; scrollbar-color:auto; }
-    ::-webkit-scrollbar { width:10px; height:10px; }
-    ::-webkit-scrollbar-track { background:var(--scrollbar-track); border-radius:999px; }
-    ::-webkit-scrollbar-thumb { background:var(--scrollbar-thumb); border:2px solid var(--scrollbar-track); border-radius:999px; min-height:32px; min-width:32px; }
-    ::-webkit-scrollbar-thumb:hover { background:var(--accent); }
-    ::-webkit-scrollbar-thumb:active { background:var(--accent-active); }
-    ::-webkit-scrollbar-corner { background:var(--scrollbar-track); }
-  }
-  html, body { height:100%; }
-  body { margin:0; height:100dvh; display:flex; flex-direction:column; background:var(--bg); color:var(--body); font:14px/1.55 var(--sans); font-variant-numeric:tabular-nums; }
-  button { font:inherit; color:inherit; }
+  html { min-height:100%; }
+  body { margin:0; min-height:100dvh; display:flex; flex-direction:column; background:var(--bg); color:var(--body); font:14px/1.5 var(--sans); font-variant-numeric:tabular-nums; }
+  button, input, select, textarea { font:inherit; color:inherit; }
   :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-  .mono { font-family:var(--mono); font-size:13px; white-space:nowrap; }
+  .mono { font-family:var(--mono); font-size:12.5px; }
   .muted { color:var(--muted); }
-  h1, h2, h3 { color:var(--ink); }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+  h1, h2, h3, h4 { color:var(--ink); margin:0; }
   [hidden] { display:none !important; }
-
-  .top { min-height:64px; flex-shrink:0; display:flex; align-items:center; gap:14px; padding:0 24px; background:var(--bg); border-bottom:1px solid var(--line); }
-  .top b { font:400 22px/1 var(--display); letter-spacing:-.3px; color:var(--ink); }
-  .live { margin-left:auto; display:flex; align-items:center; gap:8px; color:var(--muted); }
-  .dot { width:8px; height:8px; border-radius:50%; background:var(--planned); }
-  .dot.on { background:var(--pass); animation:pulse 1.8s ease-in-out infinite; }
   @keyframes pulse { 50% { opacity:.35; } }
   @keyframes spin { to { transform:rotate(360deg); } }
-  .spin { display:inline-block; width:11px; height:11px; margin-right:8px; border:2px solid var(--line); border-top-color:var(--c); border-radius:50%; animation:spin .9s linear infinite; vertical-align:-1px; }
-  .step .n .spin { margin:0; }
-  .step.s-RUNNING, .step.s-TRYING { background:color-mix(in srgb, var(--c) 8%, transparent); }
-  .live-note { color:var(--c); font-weight:500; margin-top:6px; }
-  @media (prefers-reduced-motion: reduce) { .spin { animation:pulse 1.8s ease-in-out infinite; border-top-color:var(--c); } }
-  @media (prefers-reduced-motion: reduce) { .dot.on { animation:none; } }
 
-  .layout { display:grid; flex:1; min-height:0; grid-template-columns:260px minmax(0,1fr); grid-template-rows:minmax(0,1fr); }
-  .layout.collapsed { grid-template-columns:48px minmax(0,1fr); }
-  .layout.collapsed .rail header h2, .layout.collapsed .rail header select, .layout.collapsed #history { display:none; }
-  .layout.collapsed .rail header { padding:14px 8px; align-items:center; }
-  .rail .railtop { display:flex; align-items:center; justify-content:space-between; gap:8px; }
-  .rail .railtop button { border:1px solid var(--line); background:var(--card); border-radius:6px; padding:4px 9px; cursor:pointer; font-size:14px; line-height:1.2; }
-  .histrow { position:relative; }
-  .histrow .del { position:absolute; top:10px; right:10px; border:0; background:transparent; color:var(--muted); cursor:pointer; font-size:15px; padding:2px 6px; border-radius:4px; opacity:.55; }
-  .histrow .del:hover { opacity:1; color:var(--bad, #b3261e); background:var(--bg); }
-  .replay { border:1px solid var(--accent); background:var(--card); color:var(--accent); border-radius:6px; padding:6px 14px; cursor:pointer; font:inherit; }
-  .replay:disabled { opacity:.5; cursor:default; }
-  .rail { min-width:0; min-height:0; background:var(--sunk); border-right:1px solid var(--line); overflow:auto; }
-  .rail header { padding:20px 20px 14px; display:flex; flex-direction:column; gap:12px; position:sticky; top:0; background:var(--sunk); border-bottom:1px solid var(--line); }
-  .rail h2 { margin:0; font:500 12px/1.4 var(--sans); letter-spacing:1.5px; text-transform:uppercase; color:var(--muted); }
-  select { width:100%; height:40px; padding:0 12px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); font:inherit; }
-  select:focus, textarea:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--ring); }
-  .hist { width:100%; text-align:left; border:0; border-bottom:1px solid var(--line-soft); background:transparent; padding:16px 20px; cursor:pointer; display:block; }
-  .hist[aria-current=true] { background:var(--card); box-shadow:inset 4px 0 0 var(--accent); }
-  .hist .name { font-weight:500; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .hist .sub { display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 8px; color:var(--muted); font-size:13px; margin:2px 0 10px; overflow-wrap:anywhere; }
-  .tag { font:500 12px/1.4 var(--sans); padding:2px 10px; background:var(--card); border-radius:9999px; color:var(--ink); white-space:nowrap; }
-  .hist .tag { background:var(--bg); }
-  .tag.attn { background:var(--accent); color:var(--accent-ink); text-transform:uppercase; letter-spacing:1.5px; font-size:11px; }
+  /* ---------- status vocabulary: icon + colour + word, never colour alone ---------- */
+  .s-PASS, .s-VERIFIED { --c:var(--pass); } .s-FAIL { --c:var(--fail); } .s-PENDING { --c:var(--pending); }
+  .s-BLOCKED, .s-STOPPED, .s-INTERRUPTED { --c:var(--blocked); } .s-RUNNING { --c:var(--running); }
+  .s-REPAIRING, .s-EXPLORING, .s-TRYING { --c:var(--repairing); } .s-BUILT { --c:var(--pending); }
+  .s-PLANNED, .s-HELD, .s-NEW, .s-NOT { --c:var(--planned); }
+  .ico { width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; display:block; }
+  .si { display:inline-flex; width:16px; height:16px; align-items:center; justify-content:center; color:var(--c); flex:none; }
+  .spin { display:inline-block; flex:none; width:12px; height:12px; margin:0 2px; border:2px solid var(--line); border-top-color:var(--c); border-radius:50%; animation:spin .9s linear infinite; }
+  .status { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; font-weight:600; font-size:12px; color:var(--c); }
+  .sq { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--c); flex:none; }
+  @media (prefers-reduced-motion: reduce) { .spin, .dot.on, .lbspin { animation:pulse 1.8s ease-in-out infinite; } }
 
-  .bar { display:flex; height:8px; border-radius:9999px; overflow:hidden; background:var(--line); gap:2px; }
-  .bar i { display:block; min-width:4px; }
-  .s-NOT { --c:var(--planned); }
-  .scripts-table { width:100%; border-collapse:collapse; } .scripts-table th, .scripts-table td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:middle; }
-  .scripts-table .res { font-weight:600; color:var(--c); } .scripts-table .res small { display:block; font-weight:400; color:var(--muted); }
-  .scripts-bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:0 0 14px; }
-  #scriptsMain > .panel { padding:20px 24px; }
-  #scriptsMain > .panel > header { display:grid; gap:6px; margin-bottom:20px; }
-  #scriptsMain > .panel > header h2 { margin:0; font:500 18px/1.4 var(--sans); }
-  #scriptsMain > .panel > header span { color:var(--muted); font-size:13px; }
-  .s-PASS { --c:var(--pass); } .s-FAIL { --c:var(--fail); } .s-PENDING { --c:var(--pending); } .s-BLOCKED, .s-STOPPED, .s-INTERRUPTED { --c:var(--blocked); }
-  .s-RUNNING { --c:var(--running); } .s-REPAIRING { --c:var(--repairing); } .s-PLANNED, .s-HELD, .s-NEW, .s-NOT { --c:var(--planned); }
-  .s-EXPLORING, .s-TRYING { --c:var(--repairing); } .s-BUILT { --c:var(--pending); } .s-VERIFIED { --c:var(--pass); }
-  .bar i, .sq { background:var(--c); }
-  .sq { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:8px; vertical-align:baseline; }
-
-  main { min-width:0; min-height:0; overflow:auto; padding:20px 24px 32px; overflow-wrap:anywhere; container:dashboard / inline-size; }
-  .empty { max-width:460px; margin:12vh auto; text-align:center; color:var(--muted); }
-  .empty b { display:block; font:400 28px/1.2 var(--display); letter-spacing:-.3px; color:var(--ink); margin-bottom:10px; }
-  h1 { margin:0; font:400 36px/1.15 var(--display); letter-spacing:-.5px; overflow-wrap:anywhere; }
-  .meta { display:flex; flex-wrap:wrap; gap:4px 20px; color:var(--muted); margin:8px 0 20px; }
-  .meta .mono { white-space:normal; }
-  .meta b { color:var(--ink); font-weight:500; }
-
-  .track { display:grid; grid-template-columns:repeat(6, minmax(0,1fr)); gap:6px; margin-bottom:20px; }
-  .track div { padding:10px 0 0; border-top:2px solid var(--line); color:var(--muted); font-size:13px; }
-  .track .done { border-color:var(--ink); color:var(--ink); }
-  .track .current { border-color:var(--accent); color:var(--ink); font-weight:500; }
-  .track small { display:block; color:var(--muted); font-weight:400; font-size:12px; }
-
-  .summary { display:flex; flex-wrap:wrap; align-items:baseline; gap:8px 28px; margin-bottom:12px; }
-  .summary span { white-space:nowrap; } .summary strong { font:400 40px/1 var(--display); letter-spacing:-1px; margin-right:6px; color:var(--ink); }
-  .now { color:var(--muted); margin:14px 0 24px; min-height:1.5em; }
-
-  .attn-panel { background:var(--card); border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:12px; padding:24px 28px; margin-bottom:28px; }
-  .attn-panel h3 { margin:0 0 6px; font:400 24px/1.2 var(--display); letter-spacing:-.3px; }
-  .attn-panel .q { white-space:pre-wrap; overflow-wrap:anywhere; }
-  .refs-panel { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px 24px; margin-bottom:28px; }
-  .liveboard { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 22px; margin-bottom:18px; }
-  .liveboard h3 { margin:0 0 8px; font:500 16px/1.3 var(--sans); }
-  .liveboard ul { margin:0; padding:0; list-style:none; }
-  .liveboard li { padding:8px 0; border-top:1px solid var(--line-soft); }
-  .lbspin { flex:none; width:14px; height:14px; border-radius:50%; border:2px solid var(--line); border-top-color:var(--accent); animation:spin .8s linear infinite; align-self:center; }
-  .lbspin.wait { animation-duration:2.2s; opacity:.6; }
-  @media (prefers-reduced-motion: reduce) { .lbspin { animation:pulse 1.8s ease-in-out infinite; } }
-  .lb-free { margin-top:10px; padding:8px 12px; border-radius:8px; background:var(--sunk); color:var(--body); }
-  .lb-row { display:flex; gap:14px; flex-wrap:wrap; align-items:baseline; }
-  .lb-bar2 { height:6px; background:var(--line); border-radius:3px; margin-top:6px; overflow:hidden; }
-  .lb-bar2 i { display:block; height:100%; background:var(--accent); transition:width .4s; }
-  .ticks i.t { background:var(--accent); animation:pulse 1s infinite; }
-  @keyframes pulse { 50% { opacity:.35; } }
-  .activity { margin:8px 0 18px; padding:0; list-style:none; max-height:260px; overflow:auto; font-size:13px; }
-  .activity li { padding:3px 0; border-bottom:1px solid var(--line-soft); overflow-wrap:anywhere; }
-  .act-code { font-size:12px; white-space:normal; }
-  .refs-panel h3 { margin:0 0 4px; font:500 16px/1.3 var(--sans); }
-  .refs-panel textarea { width:100%; min-height:44px; margin:10px 0; padding:10px 14px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); font:inherit; resize:vertical; }
-  .refs-panel ul { margin:8px 0 0; padding:0; list-style:none; }
-  .refs-panel li { padding:4px 0; overflow-wrap:anywhere; }
-  .attn-panel textarea { width:100%; min-height:80px; margin:12px 0; padding:12px 14px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); font:inherit; resize:vertical; }
-  .btn { height:40px; padding:0 20px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); font-weight:500; cursor:pointer; }
+  /* ---------- controls ---------- */
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; height:32px; padding:0 12px; border:1px solid var(--line); border-radius:6px; background:var(--surface); color:var(--ink); font-weight:500; font-size:13px; cursor:pointer; white-space:nowrap; text-decoration:none; transition:background .14s ease, border-color .14s ease; }
+  .btn:hover:not(:disabled) { background:var(--sunk); border-color:var(--muted); }
   .btn.primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
-  .btn.primary:active { background:var(--accent-active); border-color:var(--accent-active); }
+  .btn.primary:hover:not(:disabled) { background:var(--accent-active); border-color:var(--accent-active); }
+  .btn.danger { color:var(--fail); border-color:var(--fail); }
+  .btn.danger:hover:not(:disabled) { background:var(--fail); color:var(--surface); border-color:var(--fail); }
+  .btn.sm { height:28px; padding:0 10px; font-size:12px; }
   .btn:disabled { opacity:.5; cursor:default; }
-  pre.strategy { margin:14px 0 0; padding:20px 24px; max-height:300px; overflow:auto; background:var(--dark-soft); color:var(--on-dark); border-radius:12px; white-space:pre-wrap; font:400 13px/1.65 var(--mono); }
-  .err { color:var(--fail); margin-top:8px; white-space:pre-wrap; }
-  .head { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-start; justify-content:space-between; }
-  .head h1 { min-width:0; flex:1 1 240px; }
-  .head .btn { flex-shrink:0; }
-  .reports { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:0 0 28px; }
-  a.btn { text-decoration:none; display:inline-flex; align-items:center; color:var(--ink); }
   a.btn.primary { color:var(--accent-ink); }
-  .btn.danger { border-color:var(--fail); color:var(--fail); background:var(--bg); }
-  .btn.danger:active { background:var(--fail); color:var(--bg); }
-  .hint-box { margin:16px 0; padding:18px 20px; border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:12px; background:var(--card); }
-  .hint-box h3 { margin:0 0 4px; font:400 20px/1.25 var(--display); letter-spacing:-.2px; }
-  .hint-box textarea { width:100%; min-height:72px; margin:12px 0; padding:12px 14px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); font:inherit; resize:vertical; }
-  .idle { margin:0 0 16px; padding:10px 14px; border:1px solid var(--line); border-left:4px solid var(--blocked); border-radius:8px; background:var(--card); color:var(--body); }
-  .ai-notes { margin:16px 0 0; }
-  .note { margin:10px 0; padding:12px 14px; border:1px solid var(--line); border-left:4px solid var(--repairing); border-radius:8px; background:var(--bg); overflow-wrap:anywhere; }
-  .note h4 { margin:0 0 6px; font:500 13px/1.4 var(--sans); color:var(--ink); }
-  .note dl { margin:0; display:grid; grid-template-columns:max-content 1fr; gap:4px 12px; }
-  .note dt { color:var(--muted); } .note dd { margin:0; }
-  .said { margin-top:8px; padding:8px 12px; border-left:3px solid var(--accent); border-radius:0 8px 8px 0; background:var(--bg); overflow-wrap:anywhere; }
+  .tag { display:inline-flex; align-items:center; font:500 11px/1.5 var(--sans); padding:0 7px; background:var(--sunk); border:1px solid var(--line-soft); border-radius:4px; color:var(--body); white-space:nowrap; }
+  .tag.attn { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  select, input[type=search], input[type=number], textarea { border:1px solid var(--line); border-radius:6px; background:var(--surface); color:var(--ink); }
+  select, input[type=search] { height:32px; padding:0 10px; }
+  select:focus, textarea:focus, input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--ring); }
+  textarea { width:100%; min-height:64px; padding:8px 10px; resize:vertical; }
+  .err { color:var(--fail); margin-top:6px; white-space:pre-wrap; font-size:13px; }
+  .err:empty { display:none; }
 
-  .split { display:grid; grid-template-columns:minmax(0,1fr); gap:16px; align-items:start; }
-  .panel { min-width:0; background:var(--surface); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
-  .case-list header { display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:4px 12px; padding:12px 16px; border-bottom:1px solid var(--line); }
-  .case-list h2 { margin:0; font:500 16px/1.4 var(--sans); }
-  .case-list header span { font-size:12px; color:var(--muted); }
-  .case-list { container:case-list / inline-size; }
-  .case-scroll-hint { display:none; }
-  .case-table-scroll { max-height:clamp(260px, 58dvh, 640px); overflow:auto; scrollbar-gutter:stable; }
+  /* ---------- top bar ---------- */
+  .top { position:sticky; top:0; z-index:10; flex:none; min-height:48px; display:flex; align-items:center; gap:20px; padding:0 20px; background:var(--surface); border-bottom:1px solid var(--line); }
+  .top b { font:700 15px/1 var(--sans); color:var(--ink); letter-spacing:.01em; }
+  .tabs { display:flex; max-width:100%; overflow-x:auto; }
+  .tabs button { flex:none; background:none; border:0; border-bottom:2px solid transparent; padding:0 14px; height:47px; cursor:pointer; color:var(--muted); font-weight:500; }
+  .tabs button:hover { color:var(--ink); }
+  .tabs button[aria-selected=true] { color:var(--ink); border-bottom-color:var(--accent); }
+  .live { margin-left:auto; display:flex; align-items:center; gap:8px; color:var(--muted); font-size:12px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--planned); }
+  .dot.on { background:var(--pass); animation:pulse 1.8s ease-in-out infinite; }
+
+  /* ---------- page frame ---------- */
+  .layout { flex:1; min-height:0; display:flex; flex-direction:column; }
+  main { min-width:0; min-height:0; flex:1; display:flex; flex-direction:column; background:var(--bg); overflow-wrap:anywhere; container:dashboard / inline-size; }
+  #scriptsMain, #siteMapMain { display:block; overflow:auto; padding:20px 24px 32px; }
+  .empty { max-width:460px; margin:12vh auto; padding:0 16px; text-align:center; color:var(--muted); }
+  .empty b { display:block; font:600 20px/1.3 var(--display); color:var(--ink); margin-bottom:8px; }
+  .card { background:var(--surface); border:1px solid var(--line); border-radius:8px; }
+  .bar { display:flex; height:6px; border-radius:3px; overflow:hidden; background:var(--line); gap:1px; }
+  .bar i { display:block; min-width:3px; background:var(--c); }
+
+  /* ---------- screen 1: the session list ---------- */
+  .page { flex:1; min-height:0; overflow:auto; }
+  .page-in { max-width:1080px; margin:0 auto; padding:24px 24px 40px; }
+  .page-head h1 { font:600 22px/1.3 var(--display); }
+  .page-head p { margin:4px 0 0; }
+  .toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:18px 0 6px; }
+  .toolbar input[type=search] { flex:1 1 200px; max-width:320px; }
+  .toolbar select { width:auto; min-width:160px; }
+  .seg { display:inline-flex; margin-left:auto; border:1px solid var(--line); border-radius:6px; overflow:hidden; background:var(--surface); }
+  .seg button { height:30px; padding:0 12px; border:0; border-right:1px solid var(--line); background:transparent; color:var(--muted); cursor:pointer; font-size:13px; }
+  .seg button:last-child { border-right:0; }
+  .seg button[aria-pressed=true] { background:var(--accent-soft); color:var(--accent); font-weight:600; }
+  .group { margin:22px 0 8px; display:flex; align-items:center; gap:8px; font:600 12px/1.4 var(--sans); letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  .group .count { background:var(--sunk); border:1px solid var(--line-soft); border-radius:10px; padding:0 7px; font-size:11px; letter-spacing:0; }
+  .group.need { color:var(--accent); } .group.need .count { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .srow-wrap { position:relative; margin-bottom:8px; }
+  .srow { width:100%; text-align:left; display:grid; grid-template-columns:minmax(0,1.5fr) minmax(0,1.2fr) minmax(190px,1fr); align-items:center; gap:6px 20px; padding:12px 44px 12px 16px; border:1px solid var(--line); border-radius:8px; background:var(--surface); cursor:pointer; transition:border-color .14s ease, background .14s ease; }
+  .srow:hover { border-color:var(--accent); background:var(--card); }
+  .srow[aria-current=true] { border-color:var(--accent); }
+  .srow.need { border-left:3px solid var(--accent); }
+  .s-name { font-weight:600; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .s-sub { color:var(--muted); font-size:12px; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .s-state { display:flex; flex-wrap:wrap; gap:4px 6px; align-items:center; }
+  .s-prog .bar { margin-bottom:5px; }
+  .s-nums { display:flex; flex-wrap:wrap; gap:0 12px; font-size:12px; color:var(--muted); }
+  .s-nums b { color:var(--ink); font-weight:600; }
+  .s-nums .f b { color:var(--fail); } .s-nums .p b { color:var(--pass); }
+  .srow-wrap .del { position:absolute; top:50%; right:10px; transform:translateY(-50%); width:28px; height:28px; border:0; border-radius:6px; background:transparent; color:var(--muted); cursor:pointer; font-size:16px; line-height:1; opacity:.55; }
+  .srow-wrap .del:hover { opacity:1; color:var(--fail); background:var(--sunk); }
+
+  /* ---------- screen 2: session bar ---------- */
+  /* The session header: the answer to "how is this run going" at a glance, on the same surface as the rest of the page. */
+  .sbar { flex:none; background:var(--surface); border-bottom:1px solid var(--line); padding:12px 20px 16px; --h-pass:var(--pass); --h-fail:var(--fail); --h-run:var(--running); --h-rest:var(--planned); --h-line:var(--line); }
+  .sbar-row { display:flex; align-items:center; flex-wrap:wrap; gap:6px 12px; }
+  .sbar h1 { font:700 21px/1.25 var(--display); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sbar-actions { margin-left:auto; display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+  .sbar-meta { margin:4px 0 0 0; font-size:12px; color:var(--muted); display:flex; flex-wrap:wrap; gap:2px 16px; align-items:center; }
+  .sbar-meta .now { color:var(--body); display:inline-flex; align-items:center; gap:7px; }
+  .sbar-meta .dot { background:var(--running); }
+  .hero { display:grid; grid-template-columns:auto minmax(0,1fr) minmax(300px,400px); gap:10px 24px; align-items:center; margin-top:12px; }
+  .ring { width:80px; height:80px; display:block; }
+  .ring circle { fill:none; stroke-width:8; }
+  .ring .ring-bg { stroke:var(--line); }
+  .ring-n { fill:var(--ink); font:700 22px/1 var(--display); } .ring-l { fill:var(--muted); font:500 9.5px/1 var(--sans); letter-spacing:.08em; text-transform:uppercase; }
+  .tiles { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:8px; }
+  .tile { text-align:left; padding:7px 12px 8px; border:1px solid var(--line); border-top:3px solid var(--tc); border-radius:6px; background:var(--card); color:var(--ink); cursor:pointer; min-width:0; transition:background .14s ease, border-color .14s ease; }
+  .tile:hover { background:var(--sunk); }
+  .tile[aria-pressed=true] { background:var(--accent-soft); border-color:var(--accent); border-top-color:var(--tc); }
+  .tile b { display:block; font:700 26px/1.05 var(--display); letter-spacing:-.02em; color:var(--tc); }
+  .tile span { display:block; margin-top:3px; font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .t-pass { --tc:var(--pass); } .t-fail { --tc:var(--fail); } .t-run { --tc:var(--running); } .t-rest { --tc:var(--planned); }
+  .tile.zero b { color:var(--muted); }
+  .pipe { display:flex; margin:0; padding:0; list-style:none; }
+  .pipe li { position:relative; flex:1; min-width:0; text-align:center; padding-top:19px; font-size:11.5px; color:var(--muted); }
+  .pipe li i { position:absolute; top:0; left:50%; width:14px; height:14px; margin-left:-7px; border-radius:50%; border:2px solid var(--line); background:var(--surface); z-index:1; }
+  .pipe li:not(:last-child)::after { content:""; position:absolute; top:6px; left:calc(50% + 9px); right:calc(-50% + 9px); height:2px; background:var(--line); }
+  .pipe li.done { color:var(--body); } .pipe li.done i { background:var(--pass); border-color:var(--pass); } .pipe li.done::after { background:var(--pass) !important; }
+  .pipe li.current { color:var(--ink); font-weight:700; } .pipe li.current i { border-color:var(--accent); background:var(--surface); box-shadow:0 0 0 4px var(--ring); }
+  .pipe li::after { transform-origin:left center; }
+  @keyframes grow { from { transform:scaleX(0); } to { transform:scaleX(1); } }
+  @keyframes pop { 0% { transform:scale(0); } 70% { transform:scale(1.25); } 100% { transform:scale(1); } }
+  @keyframes halo { 0% { box-shadow:0 0 0 0 var(--ring); } 70%, 100% { box-shadow:0 0 0 9px transparent; } }
+  @keyframes travel { from { left:calc(50% + 9px); opacity:0; } 15% { opacity:1; } 85% { opacity:1; } to { left:calc(150% - 9px - 16px); opacity:0; } }
+  .pipe.enter li::after { animation:grow .45s ease-out both; animation-delay:calc(var(--i) * .16s + .1s); }
+  .pipe.enter li i { animation:pop .35s ease-out both; animation-delay:calc(var(--i) * .16s); }
+  .pipe li.current i { animation:halo 1.8s ease-out infinite; }
+  .pipe li.flow::before { content:""; position:absolute; top:6px; left:calc(50% + 9px); width:16px; height:2px; border-radius:2px; background:var(--accent); z-index:1; animation:travel 1.6s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .pipe li::after, .pipe li i, .pipe li.flow::before { animation:none !important; } }
+  .pipe li span { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pipe li small { display:block; font-size:10.5px; opacity:.8; min-height:1.3em; }
+  .menu { position:relative; }
+  .menu > summary { list-style:none; display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 12px; border:1px solid var(--line); border-radius:6px; background:var(--surface); color:var(--ink); font-weight:500; font-size:13px; cursor:pointer; white-space:nowrap; }
+  .menu > summary::-webkit-details-marker { display:none; }
+  .menu > summary::after { content:"▾"; color:var(--muted); font-size:11px; }
+  .menu[open] > summary, .menu > summary:hover { border-color:var(--muted); background:var(--sunk); }
+  .menu-panel { position:absolute; right:0; top:calc(100% + 6px); z-index:30; width:min(380px, 88vw); max-height:70vh; overflow:auto; padding:14px; background:var(--surface); border:1px solid var(--line); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.18); color:var(--body); }
+  .menu-panel h4 { font-size:12px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); margin:0 0 8px; }
+  .menu-panel .btnrow { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; }
+  .menu-panel hr { border:0; border-top:1px solid var(--line-soft); margin:12px 0; }
+  .menu-panel textarea { min-height:48px; margin:6px 0; font-size:12.5px; }
+  .menu-panel ul { margin:8px 0 0; padding:0; list-style:none; font-size:12.5px; }
+  .menu-panel li { padding:3px 0; }
+
+  /* ---------- screen 2: "AI needs you" inbox ---------- */
+  .inbox { flex:none; padding:12px 20px; background:var(--accent-soft); border-bottom:1px solid var(--line); }
+  .inbox-head { display:flex; align-items:center; gap:8px; margin-bottom:8px; font:600 12px/1.4 var(--sans); letter-spacing:.06em; text-transform:uppercase; color:var(--accent); }
+  .inbox-head .count { background:var(--accent); color:var(--accent-ink); border-radius:10px; padding:0 7px; font-size:11px; letter-spacing:0; }
+  .inbox-list { display:grid; gap:8px; grid-template-columns:repeat(auto-fit, minmax(min(420px,100%), 1fr)); }
+  .ask { padding:12px 14px; background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:6px; min-width:0; }
+  .ask h3, .ask .ask-h { font:600 13.5px/1.4 var(--sans); color:var(--ink); }
+  .ask p { margin:4px 0 0; } .ask .q { white-space:pre-wrap; overflow-wrap:anywhere; margin-top:4px; }
+  .ask textarea { margin:8px 0 0; font-size:13px; }
+  .ask-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .ask.quiet { border-left-color:var(--blocked); }
+  .ask details { margin-top:6px; } .ask summary { cursor:pointer; color:var(--muted); font-size:12.5px; }
+  .jump { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .jump button { height:26px; padding:0 9px; border:1px solid var(--line); border-radius:5px; background:var(--card); color:var(--ink); font:500 12px/1 var(--mono); cursor:pointer; }
+  .jump button:hover { border-color:var(--accent); color:var(--accent); }
+  pre.strategy { margin:8px 0 0; padding:12px 14px; max-height:200px; overflow:auto; background:var(--dark-soft); color:var(--on-dark); border-radius:6px; white-space:pre-wrap; font:400 12.5px/1.6 var(--mono); }
+  .said { margin-top:6px; padding:6px 10px; border-left:3px solid var(--accent); background:var(--card); border-radius:0 6px 6px 0; font-size:13px; }
+  .idle { padding:8px 12px; border:1px solid var(--line); border-left:3px solid var(--blocked); border-radius:6px; background:var(--card); font-size:13px; }
+
+  /* ---------- screen 2: cases (left) | steps (right) ---------- */
+  .workarea { flex:none; display:grid; grid-template-columns:minmax(280px,340px) minmax(0,1fr); align-items:start; }
+  .case-column { min-width:0; background:var(--surface); border-right:1px solid var(--line); }
+  .case-list { display:flex; flex-direction:column; min-height:0; }
+  .case-list > header { display:flex; align-items:center; gap:8px; padding:10px 12px 8px 14px; }
+  .case-list h2 { flex:1; font:600 13px/1.4 var(--sans); } .case-list h2 span { color:var(--muted); font-weight:500; margin-left:4px; }
+  .case-toggle { width:26px; height:26px; padding:0; border:1px solid var(--line); border-radius:5px; background:var(--surface); color:var(--muted); cursor:pointer; line-height:1; }
+  .case-toggle:hover { border-color:var(--accent); color:var(--accent); }
+  .case-filter { display:flex; gap:6px; padding:0 12px 10px; border-bottom:1px solid var(--line); }
+  .case-filter input { flex:1 1 0; min-width:0; } .case-filter select { flex:0 0 auto; width:auto; }
+  .layout.cases-collapsed .workarea { grid-template-columns:44px minmax(0,1fr); }
+  .layout.cases-collapsed .case-list > header { padding:8px; justify-content:center; }
+  .layout.cases-collapsed .case-list h2, .layout.cases-collapsed .case-filter, .layout.cases-collapsed .case-table-scroll { display:none; }
   .case-table-scroll:focus-visible { outline-offset:-3px; }
-  .case-table { min-width:840px; table-layout:fixed; }
-  .case-table col:nth-child(1) { width:132px; }
-  .case-table col:nth-child(3) { width:112px; }
-  .case-table col:nth-child(4) { width:140px; }
-  .case-table col:nth-child(5) { width:64px; }
-  .case-table col:nth-child(6) { width:180px; }
-  .case-table .case-id { white-space:normal; overflow-wrap:anywhere; }
   table { width:100%; border-collapse:collapse; }
-  th { text-align:left; font:500 12px/1.4 var(--sans); letter-spacing:.8px; text-transform:uppercase; color:var(--muted); padding:12px; border-bottom:1px solid var(--line); background:var(--sunk); position:sticky; top:0; z-index:1; }
-  td { padding:12px; border-bottom:1px solid var(--line-soft); vertical-align:middle; }
-  tr.case { cursor:pointer; }
-  tr.case:hover td { background:var(--sunk); }
-  tr.case:focus-visible { outline-offset:-2px; }
-  tr.case[aria-selected=true] td { background:var(--card); } tr.case[aria-selected=true] td:first-child { box-shadow:inset 4px 0 0 var(--accent); }
-  tr.case:last-child td { border-bottom:0; }
-  .ticks { display:inline-flex; flex-wrap:wrap; max-width:100%; gap:3px; vertical-align:middle; margin-right:8px; }
-  .ticks i { flex-shrink:0; width:6px; height:14px; border-radius:3px; background:var(--c, transparent); border:1px solid var(--line); }
-  .ticks i.p { --c:var(--pass); border-color:var(--pass); } .ticks i.f { --c:var(--fail); border-color:var(--fail); }
-  .status { white-space:nowrap; font-weight:500; color:var(--c); }
-  .title { color:var(--ink); overflow-wrap:anywhere; }
+  .case-table thead { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+  .case-table, .case-table tbody { display:block; width:100%; }
+  .case-table tr.case { display:grid; grid-template-columns:auto minmax(0,1fr) auto; grid-template-areas:"title title title" "id live tags" "prog prog att"; align-items:center; gap:2px 8px; position:relative; padding:9px 14px 10px; border-bottom:1px solid var(--line-soft); cursor:pointer; }
+  .case-table tr.case:hover { background:var(--card); }
+  .case-table tr.case:focus-visible { outline-offset:-2px; }
+  .case-table tr.case[aria-selected=true] { background:var(--accent-soft); }
+  .case-table tr.case[aria-selected=true]::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--accent); }
+  .case-table tr.case td { display:block; padding:0; border:0; min-width:0; }
+  .case-table td:nth-child(1) { grid-area:title; }
+  .case-table td:nth-child(2) { grid-area:id; font-size:11.5px; color:var(--muted); }
+  .case-table td:nth-child(3) { grid-area:prog; }
+  .case-table td:nth-child(4) { grid-area:att; justify-self:end; font-size:11.5px; color:var(--muted); }
+  .case-table td:nth-child(5) { grid-area:live; }
+  .case-table td:nth-child(6) { grid-area:tags; justify-self:end; display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end; }
+  .case-table .title { font-size:13px; font-weight:600; line-height:1.4; color:var(--ink); white-space:normal; overflow-wrap:anywhere; }
+  .case-table tr.none, .case-table tr.none td { display:block; padding:16px 14px; color:var(--muted); }
+  .ticks { display:inline-flex; flex-wrap:wrap; max-width:100%; gap:2px; vertical-align:middle; margin-right:6px; }
+  .ticks i { flex:none; width:5px; height:10px; border-radius:2px; background:var(--line); }
+  .ticks i.p { background:var(--pass); } .ticks i.f { background:var(--fail); } .ticks i.t { background:var(--repairing); animation:pulse 1s infinite; }
+  .c-prog .muted { font-size:11.5px; }
 
-  .detail { padding:20px; }
-  .detail h2 { margin:0 0 6px; font:400 26px/1.2 var(--display); letter-spacing:-.4px; }
-  .detail .mono, .refs-panel .mono, .lb-free .mono { white-space:normal; overflow-wrap:anywhere; }
-  .chips { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 18px; }
-  .tabs { display:flex; gap:0; max-width:100%; overflow-x:auto; margin:6px 0 14px; border-bottom:1px solid var(--line); }
-  .tabs button { flex-shrink:0; }
-  .tabs button { background:none; border:0; border-bottom:2px solid transparent; padding:10px 16px; cursor:pointer; color:var(--muted); font-weight:500; }
-  .tabs button[aria-selected=true] { color:var(--ink); border-color:var(--accent); }
-  .workspace-tabs { margin:0; border:0; }
-  .workspace-tabs button { white-space:nowrap; }
-  /*__SITE_MAP_CSS__*/
-  .step { display:grid; grid-template-columns:28px minmax(0,1fr) 148px; gap:14px; padding:18px 0; border-bottom:1px solid var(--line-soft); }
+  .detail-column { min-width:0; padding:16px 20px 40px; }
+  .detail { display:grid; gap:14px; }
+  .dhead { padding:14px 16px; }
+  .dtitle { display:flex; align-items:baseline; gap:10px; }
+  .dtitle h2 { font:600 17px/1.4 var(--display); min-width:0; }
+  .dtitle .mono { font-weight:700; color:var(--accent); flex:none; }
+  .dstatus { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; margin-top:6px; }
+  .dmeta { margin-top:6px; font-size:12px; color:var(--muted); }
+  .dtools { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:12px; padding-top:12px; border-top:1px solid var(--line-soft); }
+  .dtools .grow { flex:1; }
+  .opts { margin:0; } .opts summary { cursor:pointer; color:var(--muted); font-size:12.5px; padding:0 4px; }
+  .opts-body { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; margin-top:8px; width:100%; font-size:13px; }
+  .opts-body label { display:inline-flex; align-items:center; gap:6px; }
+  .opts-body input[type=number] { width:84px; height:28px; padding:0 8px; }
+  .dtools .opts { flex-basis:100%; }
+  .asks { display:grid; gap:10px; }
+  .asks:empty { display:none; }
+  .sec { display:flex; align-items:center; gap:10px; }
+  .sec h3 { font:600 14px/1.4 var(--sans); } .sec .muted { font-size:12px; }
+  .att-tabs { display:flex; flex-wrap:wrap; gap:4px; margin-left:auto; }
+  .att-tabs button { height:26px; padding:0 10px; border:1px solid var(--line); border-radius:5px; background:var(--surface); color:var(--muted); cursor:pointer; font-size:12px; }
+  .att-tabs button[aria-selected=true] { background:var(--accent-soft); border-color:var(--accent); color:var(--accent); font-weight:600; }
+  .steps { padding:0 16px; }
+  .step { display:grid; grid-template-columns:28px minmax(0,1fr) 132px; gap:12px; padding:14px 0; border-bottom:1px solid var(--line-soft); }
   .step:last-child { border-bottom:0; }
-  .step .n { color:var(--c); font-weight:500; font-family:var(--mono); }
-  .step .cap { font-weight:500; color:var(--ink); } .step .exp { color:var(--muted); margin-top:3px; }
-  .step .act { margin-top:8px; padding:8px 12px; border-left:3px solid var(--c); border-radius:0 8px 8px 0; background:var(--sunk); overflow-wrap:anywhere; }
-  .thumb { width:148px; height:88px; border:1px solid var(--line); border-radius:8px; background:var(--sunk) center top/cover no-repeat; cursor:zoom-in; padding:0; position:relative; overflow:hidden; }
+  .step.s-RUNNING, .step.s-TRYING { background:color-mix(in srgb, var(--c) 7%, transparent); margin:0 -16px; padding-left:16px; padding-right:16px; }
+  .step .n { width:24px; height:24px; border:1.5px solid var(--c); border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--c); font:600 12px/1 var(--mono); }
+  .step.s-PASS .n { background:var(--c); color:var(--surface); }
+  .step.s-FAIL .n { background:var(--c); color:var(--surface); }
+  .step.s-PENDING .n, .step.s-NOT .n { border-color:var(--line); color:var(--muted); }
+  .step .n .spin { margin:0; }
+  .cap { font-weight:600; color:var(--ink); }
+  .live-note { color:var(--c); font-weight:500; font-size:12.5px; margin-top:2px; }
+  .kv { display:grid; grid-template-columns:84px minmax(0,1fr); gap:3px 10px; margin:6px 0 0; font-size:13px; }
+  .kv dt { color:var(--muted); font-size:12px; padding-top:1px; } .kv dd { margin:0; }
+  .kv .act { padding:5px 9px; border-left:3px solid var(--c); background:var(--sunk); border-radius:0 6px 6px 0; color:var(--ink); }
+  .s-FAIL .kv .act { background:color-mix(in srgb, var(--fail) 9%, var(--surface)); }
+  .thumb { width:132px; height:80px; border:1px solid var(--line); border-radius:6px; background:var(--sunk) center top/cover no-repeat; cursor:zoom-in; padding:0; position:relative; overflow:hidden; }
   .thumb.fail { border-color:var(--fail); }
-  .thumb span { position:absolute; right:6px; bottom:6px; font:500 11px/1.4 var(--sans); padding:1px 8px; background:rgba(24,23,21,.82); color:var(--on-dark); border-radius:9999px; }
-  .noimg { width:148px; height:88px; border:1px dashed var(--line); border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--planned); font-size:12px; }
-  details { margin-top:16px; } summary { cursor:pointer; color:var(--muted); font-weight:500; }
-  details ul { margin:8px 0 0; padding-left:20px; }
+  .thumb span { position:absolute; right:5px; bottom:5px; font:500 11px/1.4 var(--sans); padding:0 7px; background:rgba(15,18,24,.85); color:#eceef2; border-radius:9px; }
+  .noimg { width:132px; height:80px; border:1px dashed var(--line); border-radius:6px; display:flex; align-items:center; justify-content:center; text-align:center; padding:4px; color:var(--muted); font-size:12px; }
+  .fold { padding:0; } .fold > summary { padding:11px 16px; cursor:pointer; font-weight:600; color:var(--ink); font-size:13.5px; }
+  .fold > summary .muted { font-weight:400; }
+  .fold > :not(summary) { padding:0 16px 14px; }
+  .fold ul, .fold ol { margin:6px 0 0; padding-left:20px; } .fold li { margin:2px 0; }
+  .fold p { margin:6px 0; }
+  .note { margin:10px 0 0; padding:10px 12px; border:1px solid var(--line); border-left:3px solid var(--repairing); border-radius:6px; background:var(--card); }
+  .note h4 { font:600 13px/1.4 var(--sans); margin-bottom:6px; }
+  .note dl { margin:0; display:grid; grid-template-columns:max-content 1fr; gap:3px 12px; } .note dt { color:var(--muted); } .note dd { margin:0; }
+  .hint-box h3 { font-size:13.5px; }
 
-  .lightbox { position:fixed; inset:0; background:rgba(24,23,21,.94); display:none; flex-direction:column; z-index:20; }
+  /* ---------- live activity drawer ---------- */
+  .drawer { position:fixed; top:48px; right:0; bottom:0; width:min(400px,100vw); z-index:15; display:flex; flex-direction:column; background:var(--surface); border-left:1px solid var(--line); box-shadow:-8px 0 24px rgba(0,0,0,.14); }
+  .drawer > header { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--line); }
+  .drawer h2 { font:600 14px/1.4 var(--sans); }
+  .drawer-body { flex:1; overflow:auto; padding:12px 16px 24px; }
+  .drawer details { margin:12px 0 0; } .drawer summary { cursor:pointer; color:var(--muted); font-weight:500; font-size:13px; }
+  .live-mini { display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; font-size:12.5px; color:var(--muted); }
+  .live-chip { border:1px solid var(--line); border-radius:5px; background:var(--card); color:var(--ink); padding:2px 8px; font-size:12px; cursor:pointer; }
+  .live-chip:hover { border-color:var(--accent); color:var(--accent); }
+  .lb-free { margin:8px 0 0; padding:6px 10px; border-radius:6px; background:var(--sunk); font-size:12.5px; }
+  .activity { margin:8px 0 0; padding:0; list-style:none; font-size:12.5px; }
+  .activity li { padding:5px 0; border-bottom:1px solid var(--line-soft); overflow-wrap:anywhere; }
+  .act-code { font-size:11.5px; white-space:normal; }
+
+  /* ---------- scripts tab ---------- */
+  .scripts-table { width:100%; border-collapse:collapse; background:var(--surface); }
+  .scripts-table th, .scripts-table td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line-soft); vertical-align:middle; }
+  .scripts-table th { font:600 11px/1.4 var(--sans); letter-spacing:.05em; text-transform:uppercase; color:var(--muted); background:var(--sunk); }
+  .scripts-table .res { font-weight:600; color:var(--c); } .scripts-table .res small { display:block; font-weight:400; color:var(--muted); }
+  .script-steps ol { margin:8px 0; padding-inline-start:25px; }
+  .script-steps li + li { margin-top:8px; }
+  .script-steps pre { overflow:auto; max-height:280px; padding:8px; background:var(--sunk); }
+  .s-CANCELLED { --c:var(--muted); }
+  .scripts-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 14px; }
+  #scriptsMain > .panel > header { display:grid; gap:4px; margin-bottom:16px; }
+  #scriptsMain > .panel > header h2 { font:600 17px/1.4 var(--display); } #scriptsMain > .panel > header span { color:var(--muted); font-size:13px; }
+  /*__SITE_MAP_CSS__*/
+
+  .lightbox { position:fixed; inset:0; background:rgba(8,10,14,.94); display:none; flex-direction:column; z-index:40; }
   .lightbox.open { display:flex; }
-  .lb-bar { display:flex; align-items:center; gap:10px; padding:14px 24px; color:var(--on-dark); }
+  .lb-bar { display:flex; align-items:center; gap:10px; padding:12px 20px; color:var(--on-dark); }
   .lb-bar .grow { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .lb-bar button { background:var(--dark-elev); color:var(--on-dark); border:1px solid #3a3833; border-radius:8px; height:36px; padding:0 16px; cursor:pointer; font-weight:500; }
+  .lb-bar button { background:var(--dark-elev); color:var(--on-dark); border:1px solid #3a4150; border-radius:6px; height:34px; padding:0 14px; cursor:pointer; font-weight:500; }
   .lb-bar button[aria-pressed=true] { background:var(--on-dark); color:var(--dark); }
-  .lb-body { flex:1; overflow:auto; display:flex; justify-content:center; align-items:flex-start; padding:0 24px 24px; }
-  .lb-body img { max-width:100%; height:auto; background:#fff; border-radius:8px; }
+  .lb-body { flex:1; overflow:auto; display:flex; justify-content:center; align-items:flex-start; padding:0 20px 20px; }
+  .lb-body img { max-width:100%; height:auto; background:#fff; border-radius:6px; }
 
-  /* Use the available main width, including when the history rail is collapsed. */
-  @container case-list (max-width:855px) { .case-scroll-hint { display:inline; } }
-  @container dashboard (min-width:1180px) {
-    .split { grid-template-columns:minmax(0,1.45fr) minmax(380px,1fr); }
-    .detail { position:sticky; top:0; max-height:calc(100dvh - 104px); overflow:auto; }
+  /* ---------- desktop: the whole page scrolls; the case list stays in view beside the steps ---------- */
+  @media (min-width:861px) {
+    .case-column { position:sticky; top:48px; max-height:calc(100dvh - 48px); overflow:auto; }
   }
-  @container dashboard (max-width:600px) {
-    .step { grid-template-columns:24px minmax(0,1fr); gap:10px; padding:14px 0; }
-    .step > .thumb, .step > .noimg { grid-column:2; }
-    .note dl { grid-template-columns:minmax(0,1fr); gap:2px; }
-    .note dd { margin-bottom:8px; }
-    .chips .tag { white-space:normal; overflow-wrap:anywhere; }
+  @media (max-width:1180px) {
+    .workarea { grid-template-columns:minmax(260px,300px) minmax(0,1fr); }
+    .step { grid-template-columns:28px minmax(0,1fr); } .step > .thumb, .step > .noimg { grid-column:2; width:100%; max-width:260px; }
   }
-  @media (max-width:1100px) {
-    .layout, .layout.collapsed { grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr); }
-    .rail { max-height:180px; border-right:0; border-bottom:1px solid var(--line); }
-    .rail header { padding:10px 16px; gap:8px; }
-    .layout.collapsed .rail header { padding:8px 12px; }
-    .hist { padding:10px 16px; }
-    .site-map-active .layout { grid-template-rows:minmax(0,1fr); }
+  @media (max-width:1180px) { .hero { grid-template-columns:auto minmax(0,1fr); } .pipe { grid-column:1 / -1; } }
+  @media (max-width:980px) { .srow { grid-template-columns:minmax(0,1fr) minmax(0,1fr); } .s-prog { grid-column:1 / -1; } }
+  @media (max-width:860px) {
+    .workarea { display:block; }
+    .case-column { border-right:0; border-bottom:1px solid var(--line); }
+    .case-table-scroll { max-height:38dvh; overflow:auto; }
+    .detail-column { padding:14px 12px 28px; }
   }
   @media (max-width:767px) {
-    main { padding:16px 12px 24px; }
-    h1 { font-size:26px; }
-    .top { flex-wrap:wrap; gap:2px 12px; padding:10px 12px 0; }
-    .top .workspace-tabs { order:3; flex-basis:100%; }
-    .workspace-tabs button { flex:1; }
-    .rail { max-height:156px; }
-    .track { grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
-    .summary { gap:8px 16px; }
-    .summary strong { font-size:30px; }
-    .meta { gap:4px 12px; font-size:12px; }
-    .meta .mono { font-size:12px; }
-    .attn-panel, .refs-panel, .liveboard, .hint-box, .detail { padding:16px; margin-bottom:16px; }
-    #scriptsMain > .panel { padding:16px; }
-    .detail h2 { font-size:22px; }
-    .reports { gap:8px; margin-bottom:16px; }
-    .btn { height:auto; min-height:40px; max-width:100%; padding:8px 14px; white-space:normal; }
-    .lb-bar { flex-wrap:wrap; gap:8px; padding:12px; }
-    .lb-bar .grow { flex-basis:100%; }
-    .lb-bar button { padding:0 12px; }
-    .lb-body { padding:0 12px 12px; }
+    .top { flex-wrap:wrap; gap:0 12px; padding:6px 12px 0; position:sticky; }
+    .top .workspace-tabs { order:3; flex-basis:100%; } .workspace-tabs button { flex:1; height:40px; }
+    .drawer { top:0; }
+    .sbar, .inbox { padding-left:12px; padding-right:12px; }
+    .page-in { padding:16px 12px 32px; }
+    .seg { margin-left:0; }
+    .srow { grid-template-columns:minmax(0,1fr); padding-right:40px; }
+    #scriptsMain, #siteMapMain { padding:16px 12px 24px; }
+    .kv { grid-template-columns:minmax(0,1fr); gap:0; } .kv dd { margin-bottom:6px; }
+    .note dl { grid-template-columns:minmax(0,1fr); gap:2px; } .note dd { margin-bottom:6px; }
+    .lb-bar { flex-wrap:wrap; gap:8px; padding:12px; } .lb-bar .grow { flex-basis:100%; }
+    .detail-column .dtitle { flex-wrap:wrap; }
+  }
+  @media (max-width:480px) {
+    .sbar-actions { margin-left:0; width:100%; }
+    .hero { grid-template-columns:minmax(0,1fr); } .ring { display:none; } .tiles { grid-template-columns:repeat(2, minmax(0,1fr)); } .pipe li small { display:none; }
+    .menu-panel { position:fixed; left:12px; right:12px; top:auto; width:auto; }
+    .sbar-meta span:not(:first-child):not(.now) { display:none; }
   }
 </style>
 </head>
 <body>
 <div class="top"><b>Odoo Test</b><nav class="tabs workspace-tabs" role="tablist" aria-label="Workspace">
-  <button id="tab-progress" role="tab" data-workspace-tab="progress" aria-selected="true" aria-controls="main">Tiến độ test</button>
+  <button id="tab-progress" role="tab" data-workspace-tab="progress" aria-selected="true" aria-controls="main">Danh sách phiên</button>
   <button id="tab-scripts" role="tab" data-workspace-tab="scripts" aria-selected="false" aria-controls="scriptsMain" tabindex="-1">Scripts</button>
-  <button id="tab-site-map" role="tab" data-workspace-tab="site_map" aria-selected="false" aria-controls="siteMapMain" tabindex="-1">site_map</button>
+  <button id="tab-site-map" role="tab" data-workspace-tab="site_map" aria-selected="false" aria-controls="siteMapMain" tabindex="-1">Sơ đồ màn hình</button>
 </nav><div class="live" aria-live="polite"><span class="dot" id="dot"></span><span id="liveText">đang tải…</span></div></div>
 <div class="layout">
-  <aside class="rail">
-    <header><div class="railtop"><h2>Lịch sử test</h2><button id="railToggle" type="button" aria-expanded="true" aria-controls="history wsFilter" aria-label="Thu gọn danh sách" title="Thu gọn / mở rộng">«</button></div><select id="wsFilter" aria-label="Lọc theo workspace"></select></header>
-    <div id="history"></div>
-  </aside>
   <main id="main" role="tabpanel" aria-labelledby="tab-progress"></main>
   <main id="scriptsMain" role="tabpanel" aria-labelledby="tab-scripts" hidden></main>
   <main id="siteMapMain" role="tabpanel" aria-labelledby="tab-site-map" hidden></main>
@@ -298,7 +375,8 @@ const BOOT = __BOOT__;
 const PHASE = { ANALYZE: "Phân tích", CONNECT: "Kết nối", CONFIRM: "Xác nhận", EXECUTE: "Thực thi", REPORT: "Báo cáo", DONE: "Xong" };
 const STATUS = { INTERRUPTED: "Bị bỏ dở", STOPPED: "Đã dừng", PASS: "PASS", FAIL: "FAIL", PENDING: "PENDING", BLOCKED: "BLOCKED", RUNNING: "Đang chạy", REPAIRING: "Đang sửa lỗi", EXPLORING: "Đang xác thực", PLANNED: "Chờ xác thực", BUILT: "Chờ chạy", VERIFIED: "Đã xác thực", TRYING: "Đang thử", HELD: "Cần xử lý trước", NEW: "Mới", "NOT EXECUTED": "Chưa chạy" };
 const ORDER = ["PASS", "FAIL", "REPAIRING", "RUNNING", "EXPLORING", "BUILT", "INTERRUPTED", "STOPPED", "PENDING", "BLOCKED", "PLANNED", "HELD", "NEW", "NOT EXECUTED"];
-const S = { sig: "", histSig: "", open: {}, draft: {}, hintError: "", sessions: [], ws: "", sel: null, view: null, caseId: null, attempt: null, raw: false, gallery: [], index: 0, error: "", busy: false };
+const S = { sig: "", histSig: "", open: {}, draft: {}, hintError: "", sessions: [], ws: "", sel: null, view: null, caseId: null, attempt: null, raw: false, gallery: [], index: 0, error: "", busy: false,
+            sq: "", sfilter: "all", cq: "", cs: "", drawer: false };
 S.replayTiming = { action_delay_ms: 700, step_delay_ms: 1500 };
 S.videoMode = "fail";          // a plain re-run keeps the video only of a failure; the "Quay video" button always records, at a pace where the step notes can be read
 const RECORD_TIMING = { action_delay_ms: 700, step_delay_ms: 1500 };
@@ -318,20 +396,29 @@ try {
   }
 } catch (e) {}
 const saveFast = () => { try { localStorage.setItem("oqaReplayFast", JSON.stringify({ fast: S.fast, prev: S.fastPrev })); } catch (err) {} };
-const RSTATUS = { PASS: "Replay PASS", FAIL: "Replay FAIL", "NOT RUN": "Replay NOT RUN" };
+const RSTATUS = { PASS: "Replay PASS", FAIL: "Replay FAIL", CANCELLED: "Replay đã hủy", "NOT RUN": "Replay NOT RUN" };
 const replayTag = k => ["PASS", "FAIL"].includes(k.live_status) ? `<span class="tag ${k.replay_status === "FAIL" ? "attn" : ""}" title="${esc(k.replay && k.replay.at || "Chưa chạy lại script")}">${RSTATUS[k.replay_status] || k.replay_status}</span>` : "";
-S.workspaces = []; S.tab = "progress";
+S.workspaces = []; S.tab = "progress"; S.casesCollapsed = false;
+try { S.casesCollapsed = localStorage.getItem("oqaCasesCollapsed") === "1"; } catch (e) {}
 const M = { ws: "", lang: "", q: "", kind: "", key: "", mode: "buttons", view: "", match: "", required: false, data: null, results: null, screen: null, loading: false, error: "", request: 0, detailRequest: 0 };
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const cls = s => "s-" + String(s).split(" ")[0];
 const LIVE = ["RUNNING", "REPAIRING", "EXPLORING", "TRYING"];          // the server only sends these while something is really working (see view.py)
-const dot = s => LIVE.includes(s) ? '<i class="spin"></i>' : '<i class="sq"></i>';
+const ICON = {
+  check: '<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 4.8"/></svg>',
+  x: '<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
+  minus: '<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5"/><path d="M5.5 8h5"/></svg>',
+  ring: '<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="4.5"/></svg>',
+};
+const stIcon = s => LIVE.includes(s) ? '<i class="spin"></i>'
+  : `<span class="si">${["PASS", "VERIFIED"].includes(s) ? ICON.check : s === "FAIL" ? ICON.x : ["BLOCKED", "STOPPED", "INTERRUPTED", "HELD"].includes(s) ? ICON.minus : ICON.ring}</span>`;
 const get = path => fetch(path + (path.includes("?") ? "&" : "?") + "t=" + TOKEN).then(r => r.json());
 const post = (path, body) => fetch(path + "?t=" + TOKEN, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then(r => r.json());
 const img = (path) => `/api/image?ws=${encodeURIComponent(S.sel.ws)}&id=${encodeURIComponent(S.sel.id)}&path=${encodeURIComponent(path)}&t=${TOKEN}`;
 const clock = ts => (ts || "").slice(11, 16);
 const day = ts => (ts || "").slice(0, 10);
+const baseName = file => String(file || "").split(/[\\/]/).pop();
 
 function bar(counts, total) {
   const parts = ORDER.filter(k => counts[k]).map(k => `<i class="${cls(k)}" style="flex:${counts[k]}" title="${esc(STATUS[k] || k)} ${counts[k]}"></i>`).join("");
@@ -339,78 +426,100 @@ function bar(counts, total) {
 }
 
 /** Replacing a panel's HTML empties it for an instant, and the browser then forgets how far it was scrolled. Put every scroll position back after a redraw. */
-function scrollers() { return ["#main", ".detail", ".case-table-scroll", "pre.strategy", ".rail"].map(sel => document.querySelector(sel)); }
+function scrollers() { return ["#main", ".page", ".detail-column", ".case-column", "#caseListBody", ".inbox", "pre.strategy", ".drawer-body"].map(sel => document.querySelector(sel)); }
 function keepScroll(draw) {
-  const before = scrollers().map(el => ({ top:el?.scrollTop || 0, left:el?.scrollLeft || 0 }));
+  const before = scrollers().map(el => ({ top: el?.scrollTop || 0, left: el?.scrollLeft || 0 }));
+  const winTop = window.scrollY;
   draw();
   scrollers().forEach((el, i) => { if (el) { el.scrollTop = before[i].top; el.scrollLeft = before[i].left; } });
+  window.scrollTo(0, winTop);
 }
 const isOpen = (key, fallback) => ((key in S.open ? S.open[key] : fallback) ? "open" : "");
 
-function renderHistory() { keepScroll(drawHistory); }
-
-function toggleRail(force) {
-  const box = document.querySelector(".layout");
-  const on = force === undefined ? !box.classList.contains("collapsed") : force;
-  box.classList.toggle("collapsed", on);
-  $("railToggle").textContent = on ? "»" : "«";
-  $("railToggle").setAttribute("aria-expanded", String(!on));
-  $("railToggle").setAttribute("aria-label", on ? "Mở rộng danh sách" : "Thu gọn danh sách");
-  try { localStorage.setItem("oqaRailCollapsed", on ? "1" : "0"); } catch (e) {}
+function toggleCases(force) {
+  const on = force === undefined ? !S.casesCollapsed : force;
+  S.casesCollapsed = on;
+  document.querySelector(".layout")?.classList.toggle("cases-collapsed", on);
+  const btn = $("caseToggle");
+  if (btn) {
+    btn.textContent = on ? "»" : "«";
+    btn.setAttribute("aria-expanded", String(!on));
+    btn.setAttribute("aria-label", on ? "Mở danh sách testcase" : "Thu gọn danh sách testcase");
+    btn.title = on ? "Mở danh sách testcase" : "Thu gọn danh sách testcase";
+  }
+  try { localStorage.setItem("oqaCasesCollapsed", on ? "1" : "0"); } catch (e) {}
 }
-try { if (localStorage.getItem("oqaRailCollapsed") === "1") window.addEventListener("DOMContentLoaded", () => toggleRail(true)); } catch (e) {}
+toggleCases(S.casesCollapsed);
 
-function drawHistory() {
+/* ================= screen 1: the session list ================= */
+const needsYou = s => !!(s.waiting || s.reviews > 0 || s.can_confirm || s.stopped);
+const sessionGroup = s => needsYou(s) ? "need" : (s.phase === "EXECUTE" && !s.idle) ? "run" : "rest";
+const whyNeeds = s => s.waiting ? "AI đang hỏi bạn" : s.can_confirm ? "Chiến lược chờ duyệt" : s.reviews > 0 ? `${s.reviews} case cần xác nhận` : s.stopped ? "Đã dừng" : "";
+
+function sessionRow(s) {
+  const cur = S.sel && S.sel.ws === s.workspace && S.sel.id === s.session;
+  const c = s.counts || {}, running = (c.RUNNING || 0) + (c.REPAIRING || 0) + (c.EXPLORING || 0);
+  const why = whyNeeds(s);
+  const state = `${why ? `<span class="tag attn">${esc(why)}</span>` : ""}<span class="tag">${esc(PHASE[s.phase])}</span>${s.idle && !why ? `<span class="tag" title="Không có hoạt động ${s.idle_hours} giờ">Bỏ dở?</span>` : ""}${s.phase === "EXECUTE" && s.workers ? `<span class="muted" style="font-size:12px">${s.workers} worker</span>` : ""}`;
+  return `<div class="srow-wrap"><button class="srow ${needsYou(s) ? "need" : ""}" data-ws="${esc(s.workspace)}" data-id="${esc(s.session)}" aria-current="${cur}">
+      <div style="min-width:0"><div class="s-name" title="${esc(s.file)}">${esc(baseName(s.file))}</div><div class="s-sub">${esc(s.workspace)} · ${esc(day(s.created))} ${esc(clock(s.created))}</div></div>
+      <div class="s-state">${state}</div>
+      <div class="s-prog">${bar(c, s.total)}<div class="s-nums"><span class="p"><b>${c.PASS || 0}</b> PASS</span><span class="f"><b>${c.FAIL || 0}</b> FAIL</span>${running ? `<span><b>${running}</b> đang chạy</span>` : ""}<span>${s.total} case</span></div></div>
+    </button><button class="del" data-del-ws="${esc(s.workspace)}" data-del-id="${esc(s.session)}" title="Xoá phiên này" aria-label="Xoá phiên ${esc(baseName(s.file))}">×</button></div>`;
+}
+
+function drawSessionList() {
+  const box = $("sessList");
+  if (!box) return;
+  const q = S.sq.trim().toLowerCase();
+  const list = S.sessions.filter(s => (!S.ws || s.workspace === S.ws) && (!q || baseName(s.file).toLowerCase().includes(q))
+    && (S.sfilter === "all" || (S.sfilter === "need" && sessionGroup(s) === "need") || (S.sfilter === "run" && sessionGroup(s) === "run") || (S.sfilter === "done" && ["REPORT", "DONE"].includes(s.phase))));
+  if (!list.length) { box.innerHTML = `<div class="empty"><b>${S.sessions.length ? "Không có phiên nào khớp" : "Chưa có phiên test nào"}</b>${S.sessions.length ? "Thử đổi bộ lọc hoặc từ khoá." : "Mỗi yêu cầu test là một phiên. Hãy bảo AI test một file testcase."}</div>`; return; }
+  const groups = [["need", "Cần bạn xử lý"], ["run", "Đang chạy"], ["rest", "Các phiên khác"]];
+  box.innerHTML = groups.map(([key, title]) => {
+    const rows = list.filter(s => sessionGroup(s) === key);
+    return rows.length ? `<h2 class="group ${key}">${title} <span class="count">${rows.length}</span></h2>${rows.map(sessionRow).join("")}` : "";
+  }).join("");
+}
+
+function drawSessions() {
   const names = [...new Set([...S.workspaces.map(w => w.name), ...S.sessions.map(s => s.workspace)])];
-  $("wsFilter").innerHTML = '<option value="">Tất cả workspace</option>' + names.map(n => `<option ${n === S.ws ? "selected" : ""}>${esc(n)}</option>`).join("");
-  const list = S.sessions.filter(s => !S.ws || s.workspace === S.ws);
-  $("history").innerHTML = list.map(s => {
-    const cur = S.sel && S.sel.ws === s.workspace && S.sel.id === s.session;
-    const file = s.file.split(/[\\/]/).pop();
-    return `<div class="histrow"><button class="del" data-del-ws="${esc(s.workspace)}" data-del-id="${esc(s.session)}" title="Xoá phiên này" aria-label="Xoá phiên này">✕</button><button class="hist" data-ws="${esc(s.workspace)}" data-id="${esc(s.session)}" aria-current="${cur}">
-      <div class="name" title="${esc(file)}">${esc(file)}</div>
-      <div class="sub"><span>${esc(s.workspace)} · ${esc(day(s.created))} ${esc(clock(s.created))}</span><span>${s.waiting ? '<span class="tag attn">chờ bạn</span>' : s.idle ? `<span class="tag" title="Không có hoạt động ${s.idle_hours} giờ">bỏ dở? · ${esc(PHASE[s.phase])}</span>` : `<span class="tag">${esc(PHASE[s.phase])}</span>`}</span></div>
-      ${bar(s.counts, s.total)}</button></div>`;
-  }).join("") || '<p class="muted" style="padding:14px">Chưa có phiên test nào.</p>';
+  const segs = [["all", "Tất cả"], ["need", "Cần bạn"], ["run", "Đang chạy"], ["done", "Đã xong"]];
+  $("main").innerHTML = `<div class="page"><div class="page-in">
+    <div class="page-head"><h1>Danh sách phiên</h1><p class="muted">Mỗi yêu cầu test là một phiên. Chọn một phiên để xem testcase và kết quả.</p></div>
+    <div class="toolbar"><select id="wsFilter" aria-label="Lọc theo workspace"><option value="">Tất cả workspace</option>${names.map(n => `<option ${n === S.ws ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>
+      <input id="sessQ" type="search" aria-label="Tìm theo tên file" placeholder="Tìm theo tên file" value="${esc(S.sq)}">
+      <div class="seg" role="group" aria-label="Lọc theo trạng thái">${segs.map(([key, label]) => `<button type="button" data-sfilter="${key}" aria-pressed="${S.sfilter === key}">${label}</button>`).join("")}</div></div>
+    <div id="sessList"></div></div></div>`;
+  drawSessionList();
 }
+function renderHistory() { if (!S.sel) renderMain(); }
 
-function ticks(c) {
-  const ex = c.explore || { verified: [], trying: null };
-  const last = c.attempts.length ? c.attempts[c.attempts.length - 1].steps
-    : c.planned.map(p => ({ status: ex.trying && ex.trying.step === p.n ? "TRYING" : ex.verified.includes(p.n) ? "PASS" : "PENDING" }));
-  const done = last.filter(s => s.status === "PASS").length;
-  return `<span class="ticks">${last.map(s => `<i class="${s.status === "PASS" ? "p" : s.status === "FAIL" ? "f" : s.status === "TRYING" ? "t" : ""}"></i>`).join("")}</span><span class="muted">${done}/${last.length}</span>`;
-}
-
+/* ================= screen 2: one session ================= */
 function renderMain() { keepScroll(drawMain); }
 
 function refsPanel(v) {
   if (v.phase === "DONE") return "";
   const list = (v.refs || []).map(r => `<li><span class="mono">${esc(r.name)}</span> <span class="muted">${r.kind === "folder" ? "thư mục" : "tệp"} · ${esc(r.path)}${r.case ? " · case " + esc(r.case) : ""}</span></li>`).join("");
-  return `<section class="refs-panel"><h3>Tệp tham chiếu</h3><div class="muted">Thiết kế (BD), đặc tả, file import, thư mục đính kèm… Dán đường dẫn trên máy này (mỗi dòng một đường dẫn), AI tự đọc, không cần tải lên.</div>
+  return `<section class="refs-panel"><h4>Tệp tham chiếu cho AI</h4><div class="muted" style="font-size:12.5px">Thiết kế (BD), đặc tả, file import… Dán đường dẫn trên máy này (mỗi dòng một đường dẫn), AI tự đọc.</div>
       <textarea id="refPath" aria-label="Đường dẫn tệp hoặc thư mục" placeholder="C:\\Users\\bạn\\Documents\\BD_man_hinh_don_hang.xlsx"></textarea>
-      <button class="btn" id="addRef" ${S.busy ? "disabled" : ""}>Thêm đường dẫn</button>${list ? `<ul>${list}</ul>` : ""}</section>`;
+      <button class="btn sm" id="addRef" title="Thêm đường dẫn" ${S.busy ? "disabled" : ""}>Thêm đường dẫn</button>${list ? `<ul>${list}</ul>` : ""}</section>`;
 }
 
+/** Cases currently being worked on, the ones no agent has picked up, and the agents' notes. Lives in the activity drawer. */
 function liveBoard(v) {
   const active = v.cases.filter(k => k.status === "EXPLORING" || k.status === "RUNNING" || k.status === "REPAIRING" || (k.explore && k.explore.trying));
   const free = (v.free_cases || []).filter(id => !active.some(k => k.id === id));
-  const freeLine = free.length ? `<div class="lb-free">Chưa có agent nhận: ${free.map(id => `<b class="mono">case ${esc(id)}</b>`).join(", ")} (agent điều phối sẽ nhận bằng oqa claim)</div>` : "";
-  const notes = (v.notes || []).length ? `<details data-key="notes" ${isOpen("notes", false)}><summary>Ghi chú chung giữa các agent (${v.notes.length})</summary><ul class="activity">${v.notes.map(n => `<li><span class="mono">${esc(String(n.ts).slice(11, 19))}</span> <b>${esc(n.agent)}</b>${n.case ? " · case " + esc(n.case) : ""}: ${esc(n.text)}</li>`).join("")}</ul></details>` : "";
-  if (!active.length) return freeLine || notes ? `<section class="liveboard"><h3>Đang xác thực đồng thời (0 case)</h3>${freeLine}${notes}</section>` : "";
+  const freeLine = free.length ? `<div class="lb-free">Chưa có agent nhận: ${free.map(id => `<b class="mono">case ${esc(id)}</b>`).join(", ")}</div>` : "";
+  const notes = (v.notes || []).length ? `<details data-key="notes" ${isOpen("notes", false)}><summary>Ghi chú chung (${v.notes.length})</summary><ul class="activity">${v.notes.map(n => `<li><span class="mono">${esc(String(n.ts).slice(11, 19))}</span> <b>${esc(n.agent)}</b>${n.case ? " · case " + esc(n.case) : ""}: ${esc(n.text)}</li>`).join("")}</ul></details>` : "";
+  if (!active.length) return freeLine || notes ? `<div>${freeLine}${notes}</div>` : "";
   const rows = active.map(k => {
     const total = k.planned.length || 1, ex = k.explore || { verified: [], trying: null };
     const run = k.attempts.length ? k.attempts[k.attempts.length - 1] : null;
     const done = run ? run.steps.filter(s => s.status === "PASS").length : ex.verified.length;
-    const where = ex.trying ? `đang thử bước ${ex.trying.step}${ex.trying.mode === "replay" ? " (chạy lại bước đã xác nhận)" : ""}`
-      : ex.stage === "queued" ? `đang chờ tới lượt chạy${ex.queued_step ? " bước " + ex.queued_step : ""}`
-      : ex.stage === "between" ? "vừa thử xong một bước, đang viết bước tiếp theo"
-      : (run && run.status === "RUNNING" ? "đang chạy script" : "đang xác thực");
-    const lastEv = (v.activity || []).find(a => a.case === k.id);
-    return `<li><div class="lb-row"><span class="lbspin ${ex.trying ? "" : "wait"}" role="img" aria-label="đang xác thực"></span><b class="mono">case ${esc(k.id)}</b>${k.owner ? `<span class="muted">[${esc(k.owner)}]</span>` : ""}<span>${esc(k.title || "")}</span><span class="muted">${esc(where)}</span><span class="muted">${done}/${total} bước đã xác thực</span></div>
-      <div class="lb-bar2"><i style="width:${Math.round(100 * done / total)}%"></i></div>${lastEv ? `<div class="muted mono act-code">${esc(String(lastEv.ts).slice(11, 19))} ${esc(lastEv.kind === "explore" ? (lastEv.ok ? "bước " + lastEv.step + " đạt" : "bước " + lastEv.step + " chưa đạt: " + lastEv.error) : lastEv.kind)}</div>` : ""}</li>`;
+    return `<button type="button" class="live-chip" data-case-jump="${esc(k.id)}" title="${esc(k.title || "")}${k.owner ? " · " + esc(k.owner) : ""}">case ${esc(k.id)} · ${done}/${total} bước</button>`;
   }).join("");
-  return `<section class="liveboard"><h3>Đang xác thực đồng thời (${active.length} case)</h3><ul>${rows}</ul>${freeLine}${notes}</section>`;
+  return `<div class="live-mini"><b>Đang chạy ${active.length}:</b>${rows}</div>${freeLine}${notes}`;
 }
 
 function activityPanel(v) {
@@ -426,44 +535,153 @@ function activityPanel(v) {
     return `<li><span class="mono">${esc(when)}</span> <b class="mono">case ${esc(a.case)}</b> ${esc(what)}${code}</li>`;
   }).join("");
   if (!rows) return "";
-  return `<details data-key="activity" ${isOpen("activity", true)}><summary>Hoạt động trực tiếp (mọi agent, mọi case)</summary><ul class="activity">${rows}</ul></details>`;
+  return `<details data-key="activity" ${isOpen("activity", true)}><summary>Hoạt động (mọi agent, mọi case)</summary><ul class="activity">${rows}</ul></details>`;
+}
+
+const needsHint = k => !!(k.can_hint && k.exhausted);
+const workerFailed = k => !!(k.request && k.request.failure && k.status !== "PASS");
+const caseJump = list => `<div class="jump">${list.slice(0, 12).map(k => `<button type="button" data-case-jump="${esc(k.id)}" title="${esc(k.title || "")}">${esc(k.id)}</button>`).join("")}${list.length > 12 ? `<span class="muted">+${list.length - 12}</span>` : ""}</div>`;
+
+/** Everything the AI is waiting on, in one place that is always in view. Each item says what is asked and carries its own answer button. */
+function inboxItems(v) {
+  const items = [];
+  const err = `<div class="err">${esc(S.error)}</div>`;
+  if (v.stopped) items.push(`<section class="ask attn-panel"><h3>Bạn đã dừng test</h3><p class="muted">Bước đang chạy được hoàn tất, AI đang đợi.</p><div class="ask-actions"><button class="btn primary" id="resume" ${S.busy ? "disabled" : ""}>Tiếp tục test</button></div>${err}</section>`);
+  else if (v.waiting && v.waiting.review) {
+    const pending = v.cases.filter(k => k.review_pending);
+    items.push(`<section class="ask attn-panel"><h3>Rà soát testcase: ${pending.length} case cần bạn xác nhận</h3><p class="muted">Mở từng case, trả lời câu hỏi của AI hoặc bỏ qua.</p>${caseJump(pending)}</section>`);
+  } else if (v.waiting) items.push(`<section class="ask attn-panel"><h3>AI đang chờ bạn trả lời${v.waiting.case ? ` <span class="muted" style="font-weight:400">· case ${esc(v.waiting.case)}</span>` : ""}</h3><div class="q">${esc(v.waiting.question)}</div>
+      <textarea id="answer" aria-label="Câu trả lời" placeholder="Dán thẳng đường dẫn tệp vào đây nếu cần thiết kế, file import… AI tự đọc."></textarea><div class="ask-actions"><button class="btn primary" id="sendAnswer" ${S.busy ? "disabled" : ""}>Gửi trả lời</button></div>${err}</section>`);
+  else if (v.can_confirm) items.push(`<section class="ask attn-panel"><h3>Chiến lược chờ duyệt</h3><p class="muted">Xem thứ tự chạy và dữ liệu dự phòng trước khi cho AI chạy.</p>
+      <details data-key="strategy" ${isOpen("strategy", true)}><summary>Nội dung chiến lược</summary><pre class="strategy">${esc(v.strategy)}</pre></details><div class="ask-actions"><button class="btn primary" id="confirm" ${S.busy ? "disabled" : ""}>Xác nhận và bắt đầu test</button></div>${err}</section>`);
+  const hint = v.cases.filter(needsHint);
+  if (hint.length) items.push(`<section class="ask"><h3>AI cần gợi ý của bạn (${hint.length} case)</h3><p class="muted">Các case này đã hết số lần tự sửa.</p>${caseJump(hint)}</section>`);
+  const broken = v.cases.filter(workerFailed);
+  if (broken.length) items.push(`<section class="ask"><h3>Worker gặp lỗi (${broken.length} case)</h3><p class="muted">Chưa phải kết luận của case. Mở case để giao lại.</p>${caseJump(broken)}</section>`);
+  if (v.idle && !v.waiting) items.push(`<section class="ask quiet"><div class="ask-h">Không có hoạt động ${Math.floor(v.idle_hours)} giờ nay</div><p class="muted">Bảo AI chạy <span class="mono">oqa status</span> để tiếp tục.</p></section>`);
+  return items;
+}
+function inboxHtml(v) {
+  const items = inboxItems(v), urgent = items.length - (v.idle && !v.waiting ? 1 : 0);
+  return items.length ? `<section class="inbox" aria-label="Cần bạn xử lý"><div class="inbox-head">Cần bạn xử lý ${urgent > 0 ? `<span class="count">${urgent}</span>` : ""}</div><div class="inbox-list">${items.join("")}</div></section>` : "";
+}
+
+function stepsDone(k) {
+  const ex = k.explore || { verified: [], trying: null };
+  const last = k.attempts.length ? k.attempts[k.attempts.length - 1].steps : k.planned.map(p => ({ status: ex.trying && ex.trying.step === p.n ? "TRYING" : ex.verified.includes(p.n) ? "PASS" : "PENDING" }));
+  return last;
+}
+function ticks(c) {
+  const last = stepsDone(c), done = last.filter(s => s.status === "PASS").length;
+  return `<span class="ticks">${last.map(s => `<i class="${s.status === "PASS" ? "p" : s.status === "FAIL" ? "f" : s.status === "TRYING" ? "t" : ""}"></i>`).join("")}</span><span class="muted">${done}/${last.length}</span>`;
+}
+
+function caseTags(k, v) {
+  return k.review_pending ? '<span class="tag attn">Need confirm</span>'
+    : needsHint(k) ? '<span class="tag attn">Cần gợi ý</span>'
+    : workerFailed(k) ? '<span class="tag attn">Worker lỗi</span>'
+    : k.review_skipped ? '<span class="tag">Đã bỏ qua</span>'
+    : k.verdict === "ready" && v.phase === "ANALYZE" ? '<span class="tag">Ready</span>' : replayTag(k);
+}
+function caseRow(k, v) {
+  const who = k.owner_fresh && k.owner ? ` · ${esc(k.owner)}` : "";
+  return `<tr class="case ${cls(k.status)}" tabindex="0" data-id="${esc(k.id)}" aria-selected="${k.id === S.caseId}">
+      <td><div class="title">${esc(k.title)}</div></td><td class="mono case-id">${esc(k.id)}</td><td class="c-prog">${ticks(k)}</td>
+      <td>${k.attempts.length ? `Lần ${k.attempts.length}` : ""}${who}</td><td><span class="status">${stIcon(k.status)}${esc(STATUS[k.status] || k.status)}</span></td><td>${caseTags(k, v)}</td></tr>`;
+}
+function caseMatches(k) {
+  const q = S.cq.trim().toLowerCase();
+  if (q && !(k.id + " " + k.title).toLowerCase().includes(q)) return false;
+  if (!S.cs) return true;
+  if (S.cs === "need") return k.review_pending || needsHint(k) || workerFailed(k);
+  if (S.cs === "LIVE") return LIVE.includes(k.status);
+  if (S.cs === "TODO") return k.status !== "PASS" && k.status !== "FAIL" && !LIVE.includes(k.status);
+  return k.status === S.cs;
+}
+function drawCaseRows() {
+  const v = S.view, body = $("caseRows");
+  if (!v || !body) return;
+  const list = v.cases.filter(caseMatches);
+  body.innerHTML = list.map(k => caseRow(k, v)).join("") || '<tr class="none"><td>Không có testcase khớp bộ lọc.</td></tr>';
+  $("caseCount").textContent = list.length === v.cases.length ? v.cases.length : `${list.length}/${v.cases.length}`;
+}
+
+/** A donut of the whole run: green passed, red failed, blue running, the rest of the ring is what has no conclusion yet. */
+function ring(passed, failed, running, total, settled) {
+  const R = 34, C = 2 * Math.PI * R;
+  let off = 0;
+  const seg = (n, color) => {
+    if (!n || !total) return "";
+    const len = C * n / total, svg = `<circle cx="42" cy="42" r="${R}" style="stroke:${color}" stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}"/>`;
+    off += len;
+    return svg;
+  };
+  const pct = total ? Math.round(passed * 100 / total) : 0;
+  return `<svg class="ring" viewBox="0 0 84 84" role="img" aria-label="${passed} PASS, ${failed} FAIL, ${settled} trên ${total} case có kết luận"><circle class="ring-bg" cx="42" cy="42" r="${R}"/>
+    <g transform="rotate(-90 42 42)">${seg(passed, "var(--h-pass)")}${seg(failed, "var(--h-fail)")}${seg(running, "var(--h-run)")}</g>
+    <text class="ring-n" x="42" y="45" text-anchor="middle">${pct}%</text><text class="ring-l" x="42" y="59" text-anchor="middle">đạt</text></svg>`;
+}
+
+function sessionBar(v) {
+  const total = v.total, c = v.counts, passed = c.PASS || 0, failed = c.FAIL || 0;
+  const settled = ["PASS", "FAIL", "BLOCKED", "PENDING", "NOT EXECUTED"].reduce((n, k) => n + (c[k] || 0), 0);
+  const running = LIVE.reduce((n, k) => n + (c[k] || 0), 0), other = Math.max(0, total - passed - failed - running);
+  const canReplay = v.cases.some(k => k.can_replay);
+  const rc = v.replay_counts || {};
+  const replaySummary = ["PASS", "FAIL", "CANCELLED", "NOT RUN"].filter(k => rc[k]).map(k => `${rc[k]} ${k === "CANCELLED" ? "đã hủy" : k}`).join(" · ");
+  const flowing = v.phase !== "DONE" && !v.stopped, lastDone = v.phases.reduce((at, p, i) => p.state === "done" ? i : at, -1);
+  const pipe = v.phases.map((p, i) => `<li class="${p.state}${flowing && i === lastDone ? " flow" : ""}" style="--i:${i}"><i></i><span>${esc(PHASE[p.phase])}</span><small>${p.at ? esc(clock(p.at)) : ""}</small></li>`).join("");
+  const enter = S.pipeShown !== v.session;          // the timeline draws itself once when a session is opened, not on every refresh
+  S.pipeShown = v.session;
+  const stat = (key, cls, n, label) => `<button type="button" class="tile ${cls}${n ? "" : " zero"}" data-stat="${key}" aria-pressed="${S.cs === key}" title="Lọc danh sách testcase: ${esc(label)}"><b>${n}</b><span>${esc(label)}</span></button>`;
+  const live = v.phase === "EXECUTE" && !v.stopped;
+  const showReplay = canReplay && ["REPORT", "DONE"].includes(v.phase);
+  const main = v.reports.find(r => r.main);
+  const reportLabel = main ? "Cập nhật báo cáo Excel" : "Xuất báo cáo Excel";
+  return `<header class="sbar">
+    <div class="sbar-row sbar-title">
+      <h1 title="${esc(v.file)}">${esc(baseName(v.file))}</h1><span class="tag">${v.stopped ? "Đã dừng" : esc(PHASE[v.phase])}</span>
+      <div class="sbar-actions">
+        ${v.activity.length || v.phase === "EXECUTE" ? `<button class="btn" id="openActivity" type="button" aria-expanded="${S.drawer}">Hoạt động</button>` : ""}
+        ${showReplay ? `<details class="menu" data-key="menu-replay" ${isOpen("menu-replay", false)}><summary>Chạy lại</summary><div class="menu-panel"><h4>Replay script đã lưu</h4>
+          <div class="btnrow"><button class="btn" data-replay-all="1" title="Chạy lại script của tất cả case đã lưu script">Chạy lại tất cả</button><button class="btn primary" data-replay-all="1" data-record="1" title="Chạy lại tất cả case đã lưu script và quay video có chú thích từng bước">Quay video tất cả</button></div>
+          ${replaySummary ? `<div class="muted" style="font-size:12.5px">Kết quả replay: ${esc(replaySummary)}</div>` : ""}</div></details>` : ""}
+        <details class="menu" data-key="menu-report" ${isOpen("menu-report", false)}><summary>Báo cáo &amp; tệp</summary><div class="menu-panel"><h4>Báo cáo</h4>
+          <div class="btnrow"><button class="btn ${main ? "" : "primary"}" id="exportReport" title="${esc(reportLabel)}" ${S.busy ? "disabled" : ""}>${reportLabel}</button>
+            ${main ? `<a class="btn primary" href="${reportUrl(main.name)}" download>Tải file Evidence (.xlsx)</a>` : ""}
+            ${canReplay ? `<a class="btn" href="${reportUrl("").replace("/api/report?", "/api/scripts?")}" download>Tải ZIP script</a>` : ""}</div>
+          ${v.phase === "DONE" ? "" : `<hr>${refsPanel(v)}`}</div></details>
+        ${v.phase === "EXECUTE" && v.can_stop ? `<button class="btn danger" id="stop" ${S.busy ? "disabled" : ""}>Dừng test</button>` : ""}
+      </div></div>
+    <div class="sbar-meta"><span>${esc(v.workspace)}</span><span>Bắt đầu ${esc(v.created)}</span>${v.connect && v.connect.version ? `<span>Odoo ${esc(v.connect.version)}</span>` : ""}<span class="mono" title="Mã phiên">${esc(v.session)}</span>${replaySummary ? `<span>Replay: ${esc(replaySummary)}</span>` : ""}${v.now ? `<span class="now">${live ? '<i class="dot on"></i>' : ""}${esc(v.now)}</span>` : ""}</div>
+    <div class="hero">${ring(passed, failed, running, total, settled)}
+      <div class="tiles" role="group" aria-label="Kết quả theo trạng thái. Bấm để lọc danh sách testcase.">${stat("PASS", "t-pass", passed, "PASS")}${stat("FAIL", "t-fail", failed, "FAIL")}${stat("LIVE", "t-run", running, v.workers && running ? `Đang chạy · ${v.workers.active}/${v.workers.limit} worker` : "Đang chạy")}${stat("TODO", "t-rest", other, "Chưa có kết luận")}</div>
+      <ol class="pipe${enter ? " enter" : ""}" aria-label="Giai đoạn của phiên">${pipe}</ol>
+</div>
+  </header>`;
+}
+
+function drawerHtml(v) {
+  return `<aside class="drawer" aria-label="Hoạt động trực tiếp"><header><h2>Hoạt động trực tiếp</h2><button class="btn sm" id="closeActivity" type="button">Đóng</button></header>
+    <div class="drawer-body">${liveBoard(v) || ""}${activityPanel(v) || '<p class="muted">Chưa có hoạt động nào.</p>'}</div></aside>`;
 }
 
 function drawMain() {
+  if (!S.sel) return drawSessions();
   const v = S.view;
-  if (!v) { $("main").innerHTML = `<div class="empty"><b>Chưa chọn phiên test</b>Mỗi yêu cầu test là một phiên. Hãy bảo AI test một file testcase, rồi chọn phiên ở cột bên trái.</div>`; return; }
-  const total = v.total, c = v.counts, passed = c.PASS || 0;
-  const phases = v.phases.map(p => `<div class="${p.state}">${esc(PHASE[p.phase])}<small>${p.at ? esc(clock(p.at)) : "&nbsp;"}</small></div>`).join("");
-  const stats = ORDER.filter(k => c[k]).map(k => `<span class="${cls(k)}"><strong>${c[k]}</strong><i class="sq"></i>${esc(STATUS[k] || k)}</span>`).join("") || '<span class="muted">Chưa có case nào.</span>';
-  let attention = "";
-  if (v.stopped) attention = `<section class="attn-panel"><h3>Bạn đã dừng test</h3><div class="muted">Bước đang chạy được hoàn tất, không có bước nào bắt đầu thêm. AI đang đợi. Bấm tiếp tục khi sẵn sàng.</div>
-      <div style="margin-top:10px"><button class="btn primary" id="resume" ${S.busy ? "disabled" : ""}>Tiếp tục test</button></div><div class="err">${esc(S.error)}</div></section>`;
-  else if (v.waiting?.review) attention = `<section class="attn-panel"><h3>Rà soát testcase</h3><p>Chọn từng case Need confirm để trả lời hoặc bỏ qua.</p></section>`;
-  else if (v.waiting) attention = `<section class="attn-panel"><h3>AI đang chờ bạn trả lời</h3><div class="q">${esc(v.waiting.question)}</div>${v.waiting.case ? `<div class="muted">Về case ${esc(v.waiting.case)}</div>` : ""}
-      <textarea id="answer" aria-label="Câu trả lời" placeholder="Nhập câu trả lời… Cần đưa tệp (thiết kế, file import…) thì dán thẳng đường dẫn vào đây, không phải tải lên: AI tự đọc."></textarea><button class="btn primary" id="sendAnswer" ${S.busy ? "disabled" : ""}>Gửi trả lời</button><div class="err">${esc(S.error)}</div></section>`;
-  else if (v.can_confirm) attention = `<section class="attn-panel"><h3>Chiến lược đang chờ bạn duyệt</h3><div class="muted">Xem lại thứ tự, dữ liệu dự phòng và các bước. AI chỉ bắt đầu test sau khi bạn xác nhận.</div>
-      <details data-key="strategy" ${isOpen("strategy", true)}><summary>Chiến lược</summary><pre class="strategy">${esc(v.strategy)}</pre></details><div style="margin-top:10px"><button class="btn primary" id="confirm" ${S.busy ? "disabled" : ""}>Xác nhận và bắt đầu test</button></div><div class="err">${esc(S.error)}</div></section>`;
-  const rows = v.cases.map(k => `<tr class="case ${cls(k.status)}" tabindex="0" data-id="${esc(k.id)}" aria-selected="${k.id === S.caseId}">
-      <td class="mono case-id">${esc(k.id)}</td><td><div class="title">${esc(k.title)}</div></td><td>${esc(k.profile) || '<span class="muted">-</span>'}</td><td>${ticks(k)}</td>
-      <td>${k.attempts.length || '<span class="muted">-</span>'}</td><td><span class="status">${dot(k.status)}${esc(STATUS[k.status] || k.status)}</span>
-      ${k.review_pending ? '<span class="tag attn">Need confirm</span>' : k.review_skipped ? '<span class="tag">Đã bỏ qua</span>' : k.verdict === "ready" && v.phase === "ANALYZE" ? '<span class="tag">Ready</span>' : ""}</td><td>${replayTag(k) || '<span class="muted">-</span>'}</td></tr>`).join("");
-  $("main").innerHTML = `
-    <div class="head"><h1>${esc(v.file.split(/[\\/]/).pop())}</h1>${v.phase === "EXECUTE" && v.can_stop ? `<button class="btn danger" id="stop" ${S.busy ? "disabled" : ""}>Dừng test</button>` : ""}</div>
-    <div class="meta"><span>Workspace <b>${esc(v.workspace)}</b></span><span class="mono">${esc(v.session)}</span><span>Bắt đầu ${esc(v.created)}</span><span>${(v.connect && v.connect.version) ? "Odoo " + esc(v.connect.version) : ""}</span><span>${v.knowledge} mục tri thức</span></div>
-    <div class="track">${phases}</div>
-    <div class="summary"><span><strong>${passed}</strong>/${total} Live đạt</span>${stats}</div>
-    <div class="summary" aria-label="Kết quả chạy lại script"><span>Replay</span>${["PASS", "FAIL", "NOT RUN"].filter(k => (v.replay_counts || {})[k]).map(k => `<span class="s-${k === "NOT RUN" ? "NEW" : k}"><strong>${v.replay_counts[k]}</strong><i class="sq"></i>${esc(RSTATUS[k])}</span>`).join("") || '<span class="muted">Chưa có case nào đủ điều kiện chạy lại.</span>'}
-      ${v.cases.some(k => k.can_replay) && ["REPORT", "DONE"].includes(v.phase) ? `<button class="btn" data-replay-all="1" title="Chạy lại script của tất cả case đã lưu script">Chạy lại tất cả</button><button class="btn primary" data-replay-all="1" data-record="1" title="Chạy lại tất cả case đã lưu script và quay video có chú thích từng bước">Quay video tất cả</button>` : ""}</div>
-    ${bar(c, total)}
-    <div class="now">${esc(v.now)}</div>
-    ${v.idle && !v.waiting ? `<div class="idle">Phiên này không có hoạt động ${Math.floor(v.idle_hours)} giờ nay: AI có thể đã dừng giữa chừng. Các case đang chạy hoặc đang sửa được hiển thị là "Bị bỏ dở". Bảo AI chạy <span class="mono">oqa status</span> để tiếp tục.</div>` : ""}
-    ${reportBar(v)}
-    ${attention}
-    ${refsPanel(v)}
-    ${v.phase === "EXECUTE" ? liveBoard(v) + activityPanel(v) : ""}
-    <div class="split"><section class="panel case-list" aria-labelledby="caseListTitle"><header><h2 id="caseListTitle">Danh sách case (${total})</h2><span>Chọn case để xem chi tiết<span class="case-scroll-hint"> · Cuộn ngang để xem đủ cột</span></span></header>
-    <div class="case-table-scroll" role="region" aria-label="Danh sách case, cuộn ngang để xem đủ các cột" tabindex="0"><table class="case-table"><colgroup><col><col><col><col><col><col><col></colgroup><thead><tr><th scope="col">Case</th><th scope="col">Nội dung</th><th scope="col">Profile</th><th scope="col">Bước</th><th scope="col">Lần</th><th scope="col">Live</th><th scope="col">Replay</th></tr></thead><tbody>${rows}</tbody></table></div></section>
-    <div class="panel detail" id="detail"></div></div>`;
+  if (!v) { $("main").innerHTML = '<div class="empty"><b>Đang tải phiên…</b></div>'; return; }
+  const statusOpts = [["", "Tất cả"], ["need", "Cần bạn"], ["FAIL", "FAIL"], ["LIVE", "Đang chạy"], ["PASS", "PASS"], ["TODO", "Chưa xong"]];
+  $("main").innerHTML = `${sessionBar(v)}${inboxHtml(v)}
+    <div class="workarea">
+      <section class="case-column"><section class="case-list" aria-labelledby="caseListTitle">
+        <header><h2 id="caseListTitle">Testcase <span id="caseCount">${v.total}</span></h2><button type="button" id="caseToggle" class="case-toggle" aria-controls="caseListBody" aria-expanded="${!S.casesCollapsed}" aria-label="${S.casesCollapsed ? "Mở danh sách testcase" : "Thu gọn danh sách testcase"}" title="${S.casesCollapsed ? "Mở danh sách testcase" : "Thu gọn danh sách testcase"}">${S.casesCollapsed ? "»" : "«"}</button></header>
+        <div class="case-filter"><input id="caseQ" type="search" aria-label="Tìm testcase" placeholder="Tìm testcase" value="${esc(S.cq)}"><select id="caseStatus" aria-label="Lọc theo trạng thái">${statusOpts.map(([key, label]) => `<option value="${key}" ${S.cs === key ? "selected" : ""}>${label}</option>`).join("")}</select></div>
+        <div class="case-table-scroll" id="caseListBody" role="region" aria-label="Danh sách testcase trong phiên" tabindex="0"><table class="case-table"><thead><tr><th scope="col">Tên testcase</th><th scope="col">Mã</th><th scope="col">Bước</th><th scope="col">Lần</th><th scope="col">Live</th><th scope="col">Ghi chú</th></tr></thead><tbody id="caseRows"></tbody></table></div>
+      </section></section>
+      <section class="detail-column"><div class="detail" id="detail"></div></section>
+    </div>${S.drawer ? drawerHtml(v) : ""}`;
+  toggleCases(S.casesCollapsed);
+  drawCaseRows();
   renderDetail();
   restoreDrafts();
 }
@@ -471,100 +689,118 @@ function drawMain() {
 function renderDetail() {
   const box = $("detail");
   if (!box) return;
-  const top = box.scrollTop;
   drawDetail(box);
-  box.scrollTop = top;
 }
 
 function drawDetail(box) {
   const v = S.view, k = v && v.cases.find(x => x.id === S.caseId);
-  if (!k) { box.innerHTML = '<p class="muted">Chọn một case để xem từng bước và ảnh bằng chứng.</p>'; return; }
+  if (!k) { box.innerHTML = '<div class="empty"><b>Chưa có testcase nào</b>Phiên này chưa có testcase.</div>'; return; }
   const att = k.attempts.find(a => a.n === S.attempt) || k.attempts[k.attempts.length - 1];
   const ex = k.explore || { verified: [], trying: null };
   const steps = att ? att.steps : k.planned.map(p => ({ ...p, images: [], actual: "",
     status: ex.trying && ex.trying.step === p.n ? "TRYING" : ex.verified.includes(p.n) ? "VERIFIED" : "PENDING", mode: ex.trying && ex.trying.step === p.n ? ex.trying.mode : "" }));
   S.gallery = steps.flatMap(s => s.images.map(im => ({ ...im, caption: im.caption || `Bước ${s.n}: ${s.caption}` })));
-  const chips = [k.profile && `Profile ${k.profile}`, k.depends_on.length && `Tiếp từ ${k.depends_on.join(", ")}`, k.clarity && `Rõ ràng ${k.clarity}/5`, k.sufficiency && `Đủ dữ kiện ${k.sufficiency}/5`, `dòng ${k.row}`].filter(Boolean)
-    .map(t => `<span class="tag">${esc(t)}</span>`).join("");
-  const tabs = k.attempts.length > 1 ? `<div class="tabs" role="tablist">${k.attempts.map(a => `<button role="tab" data-attempt="${a.n}" aria-selected="${att && a.n === att.n}"><i class="sq ${cls(a.status)}"></i>Lần ${a.n} · ${esc(STATUS[a.status] || a.status)}${a.from_step > 1 ? ` · từ bước ${a.from_step}` : ""}</button>`).join("")}</div>` : "";
+  const meta = [k.profile && `Profile ${k.profile}`, k.depends_on.length && `Tiếp từ ${k.depends_on.join(", ")}`, k.clarity && `Rõ ràng ${k.clarity}/5`, k.sufficiency && `Đủ dữ kiện ${k.sufficiency}/5`, `Dòng ${k.row}`].filter(Boolean).map(esc).join(" · ");
+  const tabs = k.attempts.length > 1 ? `<div class="att-tabs" role="tablist" aria-label="Các lần chạy">${k.attempts.map(a => `<button role="tab" data-attempt="${a.n}" aria-selected="${att && a.n === att.n}">Lần ${a.n} · ${esc(STATUS[a.status] || a.status)}${a.from_step > 1 ? ` · từ bước ${a.from_step}` : ""}</button>`).join("")}</div>` : "";
+  const done = steps.filter(s => ["PASS", "VERIFIED"].includes(s.status)).length;
   let g = -1;
   const list = steps.map(s => {
     const first = s.images[0];
     const thumb = first ? `<button class="thumb ${s.status === "FAIL" ? "fail" : ""}" data-g="${(g += s.images.length) - s.images.length + 1}" style="background-image:url('${img(first.annotated)}')" aria-label="Phóng to ảnh bước ${s.n}"><span>${s.images.length > 1 ? s.images.length + " ảnh" : "xem"}</span></button>` : `<div class="noimg">${{ PENDING: att ? "chưa chạy" : "chờ xác thực", RUNNING: "đang chạy…", TRYING: "đang thử…", VERIFIED: "đã thử trên trang thật" }[s.status] || "không có ảnh"}</div>`;
-    return `<div class="step ${cls(s.status)}"><div class="n">${LIVE.includes(s.status) ? dot(s.status) : s.n}</div><div><div class="cap">${esc(s.caption)}</div>${s.status === "RUNNING" ? `<div class="live-note">Đang chạy bước này…</div>` : s.status === "TRYING" ? `<div class="live-note">${s.mode === "replay" ? "Đang đưa trang tới bước này…" : "Đang thử trên trang thật…"}</div>` : ""}<div class="exp">Mong đợi: ${esc(s.expected)}${s.checks != null && s.status !== "PENDING" ? ` <span class="tag">${s.checks} kiểm tra</span>` : ""}${s.carried ? ' <span class="tag">giữ từ lần trước</span>' : ""}</div>
-      ${s.evidence ? `<div class="exp">Ảnh cần chụp: ${esc(s.evidence)}</div>` : ""}
-      ${s.actual && s.status !== "PENDING" ? `<div class="act">${s.status === "PASS" ? "Thực tế: " : ""}${esc(s.actual)}</div>` : ""}</div>${thumb}</div>`;
+    const showActual = s.actual && s.status !== "PENDING";
+    return `<div class="step ${cls(s.status)}"><div class="n" title="${esc(STATUS[s.status] || s.status)}">${LIVE.includes(s.status) ? '<i class="spin"></i>' : esc(s.n)}<span class="sr"> ${esc(STATUS[s.status] || s.status)}</span></div>
+      <div><div class="cap">${esc(s.caption)}</div>${s.status === "RUNNING" ? `<div class="live-note">Đang chạy bước này…</div>` : s.status === "TRYING" ? `<div class="live-note">${s.mode === "replay" ? "Đang đưa trang tới bước này…" : "Đang thử trên trang thật…"}</div>` : ""}
+        <dl class="kv"><dt>Mong đợi</dt><dd>${esc(s.expected)}${s.checks != null && s.status !== "PENDING" ? ` <span class="tag">${s.checks} kiểm tra</span>` : ""}${s.carried ? ' <span class="tag">giữ từ lần trước</span>' : ""}</dd>
+          ${s.evidence ? `<dt>Ảnh cần chụp</dt><dd class="muted">${esc(s.evidence)}</dd>` : ""}
+          ${showActual ? `<dt>Thực tế</dt><dd class="act">${esc(s.actual)}</dd>` : ""}</dl></div>${thumb}</div>`;
   }).join("");
   const base = (k.edge_cases.length || k.edge_none || k.data_needs.length || k.questions.length || k.timeout_s) ? `<ul>
       ${k.edge_cases.map(e => `<li>Tình huống biên: ${esc(e)}</li>`).join("")}${k.edge_none ? `<li>Không có tình huống biên: ${esc(k.edge_none)}</li>` : ""}
       ${k.data_needs.map(d => `<li>Dữ liệu có thể thiếu: ${esc(d.what)} → ${esc(d.fallback)}</li>`).join("")}${k.questions.map(q => `<li>Cần hỏi: ${esc(q)}</li>`).join("")}
       ${k.timeout_s ? `<li>Mỗi lần chờ tối đa ${k.timeout_s} giây</li>` : ""}</ul>` : "";
-  const notes = k.repairs.length ? `<div class="ai-notes">${k.repairs.map((r, i) => `<div class="note"><h4>AI phân tích lại sau lần ${r.attempt} · ${esc(clock(r.ts))}${r.probed ? ' · đã dò trang thật' : ' · chưa dò trang'}</h4><dl>
+  const notes = k.repairs.length ? `<div class="ai-notes">${k.repairs.map(r => `<div class="note"><h4>AI phân tích lại sau lần ${r.attempt} · ${esc(clock(r.ts))}${r.probed ? ' · đã dò trang thật' : ' · chưa dò trang'}</h4><dl>
       <dt>Nguyên nhân</dt><dd>${esc(r.cause)}</dd><dt>Căn cứ</dt><dd>${esc(r.evidence)}</dd><dt>Đã sửa</dt><dd>${esc(r.change)}</dd>
       ${r.reanalysis ? `<dt>Hiểu lại case</dt><dd>${esc(r.reanalysis)}</dd>` : ""}${r.timeout_s ? `<dt>Thời gian chờ</dt><dd>${r.timeout_s} giây</dd>` : ""}${r.unchanged_reason ? `<dt>Script giữ nguyên</dt><dd>${esc(r.unchanged_reason)}</dd>` : ""}</dl></div>`).join("")}</div>` : "";
-  const analysis = (base || notes) ? `<details data-key="analysis-${esc(k.id)}" ${isOpen("analysis-" + k.id, k.repairs.length > 0)}><summary>Phân tích của AI${k.repairs.length ? ` · đã sửa ${k.repairs.length} lần` : ""}</summary>${base}${notes}</details>` : "";
-  box.innerHTML = `<h2><span class="mono">${esc(k.id)}</span> ${esc(k.title)}</h2>
-    <div><span class="muted">Live</span> <span class="status ${cls(k.status)}">${dot(k.status)}${esc(STATUS[k.status] || k.status)}</span>${k.category ? ` <span class="tag">${esc(CATEGORY[k.category] || k.category)}</span>` : ""}${k.reason ? ` <span class="muted">· ${esc(k.reason)}</span>` : ""}${replayTag(k) ? ` &nbsp; ${replayTag(k)}` : ""}${k.replay && k.replay.timing ? ` <span class="muted">· ${esc(timingText(k.replay))}</span>` : ""}${k.replay && k.replay.status === "FAIL" ? ` <span class="muted">· ${esc((k.replay.reason || "").slice(0, 200))}</span>` : ""}</div>${historyBox(k)}
-    ${replayBar(k)}<div class="chips">${chips}</div>${reviewBox(k)}
-    <section aria-label="Testcase gốc">
-      <h3>Testcase gốc</h3>
-      <p>${esc(k.source.pre)}</p>
-      <ol>${k.source.steps.map(step => `<li>${esc(step)}</li>`).join("")}</ol>
-      <p>Mong đợi: ${esc(k.source.expected)}</p>
-    </section>
-    ${hintBox(k)}${tabs}${list ? "<h3>Các bước sau đánh giá</h3>" : ""}${list}${analysis}`;
+  const analysis = (base || notes) ? `<details class="card fold" data-key="analysis-${esc(k.id)}" ${isOpen("analysis-" + k.id, k.repairs.length > 0)}><summary>Phân tích của AI${k.repairs.length ? ` <span class="muted">· đã sửa ${k.repairs.length} lần</span>` : ""}</summary>${base}${notes}</details>` : "";
+  const status = `<span class="status ${cls(k.status)}">${stIcon(k.status)}${esc(STATUS[k.status] || k.status)}</span>${k.category ? `<span class="tag">${esc(CATEGORY[k.category] || k.category)}</span>` : ""}${k.reason ? `<span class="muted">${esc(k.reason)}</span>` : ""}${replayTag(k)}${k.replay && k.replay.timing ? `<span class="muted">${esc(timingText(k.replay))}</span>` : ""}${k.replay && k.replay.status === "FAIL" ? `<span class="muted">${esc((k.replay.reason || "").slice(0, 200))}</span>` : ""}`;
+  const asks = dispatchBar(k) + reviewBox(k) + hintBox(k);
+  box.innerHTML = `<section class="card dhead"><div class="dtitle"><h2>${esc(k.title)}</h2><span class="mono">${esc(k.id)}</span></div>
+      <div class="dstatus">${status}</div><div class="dmeta">${meta}</div>${replayBar(k)}</section>
+    ${asks ? `<div class="asks">${asks}</div>` : ""}
+    <div class="sec"><h3>Các bước</h3><span class="muted">${done}/${steps.length} đạt</span>${tabs}</div>
+    <section class="card steps" aria-label="Các bước của testcase">${list || '<p class="muted" style="padding:14px 0;margin:0">Chưa có bước nào.</p>'}</section>
+    ${analysis}${historyBox(k)}
+    <details class="card fold" data-key="source-${esc(k.id)}" ${isOpen("source-" + k.id, false)}><summary>Testcase gốc <span class="muted">· từ file Excel</span></summary>
+      <p><b>Điều kiện:</b> ${esc(k.source.pre) || '<span class="muted">không ghi</span>'}</p><ol>${k.source.steps.map(step => `<li>${esc(step)}</li>`).join("")}</ol><p><b>Mong đợi:</b> ${esc(k.source.expected)}</p></details>`;
 }
 
 function reviewBox(k) {
-  if (k.review_skipped) return `<p><span class="tag">Đã bỏ qua</span> ${esc(k.review_skipped)}</p>`;
-  if (!k.review_pending) return k.verdict === "ready" ? '<span class="tag">Ready</span>' : "";
-  return `<section class="attn-panel"><h3>Need confirm</h3>
+  if (k.review_skipped) return `<p class="muted" style="margin:0"><span class="tag">Đã bỏ qua</span> ${esc(k.review_skipped)}</p>`;
+  if (!k.review_pending) return "";
+  return `<section class="ask attn-panel"><h3>Need confirm: AI cần bạn xác nhận case này</h3>
     <ul>${k.questions.map(question => `<li>${esc(question)}</li>`).join("")}</ul>
     <textarea id="reviewText" data-draft="review-${esc(k.id)}" aria-label="Câu trả lời hoặc lý do bỏ qua"></textarea>
-    <button id="sendReview" class="btn primary" ${S.busy ? "disabled" : ""}>Gửi trả lời</button>
-    <button id="skipReview" class="btn" ${S.busy ? "disabled" : ""}>Bỏ qua testcase</button>
+    <div class="ask-actions"><button id="sendReview" class="btn primary" ${S.busy ? "disabled" : ""}>Gửi trả lời</button>
+    <button id="skipReview" class="btn" ${S.busy ? "disabled" : ""}>Bỏ qua testcase</button></div>
     <div class="err">${esc(S.error)}</div></section>`;
+}
+
+/** Asking the coordinator for a worker. The request takes no slot and starts nothing: the coordinator re-checks and answers here (accepted with the worker's name, waiting with the reason, or refused). */
+function dispatchBar(k) {
+  const r = k.request || {}, v = S.view, w = v.workers || { active: 0, limit: 5 };
+  const open = ["pending", "waiting"].includes(r.status);
+  const label = { dispatch: "Yêu cầu điều phối", reassign: "Yêu cầu giao lại" }[k.can_request];
+  const full = w.active >= w.limit;
+  const say = r.status === "pending" ? "Đã gửi yêu cầu, đang chờ agent điều phối nhận."
+    : r.status === "waiting" ? `Đang chờ: ${esc(r.note)}`
+    : r.status === "accepted" ? `Đã giao cho ${esc(r.worker)}.`
+    : r.status === "rejected" ? `Yêu cầu bị từ chối: ${esc(r.note)}` : "";
+  const failure = r.failure ? `<div class="idle" role="status"><b>Lỗi worker</b> (${esc(clock(r.failure.at))}, chưa phải kết luận của case): ${esc(r.failure.message)}</div>` : "";
+  if (!label && !say && !failure) return "";
+  return `<section class="ask quiet dispatchbar">${failure}<div class="ask-actions" style="margin-top:${failure ? 8 : 0}px;align-items:center">
+    ${label && !open ? `<button class="btn" data-request-case="${esc(k.id)}" ${full || S.busy ? "disabled" : ""} title="${full ? `Đủ ${w.limit}/${w.limit} worker` : "Báo agent điều phối giao case này cho worker rảnh"}">${label}</button>` : ""}
+    ${label && !open && full ? `<span class="muted">Hết slot: đang có ${w.active}/${w.limit} worker.</span>` : ""}
+    ${say ? `<span class="${r.status === "rejected" ? "err" : "muted"}" id="requestMsg">${say}</span>` : ""}<span class="err" id="requestErr">${esc(S.requestError && S.requestError.case === k.id ? S.requestError.text : "")}</span></div></section>`;
 }
 
 /** After the case ended (PASS or FAIL): run its saved script again, same account and Odoo, with the browser in view. */
 const videoUrl = (ws, path) => `/api/video?ws=${encodeURIComponent(ws)}&path=${encodeURIComponent(path)}&t=${TOKEN}`;
+const CAPTION_LANGUAGES = { vi: "Tiếng Việt", en: "English", ja: "日本語" };
+try { S.replayCaptionLanguage = localStorage.getItem("oqaReplayCaptionLanguage"); } catch (_) {}
+const captionLanguage = (fallback = S.view?.replay_caption_language) => Object.hasOwn(CAPTION_LANGUAGES, S.replayCaptionLanguage) ? S.replayCaptionLanguage : (fallback || "vi");
+const captionSelect = language => `<label>Ngôn ngữ chú thích <select data-caption-language aria-label="Ngôn ngữ chú thích">${Object.entries(CAPTION_LANGUAGES).map(([lang, label]) =>
+  `<option value="${lang}" ${lang === language ? "selected" : ""}>${label}</option>`).join("")}</select></label>`;
 function replayBar(k) {
   if (!["PASS", "FAIL"].includes(k.status)) return "";
   const note = k.can_replay ? "Mở browser và chạy script đã lưu của case này." : "Chưa có script đã lưu.";
-  return `<div class="replaybar" style="margin:10px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-    <label title="Đặt cả hai khoảng nghỉ trình diễn về 0. Thời gian chờ ứng dụng không đổi."><input type="checkbox" data-fast-mode ${S.fast ? "checked" : ""}> Chạy nhanh</label>
-    <label>Nghỉ sau thao tác (ms) <input data-replay-delay="action_delay_ms" aria-label="Nghỉ sau thao tác (ms)" type="number" min="0" max="60000" step="100" value="${S.replayTiming.action_delay_ms}" ${S.fast ? "disabled" : ""} style="width:90px"></label>
-    <label>Nghỉ sau bước (ms) <input data-replay-delay="step_delay_ms" aria-label="Nghỉ sau bước (ms)" type="number" min="0" max="60000" step="100" value="${S.replayTiming.step_delay_ms}" ${S.fast ? "disabled" : ""} style="width:90px"></label>
-    <button class="replay" data-replay="${esc(k.id)}" ${k.can_replay ? "" : "disabled"} title="${esc(note)}">Chạy lại testcase</button>
-    <button class="replay primary" data-replay="${esc(k.id)}" data-record="1" ${k.can_replay ? "" : "disabled"} title="${k.can_replay ? "Chạy lại testcase và quay video có chú thích từng bước" : "Chưa có script đã lưu."}">Quay video</button>
-    ${k.replay?.video ? `<a class="btn" href="${videoUrl(S.sel.ws, k.replay.video)}" target="_blank" rel="noopener">Xem video</a>` : ""}
-    <span class="muted" id="replayMsg">${esc(note)} Kết quả chạy lại hiển thị riêng (Replay), không thay đổi kết quả Live. Thời gian chờ ứng dụng giữ theo testcase.</span></div>`;
+  const videos = k.replay?.videos || (k.replay?.video ? [k.replay.video] : []);
+  return `<div class="dtools replaybar">
+    <button class="btn sm" data-replay="${esc(k.id)}" ${k.can_replay ? "" : "disabled"} title="${esc(note)}">Chạy lại testcase</button>
+    <button class="btn sm primary" data-replay="${esc(k.id)}" data-record="1" ${k.can_replay ? "" : "disabled"} title="${k.can_replay ? "Chạy lại testcase và quay video có chú thích từng bước" : "Chưa có script đã lưu."}">Quay video</button>
+    ${videos.map((file, i) => `<a class="btn sm" href="${videoUrl(S.sel.ws, file)}" target="_blank" rel="noopener">Xem video${videos.length > 1 ? ` ${i + 1}` : ""}</a>`).join("")}
+    <span class="muted" id="replayMsg" style="font-size:12px">${k.can_replay ? "Kết quả chạy lại hiển thị riêng (Replay), không đổi kết quả Live." : "Chưa có script đã lưu."}</span>
+    <details class="opts" data-key="replayopts" ${isOpen("replayopts", false)}><summary>Tuỳ chọn chạy lại</summary><div class="opts-body">
+      ${captionSelect(captionLanguage())}
+      <label title="Đặt cả hai khoảng nghỉ trình diễn về 0. Thời gian chờ ứng dụng không đổi."><input type="checkbox" data-fast-mode ${S.fast ? "checked" : ""}> Chạy nhanh</label>
+      <label>Nghỉ sau thao tác (ms) <input data-replay-delay="action_delay_ms" aria-label="Nghỉ sau thao tác (ms)" type="number" min="0" max="60000" step="100" value="${S.replayTiming.action_delay_ms}" ${S.fast ? "disabled" : ""}></label>
+      <label>Nghỉ sau bước (ms) <input data-replay-delay="step_delay_ms" aria-label="Nghỉ sau bước (ms)" type="number" min="0" max="60000" step="100" value="${S.replayTiming.step_delay_ms}" ${S.fast ? "disabled" : ""}></label></div></details></div>`;
 }
 
 const CATEGORY = { application: "Lỗi ứng dụng", automation: "Lỗi automation", precondition: "Thiếu điều kiện kiểm thử" };
-const timingText = r => { const t = r.timing; return `${r.fast ? "Chạy nhanh · " : ""}${t.total_s}s (nghỉ trình diễn ${t.pause_s}s, ${t.calls} lần gọi trình duyệt ${t.call_s}s)`; };
+const timingText = r => { const t = r.timing; return t.total_s == null ? "" : `${r.fast ? "Chạy nhanh · " : ""}${t.total_s}s (nghỉ trình diễn ${t.pause_s}s, ${t.calls} lần gọi trình duyệt ${t.call_s}s)`; };
 function historyBox(k) {
   if (!(k.history || []).length) return "";
-  return `<details data-key="history-${esc(k.id)}" ${isOpen("history-" + k.id, false)}><summary>Lịch sử kết luận · ${k.history.length} lần được sửa</summary><ul>${k.history.map(h => `<li>${esc(h.at || "")} · ${esc(h.status)}${h.category ? " · " + esc(CATEGORY[h.category] || h.category) : ""} · ${esc(h.reason || "")}${h.superseded_by ? " → " + esc(h.superseded_by) : ""}</li>`).join("")}</ul></details>`;
+  return `<details class="card fold" data-key="history-${esc(k.id)}" ${isOpen("history-" + k.id, false)}><summary>Lịch sử kết luận <span class="muted">· ${k.history.length} lần được sửa</span></summary><ul>${k.history.map(h => `<li>${esc(h.at || "")} · ${esc(h.status)}${h.category ? " · " + esc(CATEGORY[h.category] || h.category) : ""} · ${esc(h.reason || "")}${h.superseded_by ? " → " + esc(h.superseded_by) : ""}</li>`).join("")}</ul></details>`;
 }
 const reportUrl = name => `/api/report?ws=${encodeURIComponent(S.sel.ws)}&id=${encodeURIComponent(S.sel.id)}&name=${encodeURIComponent(name)}&t=${TOKEN}`;
-
-/** The Excel evidence: one workbook for the run, one sheet per case. Always available (it can be rebuilt from what has run so far). */
-function reportBar(v) {
-  const main = v.reports.find(r => r.main);
-  const label = main ? "Cập nhật báo cáo Excel" : "Xuất báo cáo Excel";
-  return `<div class="reports"><button class="btn ${main ? "" : "primary"}" id="exportReport" ${S.busy ? "disabled" : ""}>${label}</button>
-    ${main ? `<a class="btn primary" href="${reportUrl(main.name)}" download>Tải file Evidence (.xlsx)</a>` : ""}
-    ${v.cases.some(k => k.can_replay) ? `<a class="btn" href="${reportUrl("").replace("/api/report?", "/api/scripts?")}" download>Tải ZIP script</a>` : ""}</div>`;
-}
 
 function hintBox(k) {
   if (!k.can_hint) return "";
   const said = k.hints.map(h => `<div class="said">Bạn · ${esc(clock(h.at))}: ${esc(h.text)}</div>`).join("");
-  return `<section class="hint-box"><h3>${k.exhausted ? "Đã hết số lần sửa: AI cần gợi ý của bạn" : "Gợi ý cho AI"}</h3>
+  return `<section class="ask hint-box${k.exhausted ? " attn-panel" : ""}"><h3>${k.exhausted ? "Đã hết số lần sửa: AI cần gợi ý của bạn" : "Gợi ý cho AI"}</h3>
     <div class="muted">AI sẽ đọc gợi ý này, rồi chạy lại case này với số lần sửa mới.</div>${said}
     <textarea id="hint" data-draft="hint-${esc(k.id)}" aria-label="Gợi ý cho AI về case ${esc(k.id)}" placeholder="Ví dụ: nút Lưu nằm trong menu Hành động; dùng khách hàng Azure Interior…"></textarea>
-    <button class="btn primary" id="sendHint" ${S.busy ? "disabled" : ""}>Gửi và chạy lại</button><div class="err">${esc(S.hintError)}</div></section>`;
+    <div class="ask-actions"><button class="btn primary" id="sendHint" ${S.busy ? "disabled" : ""}>Gửi và chạy lại</button></div><div class="err">${esc(S.hintError)}</div></section>`;
 }
 
 function restoreDrafts() {
@@ -587,6 +823,7 @@ const mapGet = params => get("/api/sitemap?" + new URLSearchParams({ ws: M.ws, l
   return data;
 });
 
+const TABS = ["progress", "scripts", "site_map"];
 function workspaceTab(tab) {
   S.tab = tab;
   document.body.classList.toggle("site-map-active", tab === "site_map");
@@ -605,7 +842,7 @@ function workspaceTab(tab) {
   if (tab === "scripts") loadScripts();
 }
 
-const R = { ws: "", data: null, msg: "", busy: false };
+const R = { ws: "", data: null, msg: "", busy: false, detail: null };
 function scriptsWorkspace() {
   const names = (S.workspaces || []).map(w => w.name);
   return R.ws && names.includes(R.ws) ? R.ws : (S.sel && S.sel.ws) || S.ws || names[0] || "";
@@ -613,68 +850,122 @@ function scriptsWorkspace() {
 async function loadScripts() {
   R.ws = scriptsWorkspace();
   if (!R.ws) { $("scriptsMain").innerHTML = '<section class="panel"><p class="muted">Chưa có workspace nào.</p></section>'; return; }
-  const data = await get("/api/regression?ws=" + encodeURIComponent(R.ws));
+  const ws = R.ws;
+  const data = await get("/api/regression?ws=" + encodeURIComponent(ws));
+  if (ws !== R.ws) return;
   if (data.error) { R.msg = data.error; return renderScripts(); }
+  if (JSON.stringify(R.data) === JSON.stringify(data) && $("scriptsWs")?.value === ws) return;
   R.data = data; renderScripts();
 }
 function resultCell(r) {
   const status = r.status || "NOT RUN";
-  return `<td class="res ${cls(status)}">${esc(status)}${r.at ? `<small>${esc(r.at)}</small>` : ""}${r.video ? `<small><a href="/api/video?ws=${encodeURIComponent(R.ws)}&path=${encodeURIComponent(r.video)}&t=${TOKEN}" target="_blank" rel="noopener">xem video</a></small>` : ""}${status === "FAIL" && r.reason ? `<small title="${esc(r.reason)}">${esc(String(r.reason).slice(0, 80))}</small>` : ""}</td>`;
+  return `<td class="res ${cls(status)}">${status === "CANCELLED" ? "Đã hủy" : esc(status)}${r.at ? `<small>${esc(r.at)}</small>` : ""}${r.video ? `<small><a href="${videoUrl(R.ws, r.video)}" target="_blank" rel="noopener">xem video</a></small>` : ""}${r.reason ? `<small title="${esc(r.reason)}">${esc(String(r.reason).slice(0, 80))}</small>` : ""}</td>`;
+}
+function scriptStepsHtml(detail, columns) {
+  const data = detail.data;
+  if (!data) return `<tr class="script-steps"><td colspan="${columns}"><p role="status">Đang tải các bước…</p></td></tr>`;
+  if (data.error) return `<tr class="script-steps"><td colspan="${columns}"><p class="err" role="alert">${esc(data.error)}</p></td></tr>`;
+  const steps = data.steps.map(step => `<li value="${Number(step.n)}"><strong>${esc(step.action)}</strong>
+    ${step.profile ? ` <small class="muted">${esc(step.profile)}</small>` : ""}<div>${esc(step.expected)}</div>
+    ${step.shows && step.shows !== step.expected ? `<div class="muted">Kiểm tra hiển thị “${esc(step.shows)}”.</div>` : ""}
+    ${step.code.length ? `<details><summary>Mã Playwright</summary><pre><code>${esc(step.code.join("\n"))}</code></pre></details>` : ""}</li>`);
+  return `<tr class="script-steps"><td colspan="${columns}">${steps.length ? `<ol>${steps.join("")}</ol>` : '<p>Script chưa có bước nào khớp với kế hoạch.</p>'}
+    ${data.problems.length ? `<p class="err">${esc(data.problems.join(" · "))}</p>` : ""}</td></tr>`;
+}
+async function toggleScriptSteps(button) {
+  const detail = { ws: R.ws, session: button.dataset.scriptSteps, case: button.dataset.scriptCase };
+  const old = R.detail;
+  R.detail = old && old.ws === detail.ws && old.session === detail.session && old.case === detail.case ? null : detail;
+  const selector = `[data-script-steps="${CSS.escape(detail.session)}"][data-script-case="${CSS.escape(detail.case)}"]`;
+  renderScripts();
+  document.querySelector(selector)?.focus();
+  if (!R.detail) return;
+  const query = new URLSearchParams({ ws: detail.ws, id: detail.session, case: detail.case, view: "steps" });
+  detail.data = await get("/api/script?" + query).catch(() => ({ error: "Không tải được các bước của script." }));
+  if (R.detail === detail) {
+    const focus = document.activeElement?.matches(selector);
+    renderScripts();
+    if (focus) document.querySelector(selector)?.focus();
+  }
 }
 function renderScripts() {
   const box = $("scriptsMain"), d = R.data;
   if (!d) { box.innerHTML = `<section class="panel"><div class="err">${esc(R.msg)}</div></section>`; return; }
   const wsOptions = (S.workspaces || []).map(w => `<option ${w.name === R.ws ? "selected" : ""}>${esc(w.name)}</option>`).join("");
   const runAll = d.environments.map(e => `<button class="btn" data-regress-env="${esc(e)}" ${R.busy ? "disabled" : ""}>Chạy tất cả trên ${esc(e)}</button><button class="btn primary" data-regress-env="${esc(e)}" data-record="1" ${R.busy ? "disabled" : ""} title="Chạy tất cả script trên ${esc(e)} và quay video có chú thích từng bước">Quay video tất cả trên ${esc(e)}</button>`).join("");
-  const rows = d.scripts.map(k => `<tr><td>${k.session ? `<a href="#" data-script-open="${esc(k.session)}" data-script-case="${esc(k.case_id)}">${esc(k.case_id)}</a>` : esc(k.case)}<small class="muted" style="display:block">${esc(k.workbook)}</small></td>
+  const rows = d.scripts.map(k => {
+    const expanded = R.detail?.ws === R.ws && R.detail?.session === k.session && R.detail?.case === k.case_id;
+    return `<tr><td>${k.session ? `<a href="#" data-script-open="${esc(k.session)}" data-script-case="${esc(k.case_id)}">${esc(k.title || k.case_id)}</a>
+        <button type="button" class="btn sm" data-script-steps="${esc(k.session)}" data-script-case="${esc(k.case_id)}" aria-label="Các bước script ${esc(k.case_id)}" aria-expanded="${expanded}">Các bước</button>` : esc(k.case)}<small class="muted" style="display:block">${k.case_id ? esc(k.case_id) + " · " : ""}${esc(k.workbook)}</small></td>
     ${d.environments.map(e => resultCell(k.results[e] || {})).join("")}
-    <td>${k.case_id ? d.environments.map(e => `<button class="btn" data-regress-env="${esc(e)}" data-regress-case="${esc(k.case_id)}" ${R.busy ? "disabled" : ""} title="Chạy lại script này trên ${esc(e)}">▶ ${esc(e)}</button> <button class="btn primary" data-regress-env="${esc(e)}" data-regress-case="${esc(k.case_id)}" data-record="1" ${R.busy ? "disabled" : ""} title="Chạy script này trên ${esc(e)} và quay video có chú thích từng bước">Quay video</button>`).join(" ") : '<span class="muted">chưa có phiên để chạy</span>'}</td></tr>`).join("");
+    <td>${k.case_id ? d.environments.map(e => `<button class="btn sm" data-regress-env="${esc(e)}" data-regress-case="${esc(k.case_id)}" data-regress-session="${esc(k.session)}" ${R.busy ? "disabled" : ""} title="Mở cửa sổ Odoo và hiện chú thích từng bước trên ${esc(e)}">▶ ${esc(e)}</button> <button class="btn sm primary" data-regress-env="${esc(e)}" data-regress-case="${esc(k.case_id)}" data-regress-session="${esc(k.session)}" data-record="1" ${R.busy ? "disabled" : ""} title="Chạy script này trên ${esc(e)} và quay video có chú thích từng bước">Quay video</button>`).join(" ") : '<span class="muted">chưa có phiên để chạy</span>'}</td></tr>
+    ${expanded ? scriptStepsHtml(R.detail, d.environments.length + 2) : ""}`;
+  }).join("");
   box.innerHTML = `<section class="panel"><header><h2>Script của workspace (${d.scripts.length})</h2><span>Bấm tên case để mở testcase. Kết quả theo từng môi trường; chưa chạy hiện NOT RUN.</span></header>
-    <div class="scripts-bar"><select id="scriptsWs" aria-label="Workspace">${wsOptions}</select>${runAll}<button class="btn" id="scriptsReload">Tải lại</button><span class="muted">${esc(R.msg)}</span></div>
-    ${d.scripts.length ? `<div class="case-table-scroll"><table class="scripts-table"><thead><tr><th>Script / testcase</th>${d.environments.map(e => `<th>${esc(e)}</th>`).join("")}<th>Chạy lại</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">Workspace này chưa có script nào được lưu (chỉ case PASS mới lưu script).</p>'}</section>`;
+    <div class="scripts-bar"><select id="scriptsWs" aria-label="Workspace" style="width:auto">${wsOptions}</select>${captionSelect(captionLanguage(d.replay_caption_language || "vi"))}${runAll}<button class="btn" id="scriptsReload">Tải lại</button><span class="muted">${esc(R.msg)}</span></div>
+    ${d.scripts.length ? `<div class="case-table-scroll card" style="overflow:auto"><table class="scripts-table"><thead><tr><th>Script / testcase</th>${d.environments.map(e => `<th>${esc(e)}</th>`).join("")}<th>Chạy lại</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">Workspace này chưa có script nào được lưu (chỉ case PASS mới lưu script).</p>'}</section>`;
 }
 
 /*__SITE_MAP__*/
 
+function liveHeader(text, on) { $("dot").className = "dot" + (on ? " on" : ""); $("liveText").textContent = text; }
 async function refreshList() {
   const [sessions, workspaces] = await Promise.all([get("/api/sessions"), get("/api/workspaces")]);
   const list = sessions.sessions;
   const sig = JSON.stringify([list, workspaces.workspaces]);
   if (sig === S.histSig) return;                       // nothing new: leave the list alone
-  S.histSig = sig; S.sessions = list; S.workspaces = workspaces.workspaces || []; renderHistory();
+  S.histSig = sig; S.sessions = list; S.workspaces = workspaces.workspaces || [];
+  if (!S.sel && !busyReading()) {
+    renderHistory();
+    const working = list.filter(s => sessionGroup(s) === "run").length;
+    liveHeader(`${list.length} phiên · cập nhật ${new Date().toLocaleTimeString("vi-VN")}`, working > 0);
+  }
 }
 /** True while the person is reading something they selected or typing: the page must not move under them. */
 function busyReading() {
-  const sel = window.getSelection();
-  return (document.activeElement && document.activeElement.tagName === "TEXTAREA") || (sel && !sel.isCollapsed && sel.toString().trim() !== "");
+  const sel = window.getSelection(), el = document.activeElement;
+  return !!(el && el.matches && el.matches("textarea, input[type=text], input[type=search], input[type=number]")) || !!(sel && !sel.isCollapsed && sel.toString().trim() !== "");
 }
 async function refreshView() {
-  if (!S.sel) return renderMain();
+  if (!S.sel) return;
   const v = await get(`/api/session?ws=${encodeURIComponent(S.sel.ws)}&id=${encodeURIComponent(S.sel.id)}`);
-  if (v.error) return;
+  if (v.error || !S.sel) return;
   const sig = JSON.stringify(v);
-  const changed = sig !== S.sig;
+  const changed = sig !== S.sig || !S.view;
   S.view = v;
-  if (!v.cases.some(c => c.id === S.caseId)) {
-    const pick = v.cases.find(c => ["FAIL", "REPAIRING", "RUNNING", "EXPLORING"].includes(c.status)) || v.cases[0];
-    S.caseId = pick ? pick.id : null; S.attempt = null;
-  }
+  if (!v.cases.some(c => c.id === S.caseId)) { S.caseId = v.cases.length ? v.cases[0].id : null; S.attempt = null; }       // opening a session lands on its first case
   if (changed && !busyReading()) { S.sig = sig; renderMain(); }        // redraw only when the data changed, and not while they are reading or typing
-  const live = v.phase !== "DONE";
-  $("dot").className = "dot" + (live ? " on" : "");
-  $("liveText").textContent = live ? `Trực tiếp · cập nhật ${new Date().toLocaleTimeString("vi-VN")}` : `Đã xong · ${v.updated}`;
+  liveHeader(v.phase !== "DONE" ? `Trực tiếp · cập nhật ${new Date().toLocaleTimeString("vi-VN")}` : `Đã xong · ${v.updated}`, v.phase !== "DONE");
 }
-function select(ws, id) { S.sel = { ws, id }; S.view = null; S.sig = ""; S.caseId = null; S.attempt = null; history.replaceState(null, "", `#${encodeURIComponent(ws)}/${encodeURIComponent(id)}`); renderHistory(); refreshView(); if (S.tab === "site_map") loadMap(); }
+function select(ws, id) {
+  S.sel = { ws, id }; S.view = null; S.sig = ""; S.caseId = null; S.attempt = null; S.cq = ""; S.cs = ""; S.drawer = false; S.error = "";
+  history.replaceState(null, "", `${location.pathname}${location.search}#${encodeURIComponent(ws)}/${encodeURIComponent(id)}`);
+  renderMain(); refreshView(); if (S.tab === "site_map") loadMap();
+}
+function backToList() {
+  S.sel = null; S.view = null; S.sig = ""; S.caseId = null; S.drawer = false;
+  history.replaceState(null, "", `${location.pathname}${location.search}`);
+  window.scrollTo(0, 0); renderMain(); S.histSig = ""; refreshList();
+}
 
 document.addEventListener("click", async e => {
+  document.querySelectorAll("details.menu[open]").forEach(d => { if (!d.contains(e.target)) d.open = false; });
   const del = e.target.closest("[data-del-id]");
   if (del) {
     e.stopPropagation();
     if (!confirm("Xoá phiên test này? Ảnh bằng chứng và dữ liệu của phiên sẽ mất, không khôi phục được.")) return;
     const r = await post("/api/delete_session", { ws: del.dataset.delWs, id: del.dataset.delId });
     if (r.error) { alert(r.error); return; }
-    if (S.sel && S.sel.ws === del.dataset.delWs && S.sel.id === del.dataset.delId) { S.sel = null; S.view = null; }
-    await refreshList();
+    if (S.sel && S.sel.ws === del.dataset.delWs && S.sel.id === del.dataset.delId) backToList();
+    S.histSig = ""; await refreshList();
+    return;
+  }
+  const ask = e.target.closest("[data-request-case]");
+  if (ask && S.sel) {
+    ask.disabled = true;                                           // a double click sends one request; the server keeps one per case anyway
+    const r = await post("/api/dispatch-request", { ws: S.sel.ws, id: S.sel.id, case: ask.dataset.requestCase });
+    S.requestError = r.error ? { case: ask.dataset.requestCase, text: r.error } : null;
+    await refreshView(); renderDetail();
     return;
   }
   const rep = e.target.closest("[data-replay], [data-replay-all]");
@@ -682,23 +973,42 @@ document.addEventListener("click", async e => {
     rep.disabled = true;
     const record = rep.dataset.record === "1";
     const r = await post("/api/replay", { ws: S.sel.ws, id: S.sel.id, case: rep.dataset.replayAll ? "all" : rep.dataset.replay,
-      ...(record ? RECORD_TIMING : S.replayTiming), fast: record ? false : S.fast, video: record ? "on" : S.videoMode });
+      ...(record ? RECORD_TIMING : S.replayTiming), fast: record ? false : S.fast, video: record ? "on" : S.videoMode, caption_language: captionLanguage() })
+      .catch(() => ({ error: "Không gửi được yêu cầu chạy lại." }));
     const msg = $("replayMsg");
     if (msg) msg.textContent = r.error || r.message || "Đã bắt đầu.";
     else if (r.error) alert(r.error);
     setTimeout(() => { rep.disabled = false; refreshList(); }, 4000);
     return;
   }
-  if (e.target.closest("#railToggle")) { toggleRail(); return; }
+  const jump = e.target.closest("[data-case-jump]");
+  if (jump && S.sel) {
+    S.caseId = jump.dataset.caseJump; S.attempt = null; S.cq = ""; S.cs = ""; renderMain();
+    document.querySelector("tr.case[aria-selected=true]")?.scrollIntoView({ block: "nearest" });
+    if (window.matchMedia("(max-width: 860px)").matches) document.querySelector(".detail-column")?.scrollIntoView({ block: "start", behavior: "smooth" });
+    else document.querySelector(".detail-column")?.scrollTo({ top: 0 });
+    return;
+  }
   const open = e.target.closest("[data-script-open]");
   if (open) { e.preventDefault(); workspaceTab("progress"); select(R.ws, open.dataset.scriptOpen); S.caseId = open.dataset.scriptCase; S.attempt = null; return; }
+  const scriptSteps = e.target.closest("[data-script-steps]");
+  if (scriptSteps) return toggleScriptSteps(scriptSteps);
   const t = e.target.closest("button, tr.case, [data-map-screen], [data-map-expand], [data-map-home], [data-map-focus]");
   if (!t) return;
-  if (t.dataset.workspaceTab) return workspaceTab(t.dataset.workspaceTab);
+  if (t.dataset.workspaceTab) return t.dataset.workspaceTab === "progress" && S.tab === "progress" && S.sel ? backToList() : workspaceTab(t.dataset.workspaceTab);       // the first tab is the session list: pressing it inside a session goes back to the list
+  if (t.id === "openActivity") { S.drawer = !S.drawer; return renderMain(); }
+  if (t.id === "closeActivity") { S.drawer = false; return renderMain(); }
+  if (t.id === "caseToggle") return toggleCases();
+  if (t.dataset.sfilter) { S.sfilter = t.dataset.sfilter; return renderMain(); }
+  if (t.dataset.stat) { S.cs = S.cs === t.dataset.stat ? "" : t.dataset.stat; if (S.casesCollapsed) toggleCases(false); return renderMain(); }
   if (t.id === "scriptsReload") return loadScripts();
   if (t.dataset.regressEnv) {
     R.busy = true; renderScripts();
-    const r = await post("/api/regress", { ws: R.ws, env: t.dataset.regressEnv, case: t.dataset.regressCase || "", video: t.dataset.record === "1" ? "on" : S.videoMode });
+    const id = t.dataset.regressSession;
+    const body = { ws: R.ws, env: t.dataset.regressEnv, video: t.dataset.record === "1" ? "on" : S.videoMode,
+      caption_language: captionLanguage(R.data?.replay_caption_language || "vi") };
+    const r = await post(id ? "/api/replay" : "/api/regress", id ? { ...body, id, case: t.dataset.regressCase, ...RECORD_TIMING } : body)
+      .catch(() => ({ error: "Không gửi được yêu cầu chạy lại." }));
     R.msg = r.error || r.message || "Đã bắt đầu."; renderScripts();
     setTimeout(() => { R.busy = false; loadScripts(); }, 4000);
     return;
@@ -724,8 +1034,13 @@ document.addEventListener("click", async e => {
     return selectGraphScreen(t.dataset.mapScreen);
   }
   if (t.dataset.mapMode) { M.mode = t.dataset.mapMode; return renderMap(); }
-  if (t.classList.contains("hist")) return select(t.dataset.ws, t.dataset.id);
-  if (t.matches("tr.case")) { S.caseId = t.dataset.id; S.attempt = null; return renderMain(); }
+  if (t.classList.contains("srow")) return select(t.dataset.ws, t.dataset.id);
+  if (t.matches("tr.case")) {
+    S.caseId = t.dataset.id; S.attempt = null; renderMain();
+    if (window.matchMedia("(max-width: 860px)").matches) document.querySelector(".detail-column")?.scrollIntoView({ block: "start", behavior: "smooth" });
+    else document.querySelector(".detail-column")?.scrollTo({ top: 0 });
+    return;
+  }
   if (t.dataset.attempt) { S.attempt = +t.dataset.attempt; return renderDetail(); }
   if (t.dataset.g !== undefined) return openLightbox(+t.dataset.g);
   if (t.id === "lbClose") return $("lb").classList.remove("open");
@@ -760,12 +1075,19 @@ document.addEventListener("input", e => {
   if (e.target.tagName === "TEXTAREA") S.draft[e.target.dataset.draft || e.target.id] = e.target.value;
   if (e.target.id === "mapQuery") M.q = e.target.value;
   if (e.target.id === "mapMatch") M.match = e.target.value;
+  if (e.target.id === "sessQ") { S.sq = e.target.value; drawSessionList(); }
+  if (e.target.id === "caseQ") { S.cq = e.target.value; drawCaseRows(); }
 });
 document.addEventListener("submit", e => {
   if (e.target.id === "mapSearchForm") { e.preventDefault(); G.searchOpen = true; return loadMap(); }
   if (e.target.id === "mapDetailForm") { e.preventDefault(); return loadMapScreen(); }
 });
 document.addEventListener("change", e => {
+  if (e.target.dataset.captionLanguage !== undefined) {
+    S.replayCaptionLanguage = e.target.value;
+    try { localStorage.setItem("oqaReplayCaptionLanguage", S.replayCaptionLanguage); } catch (_) {}
+    return;
+  }
   if (e.target.dataset.fastMode !== undefined) {
     if (e.target.checked) { S.fastPrev = { ...S.replayTiming }; S.replayTiming.action_delay_ms = 0; S.replayTiming.step_delay_ms = 0; }
     else S.replayTiming = { ...S.fastPrev };
@@ -783,6 +1105,8 @@ document.addEventListener("change", e => {
     try { localStorage.setItem("oqaReplayTiming", JSON.stringify(S.replayTiming)); } catch (err) {}
     return;
   }
+  if (e.target.id === "wsFilter") { S.ws = e.target.value; renderHistory(); if (S.tab === "site_map") workspaceTab("site_map"); return; }
+  if (e.target.id === "caseStatus") { S.cs = e.target.value; drawCaseRows(); return; }
   if (e.target.id === "mapWorkspace") { S.ws = e.target.value; renderHistory(); return workspaceTab("site_map"); }
   if (e.target.id === "scriptsWs") { R.ws = e.target.value; return loadScripts(); }
   if (e.target.id === "mapLanguage") { M.lang = e.target.value; return loadMap(); }
@@ -799,31 +1123,38 @@ document.addEventListener("keydown", e => {
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) { e.preventDefault(); G.x += e.key === "ArrowLeft" ? 45 : e.key === "ArrowRight" ? -45 : 0; G.y += e.key === "ArrowUp" ? 45 : e.key === "ArrowDown" ? -45 : 0; return graphTransform(); }
   }
   if (e.key === "Escape" && S.tab === "site_map") { G.inspector = false; G.searchOpen = false; return renderMap(); }
+  if (e.key === "Escape" && S.drawer && !$("lb").classList.contains("open")) { S.drawer = false; return renderMain(); }
   if (e.target.dataset.workspaceTab && ["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) {
     e.preventDefault();
-    const tab = e.key === "Home" ? "progress" : e.key === "End" ? "site_map" : e.target.dataset.workspaceTab === "progress" ? "site_map" : "progress";
-    workspaceTab(tab); $(tab === "progress" ? "tab-progress" : "tab-site-map").focus(); return;
+    const at = TABS.indexOf(e.target.dataset.workspaceTab);
+    const tab = e.key === "Home" ? TABS[0] : e.key === "End" ? TABS[TABS.length - 1] : TABS[(at + (e.key === "ArrowRight" ? 1 : TABS.length - 1)) % TABS.length];
+    workspaceTab(tab); $("tab-" + tab.replace("_", "-")).focus(); return;
   }
   if (e.key === "Enter" && e.target.matches("tr.case")) return e.target.click();
+  if (e.target.matches("tr.case") && ["ArrowDown", "ArrowUp"].includes(e.key)) {
+    e.preventDefault();
+    const rows = [...document.querySelectorAll("tr.case")], at = rows.indexOf(e.target);
+    const next = rows[at + (e.key === "ArrowDown" ? 1 : -1)];
+    if (next) { next.focus(); next.click(); document.querySelector(`tr.case[data-id="${CSS.escape(next.dataset.id)}"]`)?.focus(); }
+    return;
+  }
   if (!$("lb").classList.contains("open")) return;
   if (e.key === "Escape") $("lb").classList.remove("open");
   else if (e.key === "ArrowLeft") $("lbPrev").click();
   else if (e.key === "ArrowRight") $("lbNext").click();
   else if (e.key.toLowerCase() === "r") $("lbRaw").click();
 });
-$("wsFilter").onchange = e => { S.ws = e.target.value; renderHistory(); if (S.tab === "site_map") workspaceTab("site_map"); };
 
 (async function start() {
   await refreshList();
   const params = new URLSearchParams(location.search);
   if (S.workspaces.some(w => w.name === params.get("workspace"))) S.ws = params.get("workspace");
   const hash = location.hash.slice(1).split("/").map(decodeURIComponent);
-  const first = (hash.length === 2 && S.sessions.find(s => s.workspace === hash[0] && s.session === hash[1])) || (BOOT.select && S.sessions.find(s => s.workspace === BOOT.select[0] && s.session === BOOT.select[1])) || S.sessions.find(s => !S.ws || s.workspace === S.ws);
-  if (first) select(first.workspace, first.session); else { renderMain(); $("liveText").textContent = "chưa có phiên test"; }
-  renderHistory();
+  const first = (hash.length === 2 && S.sessions.find(s => s.workspace === hash[0] && s.session === hash[1])) || (BOOT.select && S.sessions.find(s => s.workspace === BOOT.select[0] && s.session === BOOT.select[1]));
+  if (first) select(first.workspace, first.session); else { renderMain(); liveHeader(S.sessions.length ? `${S.sessions.length} phiên` : "chưa có phiên test", false); }
   if (params.get("tab") === "site_map") workspaceTab("site_map");
   setInterval(() => { if (!$("lb").classList.contains("open")) refreshView(); }, 1500);
-  setInterval(refreshList, 6000);
+  setInterval(refreshList, 4000);
   setInterval(() => { if (S.tab === "scripts" && !R.busy) loadScripts(); }, 5000);
 })();
 </script>

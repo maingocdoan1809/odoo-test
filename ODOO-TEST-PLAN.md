@@ -17,13 +17,44 @@
 |---|---|---|
 | Input và setup | Workspace picker, submit event, lưu lựa chọn và monitor theo session | Hai yêu cầu liên tiếp mở form đúng một lần mỗi yêu cầu. Chọn workspace cũ và tạo mới đều được. Tập case chọn đúng. Workbook thiếu cột báo sheet/dòng. |
 | Rà soát | Lưu phản hồi/skip theo case và ảnh chụp phiên bản phân tích | H18 hiện Need confirm và chuyển Ready sau khi nhận BD. H19 hiện yêu cầu cho phép tạo dữ liệu. H20 được bỏ qua. Kế hoạch thay đổi cần duyệt lại. |
-| Điều phối | Hàng đợi, giới hạn slot, trao đổi agent, nhật ký phục hồi | Với ít nhất 6 case ready, số worker case đang chạy không vượt 5. Mỗi case chỉ có một chủ sở hữu. Mô phỏng một worker lỗi bằng test double và chứng minh điều phối hồi phục hoặc trả lý do hữu ích. |
+| Dashboard | Danh sách phiên riêng, tiến độ phiên realtime, danh sách testcase bên trái, chi tiết và Script & video theo case | Từ màn phiên test, chọn một phiên rồi nhìn ngay số case có kết quả, số còn lại và số agent đang chạy. Mỗi dòng testcase có mã, trạng thái và số bước đã chạy. Xem và phát replay trong đúng case. |
+| Điều phối | Hàng đợi chung cho tự động và yêu cầu từ dashboard, giới hạn slot, bàn giao và nhật ký | Với ít nhất 6 case sẵn sàng, cả hai đường giao việc dùng chung giới hạn 5. Mỗi case chỉ có một worker. Worker gián đoạn giữ được bước đã ghi, hoặc dashboard hiện rõ điều kiện cần xử lý trước khi tiếp tục. |
 | Dữ liệu | Phân loại nhu cầu dữ liệu khi phân tích. Helper xử lý field bắt buộc, quan hệ và mã theo lượt | Case bấm nút nghiệp vụ, sửa, xóa hoặc đổi trạng thái thao tác trên bản ghi test do case tạo. Case visual thuần mở màn hình, kiểm tra và chụp ảnh trực tiếp. Case có fixture chạy liên tiếp hoặc song song với mã riêng. |
 | Live browser | Session riêng theo case, log bước đã kiểm chứng, bằng chứng | H12 dùng đúng hai profile. Với lỗi mong đợi, ảnh và assertion ghi nhận lỗi; verdict của testcase là PASS nếu hệ thống từ chối đúng. |
 | Script | Sinh script và kiểm tra hợp đồng gói export | Có assertion theo trạng thái, cấu hình server/profile và bước chuẩn bị cho case cần bản ghi. ZIP giải nén chạy được bằng runner ghi trong gói. Rà script để loại chờ cứng, thao tác dò đường, ID bản ghi cố định và secret. |
 | Replay | Runner độc lập lưu report theo attempt | Replay hai lần liên tiếp trên cùng database harness. Case thao tác chọn đúng bản ghi vừa tạo ở mỗi lượt. Case visual thuần kiểm tra được giao diện trực tiếp. Tắt AI/worker khi replay. |
 | Báo cáo | Ghi đúng dòng và sheet evidence, giữ bản gốc theo kênh | Đường dẫn: hash file nguồn giữ nguyên, công thức ở sheet Workbook integrity còn nguyên trong bản sao. Add-in: cập nhật workbook đang mở. Case ngoài phạm vi giữ nguyên. |
 | Hiệu năng | Thu bước, thời điểm, slot, retry và lý do | Báo thời gian setup, review, live, dựng script và replay riêng. Đo lượt đầu và lượt dùng cache. Mỗi retry có nguyên nhân và thông tin mới. |
+
+## Đợt triển khai dashboard và điều phối
+
+[Bản HTML đã chốt](dashboard-preview.html) là mẫu giao diện dùng dữ liệu mô phỏng. Việc tiếp theo là tích hợp các màn này vào dashboard OQA hiện hành và nghiệm thu bằng phiên có dữ liệu thật.
+
+### 1. Tích hợp giao diện
+
+- **Danh sách phiên riêng.** Màn đầu hiển thị các phiên và tiến độ tóm tắt. Chọn phiên để mở màn thực thi. Có đường quay về danh sách mà vẫn giữ bộ lọc workspace.
+- **Tiến độ nhìn ngay khi vào phiên.** Dùng một thanh tiến độ từ kết quả Live, có số case đã có kết quả, số còn lại, PASS/FAIL/BLOCKED và số agent trên tổng 5 slot. Tab **Dashboard** tập trung vào case đang chạy, bước hiện tại, case cần xử lý và lý do. Chi tiết phiên, báo cáo Excel, tệp tham chiếu và nhật ký AI nằm trong tab này. Mã case trong Dashboard mở đúng testcase.
+- **Testcase bên trái.** Mỗi dòng có mã ID, tên, trạng thái, agent đang giữ nếu có và tiến độ bước, ví dụ `SO-101 · Đang chạy · 1/3 bước`. Tính số bước đã chạy từ bước Live đã ghi kết quả. Hiện rõ case chưa chạy và case gián đoạn. Khung bên phải có chi tiết, bằng chứng và các cập nhật có thể quan sát được của AI.
+- **Script & video ngay trong chi tiết testcase.** Khi có script, hiển thị mã Playwright, tải `.js`, chạy lại và quay video. Thông số nghỉ giữa thao tác, giữa bước và chế độ lưu video chỉnh tại đây. Video của case phát ngay trong tab. Kết quả Live và Replay hiển thị riêng. Nghiệp vụ chạy hàng loạt và tải ZIP vẫn có ở cấp phiên. Hồi quy nhiều môi trường và sitemap giữ tab riêng của workspace.
+- Dùng theme sáng/tối của bản mẫu và lưu lựa chọn trên trình duyệt. Trên điện thoại, mở chi tiết từ danh sách testcase và có nút quay lại. Lấy trạng thái thật từ `state.json`, `claims.json`, nhật ký sự kiện và kết quả replay qua API hiện có. Giữ lựa chọn testcase và nội dung đang nhập khi dashboard cập nhật.
+
+### 2. Nối yêu cầu của người dùng vào bộ điều phối
+
+- Trong `EXECUTE`, hiện **Yêu cầu điều phối** cho case chờ giao và **Yêu cầu giao lại** cho case gián đoạn. Dashboard kiểm tra trạng thái phiên, người đang giữ case và giới hạn **5 worker testcase trên mỗi phiên**, tính chung cho giao tự động và yêu cầu từ người dùng. Nếu đủ 5, báo hết slot ngay tại case.
+- Nếu gửi được, lưu một yêu cầu theo phiên và mã case để agent điều phối đọc qua luồng cập nhật hiện có. Bấm đúp chỉ tạo một yêu cầu đang chờ. Nút gửi yêu cầu không giữ slot, không khởi chạy Haiku và không cần script điều phối mới.
+- Khi nhận yêu cầu, agent điều phối kiểm tra lại slot, quyền giữ case, case tiên quyết, phạm vi đã duyệt và điều kiện an toàn trước khi dùng cơ chế giao việc hiện có. Cập nhật kết quả trên testcase với tên worker nếu đã giao, hoặc lý do nếu phải chờ hay từ chối.
+- Nếu worker lỗi trước khi ghi kết luận, hiển thị lỗi worker riêng với kết quả testcase. Khi được giao lại, dùng cơ chế bàn giao để giữ lần chạy, bằng chứng và bước đã ghi nhận. Kiểm tra quyền giữ case ở mỗi lần gọi tool và chờ thao tác của worker cũ kết thúc trước khi worker mới tiếp tục. Nếu trình duyệt mất hoặc ngắt giữa thao tác ghi, kiểm tra trạng thái thực tế của bản ghi trước khi tiến hành bước tiếp theo.
+
+### 3. Nghiệm thu trên Odoo 19 harness
+
+| Kiểm tra | Điều kiện đạt |
+|---|---|
+| Giao diện và realtime | Trên desktop và điện thoại, mở phiên, lọc theo mã, mở chi tiết từ Dashboard và xem script/video tại case. Tiến độ case, kết quả Live và số agent cập nhật từ sự kiện thật mà không mất vị trí đang xem. |
+| Cạnh tranh slot | Chạy ít nhất 6 case sẵn sàng, gồm yêu cầu tay trong khi điều phối tự động hoạt động. Worker thứ 6 không khởi chạy. Hai đường cùng chọn một case thì chỉ một worker nhận được. Kiểm tra cả trường hợp slot đầy sau khi người dùng gửi yêu cầu. |
+| Worker gián đoạn | Ngắt worker sau một bước đã ghi và ngay sau một thao tác ghi chưa có kết luận. Dashboard báo đúng lỗi. Worker thay thế giữ được bước và ảnh đã lưu. Case kiểm tra trạng thái bản ghi và tránh ghi trùng. |
+| Script và báo cáo | Từ tab của một testcase, chạy lại, quay và phát video. Kết quả Replay cập nhật riêng, tải đúng script của case và xuất Excel với kết quả Live cùng evidence. |
+
+Thứ tự thực hiện là tích hợp giao diện và nguồn dữ liệu, nối yêu cầu điều phối và bàn giao, rồi chạy kiểm thử API, giao diện và harness. Các đề xuất mức tự chủ, cổng duyệt thao tác ghi, chặn production, ngân sách và phân quyền tiếp tục theo dõi trong [đánh giá giám sát và ủy quyền](DANH-GIA-GIAM-SAT-UY-QUYEN.md).
 
 ## Harness Odoo 19
 
@@ -81,6 +112,9 @@ Smoke kiểm tra browser thật, tạo hai bản ghi liên kết, bốn kịch b
 - [x] Chạy ZIP đã giải nén bằng runner độc lập và xác minh bản Excel nguồn không đổi khi xuất bản sao.
 - [x] Smoke ghi vào Excel đang mở hai lần, giữ case ngoài phạm vi và công thức gốc.
 - [x] Pilot worker Haiku thực thi case visual qua MCP và lưu evidence.
+- [x] Chốt bố cục HTML cho dashboard, danh sách testcase và tab Script & video theo case.
+- [ ] Tích hợp bố cục đã chốt và tiến độ realtime vào dashboard OQA.
+- [ ] Nối yêu cầu điều phối và giao lại vào agent điều phối, kiểm tra giới hạn 5 và phục hồi trên harness. (Đã nối: nút ở chi tiết case, `dispatch_requests.json`, điều phối ưu tiên case được yêu cầu, báo lý do chờ/từ chối và lỗi worker riêng. Còn lại: chạy ≥6 case cạnh tranh slot và ngắt worker trên harness.)
 - [ ] Xác minh UI, import, phân quyền và hai lượt xác nhận.
 - [ ] Chạy đủ workbook qua đường dẫn và add-in. Kiểm tra giới hạn worker và xử lý worker lỗi.
 - [ ] Xuất ZIP và replay hai lần trên cùng database. Kiểm tra riêng case thao tác có fixture và visual thuần.

@@ -5,6 +5,7 @@ import re
 import time
 
 from . import diagnose
+from .workspace import DEFAULT_TEST_PREFIX
 
 TIMEOUT = 8000
 READ_METHODS = ("search_read", "search_count", "read", "read_group", "fields_get", "name_search", "check_access_rights", "get_views")      # what `o.rpc` will call: reading only
@@ -18,7 +19,7 @@ SIGNATURE = """() => { const root = document.querySelector('.o_action_manager') 
 
 
 class Odoo:
-    def __init__(self, page, base_url, prefix="ZZ_AUTOTEST_", on_check=None, timeout=None):
+    def __init__(self, page, base_url, prefix=DEFAULT_TEST_PREFIX, on_check=None, timeout=None):
         self.page, self.base, self.prefix = page, base_url.rstrip("/"), prefix
         self.on_check = on_check or (lambda: None)           # told each time a check is made, so the runner can tell a step that checked nothing
         self.timeout = timeout or TIMEOUT                    # ms; a slow page gets more through the case's timeout_s, never by a sleep in the script

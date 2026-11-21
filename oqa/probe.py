@@ -38,7 +38,7 @@ def signed_in(session, ws, store, profile_name=None, path=None, headless=True):
         known = ((session.state().get("connect") or {}).get("profiles", {}).get(profile["name"]) or {}).get("landing_url") if session else None
         landing = path or (known if known and "/web/login" not in known else None)
         connect.reach(page, ws, profile, store, landing if landing and landing.startswith("http") else ws["url"] + (landing or "/web"))
-        Odoo(page, ws["url"], ws.get("test_prefix") or "ZZ_AUTOTEST_").ready()
+        Odoo(page, ws["url"], ws["test_prefix"]).ready()
         yield page
 
 

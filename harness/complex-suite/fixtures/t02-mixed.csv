@@ -1,0 +1,7 @@
+Name,Code,Site,Cost
+Good row,{run}-A,{site},7
+Zero cost,{run}-B,{site},0
+Negative cost,{run}-C,{site},-4
+Text cost,{run}-D,{site},abc
+Wrong site,{run}-E,{run}-nosite,3
+Duplicate of control,{existing},{site},5

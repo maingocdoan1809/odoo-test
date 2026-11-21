@@ -20,7 +20,7 @@ import uuid
 from pathlib import Path
 
 from . import analysis as analysis_mod
-from . import connect, evidence, events, memory, paths, replays, workspace
+from . import captions, connect, evidence, events, memory, paths, record_names, replays, workspace
 from .state import GateError, Session
 from .store import read_json, write_json
 
@@ -461,8 +461,11 @@ def _scale(box, viewport, picture):
 def shot(session, case, n, target, from_pre=False, caption=None):
     session.require("EXECUTE")
     attempt = session.state().get("runs", {}).get(case) if from_pre else _attempt(session, case)
-    if not isinstance(n, int) or not 1 <= n <= len(_strategy_case(session, case)["steps"]):
+    steps = _strategy_case(session, case)["steps"]
+    if not isinstance(n, int) or not 1 <= n <= len(steps):
         raise GateError("Choose a planned step number for the evidence.")
+    language = workspace.load(session.ws).get("evidence_language", "vi")
+    label = caption or captions.text(steps[n - 1], language, total=len(steps))
     if from_pre:
         if n not in _recorded(session, case, attempt):
             raise GateError("A supplemental pre-action picture requires an already recorded step.")
@@ -473,7 +476,7 @@ def shot(session, case, n, target, from_pre=False, caption=None):
         suffix = uuid.uuid4().hex[:8]
         raw, annotated = folder / f"s{n}_supp_{suffix}_raw.png", folder / f"s{n}_supp_{suffix}_annotated.png"
         shutil.copyfile(source, raw)
-        evidence.annotate(raw, [meta["box"]], caption or f"{case} · step {n} · supplemental pre-action evidence", annotated)
+        evidence.annotate(raw, [meta["box"]], label, annotated)
         error = evidence.check(raw, annotated)
         if error:
             raise GateError(error)
@@ -489,7 +492,7 @@ def shot(session, case, n, target, from_pre=False, caption=None):
         suffix = uuid.uuid4().hex[:8]
         raw, annotated = folder / f"s{n}_supp_{suffix}_raw.png", folder / f"s{n}_supp_{suffix}_annotated.png"
         _shot(browser_id, raw)
-        evidence.annotate(raw, [_scale(found[0], found[1], raw)], caption or f"{case} · step {n} · supplemental live evidence", annotated)
+        evidence.annotate(raw, [_scale(found[0], found[1], raw)], label, annotated)
         error = evidence.check(raw, annotated)
         if error:
             raise GateError(error)
@@ -502,7 +505,6 @@ def shot(session, case, n, target, from_pre=False, caption=None):
     raw, annotated = folder / f"s{n}_pre_{suffix}_raw.png", folder / f"s{n}_pre_{suffix}_annotated.png"
     _shot(browser_id, raw)
     box = _scale(found[0], found[1], raw)
-    label = caption or f"{case} · step {n} · before action: {target}"
     evidence.annotate(raw, [box], label, annotated)
     # Keep every checkpoint; legacy paths identify the latest pre-action view.
     shutil.copyfile(raw, folder / f"s{n}_pre_raw.png")
@@ -593,7 +595,9 @@ def step(session, case, n, status, actual, target=None, verified_code=None, show
         from PIL import Image
         width, height = Image.open(raw).size
         boxes = [(0, 0, width, height)]
-    evidence.annotate(raw, boxes, f"Step {n}/{len(steps)} {status}: {spec['action']}", annotated, ok=status == "PASS")
+    language = workspace.load(session.ws).get("evidence_language", "vi")
+    label = captions.text(spec, language, total=len(steps), status=status)
+    evidence.annotate(raw, boxes, label, annotated, ok=status == "PASS")
     rel = lambda p: Path(p).relative_to(session.dir).as_posix()
     images = [image for event in events.read(session.dir)
               if event["kind"] == "evidence_captured" and event.get("case") == case
@@ -601,7 +605,7 @@ def step(session, case, n, status, actual, target=None, verified_code=None, show
               for image in event["images"]]
     if how != "before" or not images:
         images.append({"raw": rel(raw), "annotated": rel(annotated),
-                       "caption": f"Step {n}: {actual.strip()}", "target": target, "box": boxes[0]})
+                       "caption": label, "target": target, "box": boxes[0]})
     if script_step and how == "before":
         script_step.insert(2, "// frame-before: yes")
     events.append(session.dir, "step", case=case, attempt=attempt, n=n, status=status, caption=spec["action"], expected=spec["expected"], actual=actual.strip(),
@@ -788,30 +792,89 @@ def video_file(ws, script_key, env, run_id):
     return paths.workspace_dir(ws) / "videos" / script_key.replace("/", "__") / f"{env}-{run_id}.webm"
 
 
+def _visible_replay(session, ws, item, path, blocks, problems, run, movie, video, fresh):
+    from . import replay_browser
+
+    case = item["id"]
+    timing, failed, kept = {}, None, {}
+    try:
+        if problems:
+            raise GateError("\n".join(problems))
+        actions = {step["n"]: step for step in item["steps"]}
+        timeout = 1000 * (item.get("timeout_s") or 8)
+        prepared = []
+        for block in blocks:
+            shows = fresh(block["shows"])
+            prepared.append({**block, "code": [fresh(line) for line in block["code"]],
+                             "frame_locator": _locator(fresh(block["frame"])),
+                             "check": [SETTLE, literal_check(shows, timeout)],
+                             "label": captions.text(actions[block["n"]], run["caption_language"], total=len(blocks))})
+        initial = item.get("profile") or ws["profiles"][0]["name"]
+        with tempfile.TemporaryDirectory(prefix="oqa-replay-") as temp:
+            output = replay_browser.run(session, ws, initial, prepared, run, Path(temp) if movie else None)
+            timing = output["timing"]
+            failed = output.get("failed_step")
+            outcome = output["status"]
+            if movie and (video == "on" or outcome == "FAIL"):
+                for index, candidate in enumerate(output.get("videos", []), 1):
+                    file = Path(candidate).resolve()
+                    if Path(temp).resolve() not in file.parents or not file.is_file():
+                        continue
+                    destination = movie if not kept else movie.with_name(f"{movie.stem}-part{index}.webm")
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(file), str(destination))
+                    kept.setdefault("video", str(destination))
+                    kept.setdefault("videos", []).append(str(destination))
+            reason = output.get("reason")
+            if outcome == "FAIL":
+                reason = reason or "Replay failed."
+                raise GateError(f"Step {failed} in {path.name}: {reason}" if failed else reason)
+            replays.record(session, case, outcome, timing=timing, **run, **kept,
+                           **({"reason": reason, "failed_step": failed} if reason else {}))
+    except GateError as error:
+        replays.record(session, case, "FAIL", reason=str(error)[:600], failed_step=failed, timing=timing, **run, **kept)
+        raise
+    return {"session": session.id, "case": case, "env": run["env"], "status": "CANCELLED" if outcome == "CANCELLED" else "COMPLETED",
+            "replay": outcome, "action_delay_ms": run["action_delay_ms"], "step_delay_ms": run["step_delay_ms"],
+            "timing": timing, **({"reason": reason} if reason else {})}
+
+
 def replay(session, case, headed=True, action_delay_ms=DEFAULT_ACTION_DELAY_MS,
-           step_delay_ms=DEFAULT_STEP_DELAY_MS, fast=False, env=None, video="off"):
+           step_delay_ms=DEFAULT_STEP_DELAY_MS, fast=False, env=None, video="off", caption_language=None):
     """Open the saved script in a separate browser, keeping the original test session. The outcome goes to replay.json (Replay PASS/FAIL); the live result is not touched."""
     action_delay_ms, step_delay_ms = replay_delays(action_delay_ms, step_delay_ms, fast)
     if video not in VIDEO_MODES:
         raise GateError(f"video must be one of {', '.join(VIDEO_MODES)}.")
-    env = workspace.for_env(workspace.load(session.ws), env)["env"]
+    ws = workspace.for_env(workspace.load(session.ws), env)
+    env = ws["env"]
+    language = caption_language or ws.get("replay_caption_language", "vi")
+    if language not in captions.LANGUAGES:
+        raise GateError("Caption language must be vi, en or ja.")
     item = _strategy_case(session, case)
+    translation = captions.localized_cases(session).get(case, {})
+    name = record_names.case_slug(session, case, item, translation)
+    item = {**item, "steps": captions.localized_steps(item["steps"], translation)}
     path = script_file(session, case)
     if not path.is_file():
         raise GateError(f"{case} has no saved script.")
     key = hashlib.sha256(f"{session.ws}:{session.id}:{case}:{env}".encode("utf-8")).hexdigest()[:16]
     browser_id = f"replay-{key}"
-    prefix = workspace.load(session.ws).get("test_prefix") or "ZZ_AUTOTEST_"
+    prefix = ws["test_prefix"]
     stamp = uuid.uuid4().hex[:10]
-    replay_prefix = f"{prefix}r{stamp}_"
+    replay_prefix = record_names.replay_stem(prefix, name) + f"r{stamp}_"
+    sources = record_names.replay_sources(session, case, prefix, name=name)
+    fresh = record_names.rewriter(sources, replay_prefix)
     run = {"run_id": f"r{stamp}", "env": env, "prefix": replay_prefix, "headed": headed, "fast": bool(fast),
-           "action_delay_ms": action_delay_ms, "step_delay_ms": step_delay_ms}
+           "action_delay_ms": action_delay_ms, "step_delay_ms": step_delay_ms, "caption_language": language,
+           "fixture_sources": sources}
     clock, failed = _Clock(), None
     blocks, problems = parse_script(path.read_text(encoding="utf-8"), item["steps"])
     timeout = 1000 * (item.get("timeout_s") or 8)
     from . import regression
 
     movie = video_file(session.ws, regression.key_of(session.state()["file"], case), env, run["run_id"]) if video != "off" else None
+    if headed:
+        return _visible_replay(session, ws, item, path, blocks, problems, run, movie, video, fresh)
     capture = _home() / ".playwright-cli" / "videos" / f"{browser_id}-{run['run_id']}.webm" if movie else None
     recording = False
 
@@ -849,12 +912,12 @@ def replay(session, case, headed=True, action_delay_ms=DEFAULT_ACTION_DELAY_MS,
             try:
                 if recording:
                     spec = next((x for x in item["steps"] if x["n"] == block["n"]), {})
-                    _note(browser_id, f"Bước {block['n']}/{len(item['steps'])}: {spec.get('action', '')}"[:200])
+                    _note(browser_id, captions.text(spec, language, total=len(item["steps"]))[:200])
                 if block.get("profile") and block["profile"] != profile:
                     profile = open_browser(session, case, headed=headed, profile_override=block["profile"],
                                            browser_id=browser_id, env=env)
-                code = [line.replace(prefix, replay_prefix) for line in block["code"]]
-                shows = block["shows"].replace(prefix, replay_prefix)
+                code = [fresh(line) for line in block["code"]]
+                shows = fresh(block["shows"])
                 if action_delay_ms:
                     for line in code:
                         clock.run(browser_id, [line])
@@ -874,11 +937,10 @@ def replay(session, case, headed=True, action_delay_ms=DEFAULT_ACTION_DELAY_MS,
     finally:
         if recording:
             stop_video("FAIL")
-        if not headed:
-            try:
-                _run(browser_id, "close")
-            except GateError:
-                pass
+        try:
+            _run(browser_id, "close")
+        except GateError:
+            pass
     timing = clock.report()
     replays.record(session, case, "PASS", timing=timing, **({"video": kept} if kept else {}), **run)
     return {"session": session.id, "case": case, "env": env, "status": "COMPLETED", "replay": "PASS", "browser": sname(browser_id),
@@ -886,7 +948,7 @@ def replay(session, case, headed=True, action_delay_ms=DEFAULT_ACTION_DELAY_MS,
 
 
 def replay_all(session, cases=None, headed=False, action_delay_ms=DEFAULT_ACTION_DELAY_MS,
-               step_delay_ms=DEFAULT_STEP_DELAY_MS, fast=False, env=None, video="off"):
+               step_delay_ms=DEFAULT_STEP_DELAY_MS, fast=False, env=None, video="off", caption_language=None):
     """Replay every case of the session that has a saved script (or the listed ones). Each outcome is recorded; one failure does not stop the rest."""
     action_delay_ms, step_delay_ms = replay_delays(action_delay_ms, step_delay_ms, fast)
     order = read_json(session.dir / "strategy.json")["order"]
@@ -896,7 +958,11 @@ def replay_all(session, cases=None, headed=False, action_delay_ms=DEFAULT_ACTION
     out = []
     for case in wanted:
         try:
-            result = replay(session, case, headed=headed, action_delay_ms=action_delay_ms, step_delay_ms=step_delay_ms, env=env, video=video)
+            result = replay(session, case, headed=headed, action_delay_ms=action_delay_ms, step_delay_ms=step_delay_ms,
+                            fast=fast, env=env, video=video, caption_language=caption_language)
+            if result["replay"] == "CANCELLED":
+                out.append({"case": case, "replay": "CANCELLED", "reason": result["reason"]})
+                break
             out.append({"case": case, "replay": "PASS", "total_s": result["timing"]["total_s"]})
         except GateError as error:
             out.append({"case": case, "replay": "FAIL", "reason": str(error)[:300]})
@@ -915,8 +981,10 @@ def verify_replay(src, case, headed=False):
     new = clone_for_replay(src, [case])
     ws = workspace.load(src.ws)
     stamp = uuid.uuid4().hex[:10]
-    prefix = ws.get("test_prefix") or "ZZ_AUTOTEST_"
-    fresh = lambda text: text.replace(prefix, f"{prefix}r{stamp}_")
+    prefix = ws["test_prefix"]
+    name = record_names.case_slug(src, case, item)
+    target = record_names.replay_stem(prefix, name) + f"r{stamp}_"
+    fresh = record_names.rewriter(record_names.replay_sources(src, case, prefix, name=name), target)
     attempt = new.begin_attempt(case)
     profile = open_browser(new, case, headed=headed)
     browser_id = browser_case(new, case)
@@ -937,7 +1005,7 @@ def verify_replay(src, case, headed=False):
                 code = code[-1:]
             wait = literal_check(shows, 1000 * (item.get("timeout_s") or 8))
             run_actions(browser_id, [*code, SETTLE, wait])
-            step(new, case, b["n"], "PASS", f"The page showed: {shows}", frame)
+            step(new, case, b["n"], "PASS", f"Trang hiển thị «{shows}».", frame)
         except GateError as error:
             failed = f"step {b['n']}: {str(error)[:200]}"
             for where in (frame, "body"):

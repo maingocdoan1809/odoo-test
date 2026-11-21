@@ -39,7 +39,7 @@ TOOLS = [
            strings("category", "detail", "tried", "need"), ("category", "detail")),
     schema("context", "Read refreshed case context, sitemap hints and coordinator notes.", strings("screen", "issue")),
     schema("fixture", "Find fixture fields (plan), ask the data agent (advise), create a prefixed record (apply), create it through the form (ui; screen may be ledger, license_user or contract), "
-                      "get this run's unique key (key, label optional), or check an existing record to use read-only (ref, with value). For apply and ui, key is the field name and values_json maps fields to values; "
+                      "get this run's unique key (key, with a short business label for the record), or check an existing record to use read-only (ref, with value). For apply and ui, key is the field name and values_json maps fields to values; "
                       "a many2one value is {\"$ref\": \"existing name\"} or {\"$fixture\": \"key\"}, a relative date {\"$date\": -180}.",
            (*strings("action", "screen", "key", "need", "values_json", "label", "value"),
             ("values", "object", {"additionalProperties": True})), ("action", "screen")),

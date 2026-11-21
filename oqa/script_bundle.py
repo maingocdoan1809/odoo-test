@@ -4,7 +4,7 @@ import json
 import zipfile
 from pathlib import Path
 
-from . import live, workspace
+from . import live, record_names, workspace
 from .state import GateError
 from .store import read_json
 
@@ -28,7 +28,11 @@ def build(session):
                 raise GateError(f"Cannot export {case}: " + "; ".join(issues))
             said = {step["n"]: step for step in planned[case]["steps"]}
             blocks = [{**block, "action": said.get(block["n"], {}).get("action", ""), "expected": said.get(block["n"], {}).get("expected", "")} for block in blocks]
+            prefix = config["test_prefix"]
+            name = record_names.case_slug(session, case, plan=planned[case])
             manifest["cases"][case] = {"profile": planned[case].get("profile"), "steps": blocks,
+                                       "fixtureStem": record_names.replay_stem(prefix, name),
+                                       "fixtureSources": record_names.replay_sources(session, case, prefix, name=name),
                                        **({} if channel else {"script": f"{source.parent.name}/{source.name[:-len('.spec.js')]}"})}
             archive.writestr(f"scripts/{source.name}", text)
         if not manifest["cases"]:

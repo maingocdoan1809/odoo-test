@@ -7,7 +7,7 @@ Each run is a replay run (status PASS|FAIL, at, reason, failed_step, run_id, tim
 A script never run on an environment is NOT RUN there, never an implied pass."""
 import re
 
-from . import SCHEMA_VERSION, memory, paths, replays, workspace
+from . import SCHEMA_VERSION, captions, memory, paths, record_names, replays, workspace
 from .state import GateError
 from .store import locked, read_json, write_json
 
@@ -84,17 +84,28 @@ def matrix(ws):
     config = workspace.load(ws)
     envs = [e["name"] for e in workspace.environments(config)]
     saved, known = load(ws), sources(ws)
+    documents = {}
     rows = []
     for item in scripts(ws):
         origin = known.get(item["key"])
         previous = replays.load(origin[0]).get(origin[1], {}) if origin else {}
+        title = item["case"]
+        if origin:
+            session, case = origin
+            if session.id not in documents:
+                analysis = read_json(session.dir / "analysis.json", {}) or {}
+                documents[session.id] = ({row["id"]: row for row in session.cases()["cases"]},
+                                         {row["id"]: row for row in analysis.get("cases", [])},
+                                         captions.localized_cases(session))
+            source, plans, translated = documents[session.id]
+            title = record_names.title(source[case], plans.get(case, {}), translated.get(case, {}))
         results = {env: (saved.get(item["key"], {}).get(env, {}).get("latest")
                          or previous.get("envs", {}).get(env)
                          or (previous.get("latest") if env == workspace.MAIN_ENV else None)
                          or {"status": NOT_RUN}) for env in envs}
-        rows.append({"key": item["key"], "workbook": item["workbook"], "case": item["case"], "results": results,
+        rows.append({"key": item["key"], "workbook": item["workbook"], "case": item["case"], "title": title, "results": results,
                      "session": origin[0].id if origin else None, "case_id": origin[1] if origin else None})
-    return {"environments": envs, "scripts": rows}
+    return {"environments": envs, "scripts": rows, "replay_caption_language": config.get("replay_caption_language", "vi")}
 
 
 def run(ws, env, cases=None, headed=False, video="fail", **delays):
@@ -109,6 +120,9 @@ def run(ws, env, cases=None, headed=False, video="fail", **delays):
     for key, (session, case) in chosen:
         try:
             result = live.replay(session, case, headed=headed, env=env, video=video, **delays)
+            if result["replay"] == "CANCELLED":
+                rows.append({"script": key, "case": case, "env": env, "replay": "CANCELLED", "reason": result["reason"]})
+                break
             rows.append({"script": key, "case": case, "env": env, "replay": "PASS", "total_s": result["timing"]["total_s"]})
         except GateError as error:
             failed = replays.latest(session, case) or {}

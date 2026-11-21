@@ -104,7 +104,7 @@ def test_browser_can_search_switch_language_and_open_details_without_a_session(m
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.goto(map_app.url)
-        page.get_by_role('tab', name='site_map', exact=True).click()
+        page.get_by_role('tab', name='Sơ đồ màn hình', exact=True).click()
         open_orders(page)
         page.locator('#mapScreenText').filter(has_text='Confirm').wait_for()
         page.select_option('#mapLanguage', 'ja')
@@ -120,7 +120,7 @@ def test_browser_can_search_switch_language_and_open_details_without_a_session(m
         page.locator('#mapSearchForm').get_by_role('button', name='Tìm', exact=True).click()
         page.locator('.map-result[data-map-screen="view:sale.order:form:2"]').click()
         page.locator('#mapScreenText').wait_for()
-        assert page.get_by_role('tab', name='site_map', exact=True).get_attribute('aria-selected') == 'true'
+        assert page.get_by_role('tab', name='Sơ đồ màn hình', exact=True).get_attribute('aria-selected') == 'true'
         assert not errors, errors
 
 
@@ -169,14 +169,15 @@ def test_progress_keeps_its_selected_case_while_sitemap_is_open(map_app, session
     with browser.launch(True) as new_page:
         _, page = new_page()
         page.goto(map_app.url)
+        page.locator('.srow').first.click()                       # the dashboard opens on the session list
         page.locator('tr.case[data-id="ORD-002"]').click()
-        page.get_by_role('tab', name='site_map', exact=True).click()
+        page.get_by_role('tab', name='Sơ đồ màn hình', exact=True).click()
         page.locator('#mapDiagram').wait_for()
         page.fill('#mapQuery', 'unfinished search')
         session.ask('Which customer?')
         page.wait_for_function('S.view && S.view.waiting && S.view.waiting.question === "Which customer?"')
         assert page.input_value('#mapQuery') == 'unfinished search'
-        page.get_by_role('tab', name='Tiến độ test', exact=True).click()
+        page.get_by_role('tab', name='Danh sách phiên', exact=True).click()
         page.locator('.attn-panel').filter(has_text='Which customer?').wait_for()
         assert page.locator('tr.case[data-id="ORD-002"]').get_attribute('aria-selected') == 'true'
 

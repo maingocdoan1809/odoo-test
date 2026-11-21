@@ -12,6 +12,6 @@ def build_id():
     here = Path(__file__).resolve().parent
     digest = hashlib.sha256()
     for file in sorted([*here.glob("*.py"), *here.glob("*.ps1"), *here.glob("web/*.html"),
-                        *here.glob("web/*.js"), *here.glob("web/*.mjs"), *here.glob("web/*.css")]):
+                        *here.glob("web/*.js"), *here.glob("web/*.mjs"), *here.glob("web/*.cjs"), *here.glob("web/*.css")]):
         digest.update(file.name.encode("utf-8") + file.read_bytes())
     return digest.hexdigest()[:12]

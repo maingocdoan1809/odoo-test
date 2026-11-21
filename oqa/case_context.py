@@ -2,7 +2,7 @@
 import re
 from pathlib import Path
 
-from . import claims, events, knowledge, memory, refs, sitemap, workspace
+from . import captions, claims, events, knowledge, memory, record_names, refs, sitemap, workspace
 from .state import GateError
 from .store import read_json
 
@@ -52,8 +52,9 @@ def build(session, case_id, screen="", issue=""):
     state = session.state()
     history = events.read(session.dir)
     query = screen or issue or original["title"]
-    prefix = workspace.load(session.ws)["test_prefix"]
-    safe_case = re.sub(r"[^A-Za-z0-9_-]", "_", case_id)
+    config = workspace.load(session.ws)
+    prefix = config["test_prefix"]
+    translation = captions.localized_cases(session).get(case_id, {})
     screens = []
     if sitemap.file_of(session.ws).exists():
         for key, node, match in sitemap.find(sitemap.load(session.ws), query, limit=5):
@@ -68,7 +69,8 @@ def build(session, case_id, screen="", issue=""):
         "session": session.id,
         "workspace": session.ws,
         "phase": state["phase"],
-        "fixture_prefix": f"{prefix}{session.id}_{safe_case}_",
+        "title": record_names.title(original, assessed or {}, translation),
+        "fixture_prefix": record_names.fixture_prefix(session, case_id, prefix),
         "original": original,
         "analysis": assessed,
         "feedback": [e for e in history if e.get("kind") == "answered"
@@ -76,7 +78,8 @@ def build(session, case_id, screen="", issue=""):
         "references": references,
         "message_codes": messages(session, texts, references),
         "message_guidance": GUIDE,
-        "language": workspace.load(session.ws).get("language", "en"),
+        "language": "vi",
+        "evidence_language": config.get("evidence_language", "vi"),
         "conclusions": {"result_history": (state.get("history") or {}).get(case_id, []),
                         "rule": "FAIL = the application differs from the expectation (verify the operated control first). Automation problems and missing preconditions are BLOCKED/PENDING after `diagnose`."},
         "sitemap": screens,

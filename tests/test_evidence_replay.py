@@ -74,16 +74,18 @@ def test_replay_pauses_after_each_action_and_checked_step(session, ws, monkeypat
     calls = []
     monkeypatch.setattr(live, "open_browser", lambda *a, **kw: "Admin")
     monkeypatch.setattr(live, "run_actions", lambda browser, lines: calls.append(("run", lines)))
+    monkeypatch.setattr(live, "_run", lambda browser, command: calls.append((command, None)))
     monkeypatch.setattr(live.time, "sleep", lambda seconds: calls.append(("pause", seconds)))
     before = session.state()
-    result = live.replay(session, "ORD-001", action_delay_ms=1000, step_delay_ms=2000)
+    result = live.replay(session, "ORD-001", headed=False, action_delay_ms=1000, step_delay_ms=2000)
     assert result["session"] == session.id and session.state() == before
     assert [kind for kind, value in calls[:6]] == ["run", "pause", "run", "pause", "run", "pause"]
     assert [value for kind, value in calls if kind == "pause"] == [1, 1, 2] * len(item["steps"])
     assert any("includes" in line for line in calls[4][1])
     calls.clear()
-    live.replay(session, "ORD-001", action_delay_ms=0, step_delay_ms=0)
-    assert all(kind == "run" for kind, value in calls)
+    live.replay(session, "ORD-001", headed=False, action_delay_ms=0, step_delay_ms=0)
+    assert calls[-1] == ("close", None)
+    assert all(kind == "run" for kind, value in calls[:-1])
 
 
 @pytest.mark.parametrize("value", [-1, 60001, True, 1.5, "1000", None])
@@ -168,7 +170,7 @@ def test_replay_result_is_kept_apart_from_the_live_result(session, ws, monkeypat
     assert replays.status(session, "ORD-001") == "NOT RUN"
     monkeypatch.setattr(live, "open_browser", lambda *a, **kw: "Admin")
     monkeypatch.setattr(live, "run_actions", lambda browser, lines: "")
-    live.replay(session, "ORD-001", action_delay_ms=0, step_delay_ms=0)
+    live.replay(session, "ORD-001", headed=False, action_delay_ms=0, step_delay_ms=0)
     assert replays.status(session, "ORD-001") == "PASS"
     saved = replays.latest(session, "ORD-001")
     assert saved["timing"]["calls"] >= 2 and saved["fast"] is False
@@ -177,7 +179,7 @@ def test_replay_result_is_kept_apart_from_the_live_result(session, ws, monkeypat
             raise GateError("timeout waiting for Saved")
     monkeypatch.setattr(live, "run_actions", refuse)
     with pytest.raises(GateError):
-        live.replay(session, "ORD-001", action_delay_ms=0, step_delay_ms=0)
+        live.replay(session, "ORD-001", headed=False, action_delay_ms=0, step_delay_ms=0)
     assert replays.status(session, "ORD-001") == "FAIL"
     assert replays.latest(session, "ORD-001")["failed_step"] == 1
     assert len(replays.load(session)["ORD-001"]["runs"]) == 2
@@ -195,8 +197,9 @@ def test_fast_mode_sets_both_viewing_pauses_to_zero(session, ws, monkeypatch):
     calls = []
     monkeypatch.setattr(live, "open_browser", lambda *a, **kw: "Admin")
     monkeypatch.setattr(live, "run_actions", lambda browser, lines: "")
+    monkeypatch.setattr(live, "_run", lambda browser, command: None)
     monkeypatch.setattr(live.time, "sleep", lambda seconds: calls.append(seconds))
-    result = live.replay(session, "ORD-001", action_delay_ms=1000, step_delay_ms=2000, fast=True)
+    result = live.replay(session, "ORD-001", headed=False, action_delay_ms=1000, step_delay_ms=2000, fast=True)
     assert calls == [] and result["action_delay_ms"] == 0 and result["step_delay_ms"] == 0
     from oqa import replays
     assert replays.latest(session, "ORD-001")["fast"] is True

@@ -1,0 +1,1484 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Odoo Test · bản xem trước 3 cột (dữ liệu mẫu)</title>
+<style>
+  /* Warm editorial look: a cream canvas, coral used sparingly, a serif for headings, dark surfaces for code. No external fonts: the stacks fall back to what the computer has. */
+  /* Offline preview: system font stack. */
+  :root {
+    --bg:#faf9f5; --surface:#faf9f5; --sunk:#f5f0e8; --card:#efe9de; --line:#e6dfd8; --line-soft:#ebe6df;
+    --ink:#141413; --body:#3d3d3a; --muted:#6c6a64; --accent:#cc785c; --accent-active:#a9583e; --accent-ink:#ffffff; --ring:rgba(204,120,92,.18);
+    --dark:#181715; --dark-soft:#1f1e1b; --dark-elev:#252320; --on-dark:#faf9f5; --on-dark-soft:#a09d96;
+    --pass:#2f7a45; --fail:#b23c3c; --pending:#8a5a00; --blocked:#6c6a64; --running:#2b7a6b; --repairing:#a9583e; --planned:#7d7a72;
+    --display:"Be Vietnam Pro", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+    --sans:"Be Vietnam Pro", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono:"JetBrains Mono", "Cascadia Mono", Consolas, "Courier New", "DejaVu Sans Mono", monospace;
+    --scrollbar-track:var(--sunk); --scrollbar-thumb:color-mix(in srgb, var(--muted) 80%, var(--sunk));
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg:#181715; --surface:#1f1e1b; --sunk:#1b1a17; --card:#252320; --line:#34322d; --line-soft:#2b2a26;
+    --ink:#faf9f5; --body:#d8d5cd; --muted:#a09d96; --accent:#cc785c; --accent-active:#a9583e; --accent-ink:#ffffff; --ring:rgba(204,120,92,.28);
+    --dark:#12110f; --dark-soft:#12110f; --dark-elev:#252320; --on-dark:#faf9f5; --on-dark-soft:#a09d96;
+    --pass:#5db872; --fail:#e26f6f; --pending:#d4a017; --blocked:#a09d96; --running:#5db8a6; --repairing:#e8a55a; --planned:#8e8b82; } }
+  * { box-sizing:border-box; scrollbar-width:thin; scrollbar-color:var(--scrollbar-thumb) var(--scrollbar-track); }
+  @supports selector(::-webkit-scrollbar) {
+    * { scrollbar-width:auto; scrollbar-color:auto; }
+    ::-webkit-scrollbar { width:10px; height:10px; }
+    ::-webkit-scrollbar-track { background:var(--scrollbar-track); border-radius:999px; }
+    ::-webkit-scrollbar-thumb { background:var(--scrollbar-thumb); border:2px solid var(--scrollbar-track); border-radius:999px; min-height:32px; min-width:32px; }
+    ::-webkit-scrollbar-thumb:hover { background:var(--accent); }
+    ::-webkit-scrollbar-thumb:active { background:var(--accent-active); }
+    ::-webkit-scrollbar-corner { background:var(--scrollbar-track); }
+  }
+  html { min-height:100%; }
+  body { margin:0; min-height:100dvh; display:flex; flex-direction:column; background:var(--bg); color:var(--body); font:14px/1.55 var(--sans); font-variant-numeric:tabular-nums; }
+  button { font:inherit; color:inherit; }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .mono { font-family:var(--mono); font-size:13px; white-space:nowrap; }
+  .muted { color:var(--muted); }
+  h1, h2, h3 { color:var(--ink); }
+  [hidden] { display:none !important; }
+
+  .top { position:sticky; top:0; z-index:10; min-height:64px; flex-shrink:0; display:flex; align-items:center; gap:14px; padding:0 24px; background:var(--bg); border-bottom:1px solid var(--line); }
+  .top b { font:400 22px/1 var(--display); letter-spacing:-.3px; color:var(--ink); }
+  .live { margin-left:auto; display:flex; align-items:center; gap:8px; color:var(--muted); }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--planned); }
+  .dot.on { background:var(--pass); animation:pulse 1.8s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity:.35; } }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .spin { display:inline-block; width:11px; height:11px; margin-right:8px; border:2px solid var(--line); border-top-color:var(--c); border-radius:50%; animation:spin .9s linear infinite; vertical-align:-1px; }
+  .step .n .spin { margin:0; }
+  .step.s-RUNNING, .step.s-TRYING { background:color-mix(in srgb, var(--c) 8%, transparent); }
+  .live-note { color:var(--c); font-weight:500; margin-top:6px; }
+  @media (prefers-reduced-motion: reduce) { .spin { animation:pulse 1.8s ease-in-out infinite; border-top-color:var(--c); } }
+  @media (prefers-reduced-motion: reduce) { .dot.on { animation:none; } }
+
+  .layout { display:grid; flex:1; min-height:0; grid-template-columns:248px minmax(0,1fr); grid-template-rows:auto; align-items:start; }
+  .layout.collapsed { grid-template-columns:52px minmax(0,1fr); }
+  .layout.collapsed .rail header h2, .layout.collapsed .rail header select, .layout.collapsed #history { display:none; }
+  .layout.collapsed .rail header { padding:12px 8px; align-items:center; }
+  .rail .railtop { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .rail .railtop button { border:1px solid var(--line); background:var(--card); border-radius:6px; padding:4px 9px; cursor:pointer; font-size:14px; line-height:1.2; }
+  .histrow { position:relative; }
+  .histrow .del { position:absolute; top:8px; right:8px; border:0; background:transparent; color:var(--muted); cursor:pointer; font-size:14px; padding:3px 6px; border-radius:4px; opacity:.5; transition:opacity .15s ease, background .15s ease; }
+  .histrow .del:hover { opacity:1; color:var(--fail); background:var(--card); }
+  .replay { border:1px solid var(--accent); background:var(--card); color:var(--accent); border-radius:6px; padding:6px 14px; cursor:pointer; font:inherit; transition:background .16s ease, transform .12s ease; }
+  .replay:hover:not(:disabled) { background:color-mix(in srgb, var(--accent) 10%, var(--card)); }
+  .replay:active:not(:disabled) { transform:translateY(1px); }
+  .replay:disabled { opacity:.5; cursor:default; }
+  .rail { min-width:0; min-height:0; background:var(--sunk); border-right:1px solid var(--line); position:sticky; top:64px; align-self:start; max-height:calc(100dvh - 64px); overflow:auto; }
+  .rail header { padding:16px 16px 12px; display:flex; flex-direction:column; gap:10px; position:sticky; top:0; z-index:2; background:var(--sunk); border-bottom:1px solid var(--line); }
+  .rail h2 { margin:0; font:600 11px/1.4 var(--sans); letter-spacing:1.4px; text-transform:uppercase; color:var(--muted); }
+  select { width:100%; height:36px; padding:0 10px; border:1px solid var(--line); border-radius:7px; background:var(--bg); color:var(--ink); font:inherit; }
+  select:focus, textarea:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--ring); }
+  .hist { width:100%; text-align:left; border:0; border-bottom:1px solid var(--line-soft); background:transparent; padding:12px 16px 11px; cursor:pointer; display:block; transition:background .16s ease; }
+  .hist:hover { background:color-mix(in srgb, var(--accent) 5%, var(--surface)); }
+  .hist[aria-current=true] { background:var(--card); box-shadow:inset 3px 0 0 var(--accent); }
+  .hist .name { font-weight:600; font-size:13px; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-right:18px; }
+  .hist .sub { display:flex; flex-wrap:wrap; justify-content:space-between; gap:3px 8px; color:var(--muted); font-size:11px; margin:3px 0 8px; overflow-wrap:anywhere; }
+  .tag { font:500 12px/1.4 var(--sans); padding:2px 9px; background:var(--card); border-radius:6px; color:var(--ink); white-space:nowrap; }
+  .hist .tag { background:var(--bg); font-size:11px; }
+  .tag.attn { background:var(--accent); color:var(--accent-ink); text-transform:uppercase; letter-spacing:.8px; font-size:10px; }
+
+  .bar { display:flex; height:5px; border-radius:9999px; overflow:hidden; background:var(--line); gap:2px; }
+  .bar i { display:block; min-width:4px; }
+  .s-NOT { --c:var(--planned); }
+  .scripts-table { width:100%; border-collapse:collapse; } .scripts-table th, .scripts-table td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  .scripts-table .res { font-weight:600; color:var(--c); } .scripts-table .res small { display:block; font-weight:400; color:var(--muted); }
+  .scripts-bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:0 0 14px; }
+  #scriptsMain > .panel { padding:20px 24px; }
+  #scriptsMain > .panel > header { display:grid; gap:6px; margin-bottom:20px; }
+  #scriptsMain > .panel > header h2 { margin:0; font:500 18px/1.4 var(--sans); }
+  #scriptsMain > .panel > header span { color:var(--muted); font-size:13px; }
+  .s-PASS { --c:var(--pass); } .s-FAIL { --c:var(--fail); } .s-PENDING { --c:var(--pending); } .s-BLOCKED, .s-STOPPED, .s-INTERRUPTED { --c:var(--blocked); }
+  .s-RUNNING { --c:var(--running); } .s-REPAIRING { --c:var(--repairing); } .s-PLANNED, .s-HELD, .s-NEW, .s-NOT { --c:var(--planned); }
+  .s-EXPLORING, .s-TRYING { --c:var(--repairing); } .s-BUILT { --c:var(--pending); } .s-VERIFIED { --c:var(--pass); }
+  .bar i, .sq { background:var(--c); }
+  .sq { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:8px; vertical-align:baseline; }
+
+  main { min-width:0; min-height:0; overflow:visible; display:flex; flex-direction:column; background:var(--bg); overflow-wrap:anywhere; container:dashboard / inline-size; }
+  #scriptsMain, #siteMapMain { display:block; overflow:auto; padding:20px 24px 32px; }
+  .empty { max-width:460px; margin:12vh auto; text-align:center; color:var(--muted); }
+  .empty b { display:block; font:600 26px/1.2 var(--display); letter-spacing:-.02em; color:var(--ink); margin-bottom:10px; }
+  h1 { margin:0; font:600 36px/1.15 var(--display); letter-spacing:-.02em; overflow-wrap:anywhere; }
+  .meta { display:flex; flex-wrap:wrap; gap:4px 20px; color:var(--muted); margin:8px 0 20px; }
+  .meta .mono { white-space:normal; }
+  .meta b { color:var(--ink); font-weight:500; }
+
+  .track { display:grid; grid-template-columns:repeat(6, minmax(0,1fr)); gap:6px; margin-bottom:20px; }
+  .track div { padding:10px 0 0; border-top:2px solid var(--line); color:var(--muted); font-size:13px; }
+  .track .done { border-color:var(--ink); color:var(--ink); }
+  .track .current { border-color:var(--accent); color:var(--ink); font-weight:500; }
+  .track small { display:block; color:var(--muted); font-weight:400; font-size:12px; }
+
+  .summary { display:flex; flex-wrap:wrap; align-items:baseline; gap:8px 28px; margin-bottom:12px; }
+  .summary span { white-space:nowrap; } .summary strong { font:400 40px/1 var(--display); letter-spacing:-1px; margin-right:6px; color:var(--ink); }
+  .now { color:var(--muted); margin:14px 0 24px; min-height:1.5em; }
+
+  .attn-panel { background:var(--card); border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:12px; padding:24px 28px; margin-bottom:28px; }
+  .attn-panel h3 { margin:0 0 6px; font:400 24px/1.2 var(--display); letter-spacing:-.3px; }
+  .attn-panel .q { white-space:pre-wrap; overflow-wrap:anywhere; }
+  .refs-panel { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px 24px; margin-bottom:28px; }
+  .liveboard { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 22px; margin-bottom:18px; }
+  .liveboard h3 { margin:0 0 8px; font:500 16px/1.3 var(--sans); }
+  .liveboard ul { margin:0; padding:0; list-style:none; }
+  .liveboard li { padding:8px 0; border-top:1px solid var(--line-soft); }
+  .lbspin { flex:none; width:14px; height:14px; border-radius:50%; border:2px solid var(--line); border-top-color:var(--accent); animation:spin .8s linear infinite; align-self:center; }
+  .lbspin.wait { animation-duration:2.2s; opacity:.6; }
+  @media (prefers-reduced-motion: reduce) { .lbspin { animation:pulse 1.8s ease-in-out infinite; } }
+  .lb-free { margin-top:10px; padding:8px 12px; border-radius:8px; background:var(--sunk); color:var(--body); }
+  .lb-row { display:flex; gap:14px; flex-wrap:wrap; align-items:baseline; }
+  .lb-bar2 { height:6px; background:var(--line); border-radius:3px; margin-top:6px; overflow:hidden; }
+  .lb-bar2 i { display:block; height:100%; background:var(--accent); transition:width .4s; }
+  .ticks i.t { background:var(--accent); animation:pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity:.35; } }
+  .activity { margin:8px 0 18px; padding:0; list-style:none; max-height:260px; overflow:auto; font-size:13px; }
+  .activity li { padding:3px 0; border-bottom:1px solid var(--line-soft); overflow-wrap:anywhere; }
+  .act-code { font-size:12px; white-space:normal; }
+  .refs-panel h3 { margin:0 0 4px; font:500 16px/1.3 var(--sans); }
+  .refs-panel textarea { width:100%; min-height:44px; margin:10px 0; padding:10px 14px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); font:inherit; resize:vertical; }
+  .refs-panel ul { margin:8px 0 0; padding:0; list-style:none; }
+  .refs-panel li { padding:4px 0; overflow-wrap:anywhere; }
+  .attn-panel textarea { width:100%; min-height:80px; margin:12px 0; padding:12px 14px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); font:inherit; resize:vertical; }
+  .btn { height:40px; padding:0 20px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); font-weight:500; cursor:pointer; }
+  .btn.primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  .btn.primary:active { background:var(--accent-active); border-color:var(--accent-active); }
+  .btn:disabled { opacity:.5; cursor:default; }
+  pre.strategy { margin:14px 0 0; padding:20px 24px; max-height:300px; overflow:auto; background:var(--dark-soft); color:var(--on-dark); border-radius:12px; white-space:pre-wrap; font:400 13px/1.65 var(--mono); }
+  .err { color:var(--fail); margin-top:8px; white-space:pre-wrap; }
+  .head { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-start; justify-content:space-between; }
+  .head h1 { min-width:0; flex:1 1 240px; }
+  .head .btn { flex-shrink:0; }
+  .reports { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:0 0 28px; }
+  a.btn { text-decoration:none; display:inline-flex; align-items:center; color:var(--ink); }
+  a.btn.primary { color:var(--accent-ink); }
+  .btn.danger { border-color:var(--fail); color:var(--fail); background:var(--bg); }
+  .btn.danger:active { background:var(--fail); color:var(--bg); }
+  .hint-box { margin:16px 0; padding:18px 20px; border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:12px; background:var(--card); }
+  .hint-box h3 { margin:0 0 4px; font:400 20px/1.25 var(--display); letter-spacing:-.2px; }
+  .hint-box textarea { width:100%; min-height:72px; margin:12px 0; padding:12px 14px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); font:inherit; resize:vertical; }
+  .idle { margin:0 0 16px; padding:10px 14px; border:1px solid var(--line); border-left:4px solid var(--blocked); border-radius:8px; background:var(--card); color:var(--body); }
+  .ai-notes { margin:16px 0 0; }
+  .note { margin:10px 0; padding:12px 14px; border:1px solid var(--line); border-left:4px solid var(--repairing); border-radius:8px; background:var(--bg); overflow-wrap:anywhere; }
+  .note h4 { margin:0 0 6px; font:500 13px/1.4 var(--sans); color:var(--ink); }
+  .note dl { margin:0; display:grid; grid-template-columns:max-content 1fr; gap:4px 12px; }
+  .note dt { color:var(--muted); } .note dd { margin:0; }
+  .said { margin-top:8px; padding:8px 12px; border-left:3px solid var(--accent); border-radius:0 8px 8px 0; background:var(--bg); overflow-wrap:anywhere; }
+
+  /* One screen, three columns: sessions | cases | detail. Only the columns scroll; the header stays put. */
+  .session-head { position:sticky; top:64px; z-index:6; flex:none; padding:13px 20px 11px; border-bottom:1px solid var(--line); background:var(--surface); }
+  .session-title-row { display:flex; align-items:center; gap:10px; }
+  .session-title-row h1 { font:600 20px/1.25 var(--display); flex:1; min-width:0; }
+  .session-title-row .btn { height:32px; min-height:32px; padding:0 12px; font-size:12px; }
+  .session-meta { display:flex; flex-wrap:wrap; gap:2px 14px; margin:3px 0 9px; color:var(--muted); font-size:11px; }
+  .strip { display:flex; align-items:center; gap:8px 18px; flex-wrap:wrap; }
+  .progress-summary { display:flex; align-items:baseline; gap:6px; white-space:nowrap; }
+  .progress-summary strong { font:600 20px/1 var(--display); letter-spacing:-.03em; color:var(--ink); }
+  .progress-summary .muted { font-size:12px; }
+  .strip > .bar { flex:0 1 190px; min-width:90px; }
+  .agent-pill { color:var(--muted); font-size:11px; white-space:nowrap; }
+  .phase-mini { display:flex; flex:1 1 330px; gap:4px; min-width:220px; }
+  .phase-mini div { flex:1; min-width:0; padding-top:5px; border-top:2px solid var(--line); color:var(--muted); font-size:10px; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .phase-mini .done { border-color:var(--ink); color:var(--body); }
+  .phase-mini .current { border-color:var(--accent); color:var(--ink); font-weight:600; }
+  .phase-mini small { display:block; color:var(--muted); font-weight:400; font-size:10px; }
+  .mini-stats { display:flex; align-items:baseline; flex-wrap:wrap; gap:2px 14px; margin-top:7px; color:var(--muted); font-size:11px; }
+  .mini-stats strong { font:600 15px/1 var(--display); color:var(--ink); margin-right:2px; }
+  .mini-stats .sq { width:6px; height:6px; margin-right:4px; }
+  .replay-line { display:flex; align-items:center; flex-wrap:wrap; gap:6px 10px; margin-top:7px; font-size:11px; color:var(--muted); }
+  .replay-line .btn, .replay-line .replay { height:28px; min-height:28px; padding:0 9px; font-size:11px; }
+  .head-attention { margin-top:9px; padding:8px 12px; border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:8px; background:color-mix(in srgb, var(--accent) 6%, var(--surface)); }
+  .head-attention h3 { display:inline; margin:0 6px 0 0; font:600 13px/1.5 var(--sans); color:var(--ink); }
+  .head-attention p, .head-attention .q, .head-attention .muted { font-size:12px; }
+  .head-attention textarea { min-height:52px; margin:6px 0; padding:7px 10px; font-size:12px; }
+  .head-attention pre.strategy { max-height:180px; padding:12px 14px; margin:8px 0; }
+  .head-attention .err { margin-top:4px; }
+  .head-actions { margin-top:6px; display:flex; flex-wrap:wrap; gap:6px; }
+  .head-actions .btn { height:30px; min-height:30px; padding:0 12px; font-size:12px; }
+  .session-head .idle { margin:8px 0 0; padding:6px 10px; font-size:11px; }
+  .live-mini { margin-top:8px; display:flex; align-items:center; flex-wrap:wrap; gap:5px 8px; font-size:11px; color:var(--muted); }
+  .live-mini .live-chip { border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); padding:3px 8px; font-size:11px; cursor:pointer; transition:border-color .16s ease, background .16s ease; }
+  .live-mini .live-chip:hover { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 8%, var(--bg)); }
+  .live-mini details { margin:0; }
+  .live-mini .lb-free { margin:0; padding:3px 8px; font-size:11px; }
+
+  .workarea { flex:none; min-height:0; display:grid; grid-template-columns:minmax(288px,336px) minmax(0,1fr); align-items:start; }
+  .case-column { min-width:0; min-height:0; display:flex; flex-direction:column; border-right:1px solid var(--line); background:var(--surface); }
+  .case-column .panel { flex:1; min-height:0; display:flex; flex-direction:column; border:0; border-radius:0; background:transparent; }
+  .case-list header { display:flex; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid var(--line); background:var(--surface); }
+  .case-list h2 { margin:0; flex:1; font:600 13px/1.4 var(--sans); letter-spacing:.01em; }
+  .case-list header span { font-size:11px; color:var(--muted); }
+  .case-toggle { flex:none; width:26px; height:26px; padding:0; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--muted); cursor:pointer; line-height:1; transition:border-color .16s ease, color .16s ease; }
+  .case-toggle:hover { border-color:var(--accent); color:var(--accent); }
+  .layout.cases-collapsed .workarea { grid-template-columns:44px minmax(0,1fr); }
+  .layout.cases-collapsed .case-list header { padding:8px 8px; justify-content:center; }
+  .layout.cases-collapsed .case-list h2, .layout.cases-collapsed .case-hint, .layout.cases-collapsed .case-table-scroll, .layout.cases-collapsed .case-foot { display:none; }
+  .layout.cases-collapsed .case-toggle { width:28px; height:28px; }
+  .case-scroll-hint { display:none; }
+  .case-table-scroll { flex:none; min-height:auto; max-height:none; overflow:visible; }
+  .case-table-scroll:focus-visible { outline-offset:-3px; }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; font:500 11px/1.4 var(--sans); letter-spacing:.7px; text-transform:uppercase; color:var(--muted); padding:9px 12px; border-bottom:1px solid var(--line); background:var(--sunk); position:sticky; top:0; z-index:1; }
+  td { padding:9px 12px; border-bottom:1px solid var(--line-soft); vertical-align:middle; }
+  /* The markup stays a table for keyboard and screen readers; it paints as a compact three-line case card. */
+  .case-table thead { display:block; position:sticky; top:0; z-index:2; background:var(--sunk); border-bottom:1px solid var(--line); }
+  .case-table thead tr { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:2px; }
+  .case-table th { position:static; padding:5px 4px; border:0; background:transparent; font-size:9px; letter-spacing:.2px; text-align:center; }
+  .case-table, .case-table tbody { display:block; width:100%; }
+  .case-table tr.case { display:grid; grid-template-columns:auto minmax(0,1fr) auto; grid-template-areas:"id live replay" "title title title" "steps profile attempts"; align-items:center; gap:3px 8px; position:relative; padding:10px 14px 11px; border-bottom:1px solid var(--line-soft); cursor:pointer; transition:background .16s ease; }
+  .case-table tr.case:hover { background:var(--sunk); }
+  .case-table tr.case:focus-visible { outline-offset:-2px; }
+  .case-table tr.case[aria-selected=true] { background:color-mix(in srgb, var(--accent) 7%, var(--surface)); }
+  .case-table tr.case[aria-selected=true]::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--accent); }
+  .case-table tr.case:last-child { border-bottom:0; }
+  .case-table tr.case td { display:block; padding:0; border:0; min-width:0; }
+  .case-table tr.case td:nth-child(1) { grid-area:id; font-size:11px; font-weight:700; letter-spacing:.03em; color:var(--accent); }
+  .case-table tr.case td:nth-child(2) { grid-area:title; margin:1px 0 2px; }
+  .case-table tr.case td:nth-child(3) { grid-area:profile; font-size:10px; color:var(--muted); white-space:normal; overflow-wrap:anywhere; }
+  .case-table tr.case td:nth-child(4) { grid-area:steps; }
+  .case-table tr.case td:nth-child(5) { grid-area:attempts; font-size:10px; color:var(--muted); justify-self:end; }
+  .case-table tr.case td:nth-child(6) { grid-area:live; display:flex; align-items:center; gap:5px; justify-self:end; }
+  .case-table tr.case td:nth-child(7) { grid-area:replay; justify-self:end; }
+  .case-table .title { font-weight:600; font-size:13px; line-height:1.35; color:var(--ink); white-space:normal; overflow-wrap:anywhere; }
+  .case-table .tag { font-size:10px; padding:1px 6px; }
+  .ticks { display:inline-flex; flex-wrap:wrap; max-width:100%; gap:2px; vertical-align:middle; margin-right:5px; }
+  .ticks i { flex-shrink:0; width:5px; height:11px; border-radius:2px; background:var(--c, transparent); border:1px solid var(--line); }
+  .ticks i.p { --c:var(--pass); border-color:var(--pass); } .ticks i.f { --c:var(--fail); border-color:var(--fail); }
+  .ticks + .muted, .case-table td:nth-child(4) .muted { font-size:10px; }
+  .status { white-space:nowrap; font-weight:600; font-size:11px; color:var(--c); }
+  .title { color:var(--ink); overflow-wrap:anywhere; }
+  .case-foot { flex:none; max-height:34%; overflow:auto; border-top:1px solid var(--line); background:var(--sunk); }
+  .case-foot details { margin:0; border-bottom:1px solid var(--line-soft); }
+  .case-foot summary { padding:9px 14px; font-size:11px; font-weight:600; color:var(--muted); }
+  .case-foot details > :not(summary) { padding:0 14px 12px; }
+  .case-foot .refs-panel, .case-foot .activity { background:transparent; border:0; border-radius:0; padding:0; }
+  .case-foot .reports { margin:0 0 8px; }
+  .case-foot .btn { height:30px; min-height:30px; padding:0 10px; font-size:11px; }
+  .case-foot textarea { min-height:50px; font-size:12px; }
+
+  .detail-column { min-width:0; min-height:auto; overflow:visible; padding:16px 22px 36px; }
+  .detail { padding:0; border:0; border-radius:0; background:transparent; }
+  .detail h2 { margin:0 0 4px; font:600 22px/1.25 var(--display); letter-spacing:-.02em; }
+  .detail .mono, .refs-panel .mono, .lb-free .mono { white-space:normal; overflow-wrap:anywhere; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0 16px; }
+  .tabs { display:flex; gap:0; max-width:100%; overflow-x:auto; margin:4px 0 12px; border-bottom:1px solid var(--line); }
+  .tabs button { flex-shrink:0; }
+  .tabs button { background:none; border:0; border-bottom:2px solid transparent; padding:9px 14px; cursor:pointer; color:var(--muted); font-weight:500; transition:color .16s ease, border-color .16s ease; }
+  .tabs button:hover { color:var(--ink); }
+  .tabs button[aria-selected=true] { color:var(--ink); border-color:var(--accent); }
+  .workspace-tabs { margin:0; border:0; }
+  .workspace-tabs button { white-space:nowrap; }
+  .site-map-active .layout { grid-template-columns:minmax(0,1fr); }
+.site-map-active .rail { display:none; }
+.site-map-active #siteMapMain { padding:24px 28px 20px; min-width:0; }
+#siteMapMain { --map-blue:#2563eb; --map-blue-soft:#eef4ff; --map-purple:#7653b5; --map-purple-soft:#f4f0fb; --map-teal:#177d75; --map-teal-soft:#eef8f5; --map-edge:#c1cbd9; --map-paper:#f5f7fb; --map-node:#fff; --map-grid:#dce3ee; --map-navy:#172a46; }
+.map-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:16px; }
+.map-heading h1 { font:500 27px/1.25 var(--sans); letter-spacing:-.7px; }
+.map-eyebrow { font-size:10px; letter-spacing:1.6px; color:var(--muted); font-weight:600; margin-bottom:5px; }
+.map-stats { display:flex; flex-wrap:wrap; gap:8px 20px; color:var(--muted); font-size:12px; }
+.map-stats strong { color:var(--ink); font-size:16px; font-weight:600; }
+.map-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:0 0 14px; }
+.map-toolbar label { display:flex; align-items:center; gap:8px; min-width:0; }
+.map-toolbar select { width:auto; min-width:100px; height:38px; background:var(--surface); }
+.map-toolbar input { height:38px; width:100%; min-width:0; padding:0 12px; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--ink); font:inherit; }
+.map-toolbar input:focus { outline:2px solid var(--map-blue); outline-offset:1px; }
+.map-toolbar .map-query { flex:1; min-width:220px; position:relative; }
+.map-toolbar .btn { height:38px; padding:0 15px; }
+.map-toolbar .primary { background:var(--map-blue); border-color:var(--map-blue); color:white; }
+.map-search-box { display:flex; flex:1; min-width:0; gap:8px; }
+.map-search-box > .btn { flex:0 0 auto; white-space:nowrap; }
+.map-note { color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
+.map-error { color:var(--fail); padding:20px; white-space:pre-wrap; }
+.diagram-shell { position:relative; height:calc(100dvh - 230px); min-height:480px; border:1px solid #d9e1ec; border-radius:14px; overflow:hidden; background:var(--map-paper); }
+.diagram-space { position:absolute; inset:0; transition:right .18s ease; }
+.diagram-shell.has-inspector .diagram-space { right:368px; }
+.diagram-space > #mapDiagram { display:block; width:100%; height:100%; outline-offset:-3px; touch-action:none; cursor:grab; user-select:none; }
+.diagram-space > #mapDiagram.dragging { cursor:grabbing; }
+.diagram-breadcrumb { position:absolute; top:16px; left:18px; right:18px; z-index:2; display:flex; align-items:center; flex-wrap:wrap; gap:8px; pointer-events:none; color:var(--muted); font-size:12px; }
+.diagram-breadcrumb button { pointer-events:auto; border:1px solid var(--line); background:var(--map-node); color:var(--ink); border-radius:6px; padding:6px 10px; cursor:pointer; font:500 12px var(--sans); }
+.diagram-breadcrumb strong { padding:6px 10px; border-radius:6px; background:var(--map-node); color:var(--map-blue); font-weight:500; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.diagram-edge { fill:none; stroke:var(--map-edge); stroke-width:1.8; }
+.diagram-edge.secondary { stroke-dasharray:5 5; opacity:.6; }
+.diagram-edge.on-route { stroke:var(--map-blue); stroke-width:2.8; }
+.diagram-edge-label { font:10px var(--sans); fill:var(--muted); paint-order:stroke; stroke:var(--map-paper); stroke-width:6; stroke-linejoin:round; }
+.diagram-node { cursor:pointer; outline:none; }
+.diagram-node .node-body { fill:var(--map-node); stroke:#d3ddeb; stroke-width:1.2; }
+.diagram-node:hover .node-body, .diagram-node:focus-visible .node-body { stroke:var(--map-blue); stroke-width:2.5; }
+.diagram-node.selected .node-body { stroke:var(--map-blue); stroke-width:2.7; }
+.diagram-node .node-strip { fill:var(--map-blue); }
+.diagram-node.action .node-strip { fill:var(--map-purple); }
+.diagram-node.view .node-strip { fill:var(--map-teal); }
+.diagram-node .node-type { fill:var(--map-blue); font:600 10px var(--sans); letter-spacing:1px; }
+.diagram-node.action .node-type { fill:var(--map-purple); }
+.diagram-node.view .node-type { fill:var(--map-teal); }
+.diagram-node .node-title { fill:var(--ink); font:500 17px var(--sans); }
+.diagram-node .node-sub { fill:var(--muted); font:11px var(--sans); }
+.diagram-node.workspace .node-body { fill:var(--map-navy); stroke:var(--map-navy); }
+.diagram-node.workspace .node-title { fill:#fff; }
+.diagram-node.workspace .node-sub, .diagram-node.workspace .node-type { fill:#c9d9ef; }
+.diagram-node.workspace .node-strip { fill:#729cff; }
+.node-expander { cursor:pointer; }
+.node-expander circle { fill:var(--map-node); stroke:#c9d5e5; stroke-width:1.3; }
+.node-expander text { fill:var(--map-blue); font:500 17px var(--sans); text-anchor:middle; }
+.diagram-tools { position:absolute; bottom:18px; left:50%; transform:translateX(-50%); display:flex; gap:1px; padding:4px; background:var(--map-node); border:1px solid #d6dfeb; border-radius:9px; z-index:2; }
+.diagram-tools button { border:0; background:transparent; color:var(--body); height:32px; min-width:32px; padding:0 10px; cursor:pointer; font:500 12px var(--sans); border-radius:5px; white-space:nowrap; }
+.diagram-tools button:hover { background:var(--map-blue-soft); color:var(--map-blue); }
+.diagram-tools output { display:flex; align-items:center; justify-content:center; min-width:48px; font:11px var(--mono); color:var(--muted); }
+.diagram-legend { position:absolute; left:18px; bottom:18px; display:flex; gap:14px; font-size:11px; color:var(--muted); z-index:1; pointer-events:none; }
+.diagram-legend span { display:flex; gap:5px; align-items:center; }
+.diagram-legend i { width:7px; height:7px; border-radius:2px; background:var(--map-blue); }
+.diagram-legend .action i { background:var(--map-purple); }.diagram-legend .view i { background:var(--map-teal); }
+.diagram-minimap { position:absolute; right:16px; bottom:16px; width:140px; height:86px; background:var(--map-node); border:1px solid #d6dfeb; border-radius:8px; opacity:.92; pointer-events:none; }
+.diagram-footer { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; margin-top:9px; color:var(--muted); font-size:11px; }
+.map-inspector { position:absolute; right:12px; top:12px; bottom:12px; width:344px; border:1px solid #d6dfeb; border-radius:11px; background:var(--surface); overflow:auto; z-index:3; }
+.map-inspector-head { display:flex; justify-content:space-between; gap:10px; padding:18px 18px 12px; }
+.map-inspector-head h2 { margin:0; font:500 17px/1.4 var(--sans); overflow-wrap:anywhere; }
+.map-close { align-self:flex-start; border:0; background:var(--sunk); color:var(--muted); border-radius:5px; width:27px; height:27px; cursor:pointer; flex-shrink:0; }
+.map-inspector-body { padding:0 18px 18px; }
+.map-inspector .tabs { margin:0 0 12px; }
+.map-inspector .tabs button { flex:1; padding:10px 6px; font-size:12px; }
+.map-inspector .tabs button[aria-selected=true] { border-color:var(--map-blue); color:var(--map-blue); }
+.map-inspector .map-toolbar { gap:8px; }
+.map-inspector .map-query { min-width:100%; }
+.map-inspector .map-toolbar label small { display:none; }
+.map-inspector .map-toolbar select { min-width:70px; max-width:160px; }
+.map-required { font-size:11px; flex:1; }.map-required input { width:14px; height:14px; }
+.map-control { border:1px solid var(--line); border-radius:8px; padding:12px; margin-bottom:9px; background:var(--bg); overflow-wrap:anywhere; }
+.map-control h3 { margin:0 0 3px; font:500 13px/1.5 var(--sans); }
+.map-control .technical { font:10px/1.5 var(--mono); color:var(--muted); margin-bottom:7px; }
+.map-control code { display:block; padding:7px 8px; border-radius:5px; background:var(--sunk); color:var(--body); font:10px/1.6 var(--mono); overflow-wrap:anywhere; white-space:normal; margin-top:8px; }
+.map-badges { display:flex; flex-wrap:wrap; gap:4px; margin:7px 0 0; }
+.map-badge { font-size:9px; border-radius:4px; padding:2px 6px; background:var(--map-blue-soft); color:var(--map-blue); }.map-badge.type { background:var(--map-teal-soft); color:var(--map-teal); }
+.map-control p { margin:6px 0; font-size:11px; color:var(--muted); }
+.map-route-step { display:grid; grid-template-columns:24px minmax(0,1fr); gap:10px; margin:0; padding:0 0 20px; position:relative; }
+.map-route-step:before { content:''; position:absolute; left:11px; top:24px; bottom:0; width:1px; background:var(--line); }.map-route-step:last-child:before { display:none; }
+.map-route-step .number { width:24px; height:24px; display:flex; align-items:center; justify-content:center; border:1px solid #bbcef4; background:var(--map-blue-soft); border-radius:50%; color:var(--map-blue); font-size:11px; }
+.map-route-step h3 { font:500 12px/1.6 var(--sans); margin:0; overflow-wrap:anywhere; }.map-route-step small { color:var(--muted); font-size:10px; }
+.map-results { position:absolute; left:18px; top:58px; width:300px; max-height:calc(100% - 135px); overflow:auto; padding:10px; border:1px solid #d6dfeb; border-radius:10px; background:var(--map-node); z-index:4; }
+.map-results header { display:flex; align-items:center; justify-content:space-between; padding:3px 5px 9px; font-size:12px; color:var(--muted); }
+.map-result { width:100%; display:block; text-align:left; border:0; border-radius:6px; padding:10px; background:transparent; color:var(--body); cursor:pointer; }
+.map-result:hover { background:var(--map-blue-soft); }.map-result strong { font-size:12px; font-weight:500; display:block; overflow-wrap:anywhere; }.map-result small { font-size:10px; color:var(--muted); }
+.diagram-empty { max-width:420px; margin:15vh auto; padding:24px; text-align:center; }.diagram-empty h2 { font-size:21px; }.diagram-empty p { color:var(--muted); }
+@media (prefers-color-scheme: dark) {
+  #siteMapMain { --map-paper:#171e2a; --map-node:#212b3a; --map-grid:#2a364a; --map-edge:#4b5d75; --map-blue:#82acff; --map-blue-soft:#253a5b; --map-purple:#c0a3ff; --map-purple-soft:#352b48; --map-teal:#7cd5c9; --map-teal-soft:#203c3a; }
+  .diagram-shell, .map-inspector, .map-results, .diagram-tools, .diagram-minimap { border-color:#3b4a60; }.diagram-node .node-body { stroke:#47566e; }.node-expander circle { stroke:#56677e; }
+  .map-toolbar .primary { background:#416fbd; border-color:#416fbd; }.diagram-node.workspace .node-body { fill:#294366; }
+}
+@media (max-width:1100px) { .diagram-shell.has-inspector .diagram-space { right:0; }.map-inspector { width:320px; }.diagram-legend { top:58px; bottom:auto; }.diagram-minimap { display:none; } }
+@media (max-width:767px) {
+  .top { gap:8px; padding:0 12px; }.top b { font-size:18px; }.workspace-tabs button { padding:8px; }#liveText { display:none; }
+  .site-map-active #siteMapMain { padding:16px 12px 12px; }.map-heading { align-items:flex-start; margin-bottom:12px; }.map-heading h1 { font-size:21px; }.map-eyebrow { font-size:8px; }.map-stats { gap:4px 10px; justify-content:flex-end; max-width:145px; font-size:10px; }.map-stats strong { font-size:12px; }
+  .map-toolbar { gap:8px; }.map-toolbar .map-query { min-width:100%; order:2; }.map-toolbar select { max-width:175px; font-size:12px; }.map-toolbar .map-kind { max-width:85px; min-width:75px; }
+  .diagram-shell { min-height:480px; height:calc(100dvh - 260px); }.diagram-tools { left:12px; transform:none; bottom:12px; }.diagram-tools button { padding:0 8px; }.diagram-legend { left:12px; gap:10px; }.diagram-breadcrumb { left:12px; top:12px; }.diagram-breadcrumb strong { max-width:170px; }.diagram-footer { font-size:10px; }
+  .map-inspector { top:auto; bottom:10px; right:10px; left:10px; width:auto; max-height:52%; }.diagram-shell.has-inspector .diagram-tools { bottom:auto; top:90px; }.map-results { left:10px; width:calc(100% - 20px); max-height:60%; }.map-inspector-head { padding:12px 14px; }.map-inspector-body { padding:0 14px 14px; }
+}
+@media (prefers-reduced-motion: reduce) { .diagram-space { transition:none; } }
+
+  .step { display:grid; grid-template-columns:28px minmax(0,1fr) 148px; gap:14px; padding:18px 0; border-bottom:1px solid var(--line-soft); }
+  .step:last-child { border-bottom:0; }
+  .step .n { color:var(--c); font-weight:500; font-family:var(--mono); }
+  .step .cap { font-weight:500; color:var(--ink); } .step .exp { color:var(--muted); margin-top:3px; }
+  .step .act { margin-top:8px; padding:8px 12px; border-left:3px solid var(--c); border-radius:0 8px 8px 0; background:var(--sunk); overflow-wrap:anywhere; }
+  .thumb { width:148px; height:88px; border:1px solid var(--line); border-radius:8px; background:var(--sunk) center top/cover no-repeat; cursor:zoom-in; padding:0; position:relative; overflow:hidden; }
+  .thumb.fail { border-color:var(--fail); }
+  .thumb span { position:absolute; right:6px; bottom:6px; font:500 11px/1.4 var(--sans); padding:1px 8px; background:rgba(24,23,21,.82); color:var(--on-dark); border-radius:9999px; }
+  .noimg { width:148px; height:88px; border:1px dashed var(--line); border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--planned); font-size:12px; }
+  details { margin-top:16px; } summary { cursor:pointer; color:var(--muted); font-weight:500; }
+  details ul { margin:8px 0 0; padding-left:20px; }
+
+  .lightbox { position:fixed; inset:0; background:rgba(24,23,21,.94); display:none; flex-direction:column; z-index:20; }
+  .lightbox.open { display:flex; }
+  .lb-bar { display:flex; align-items:center; gap:10px; padding:14px 24px; color:var(--on-dark); }
+  .lb-bar .grow { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .lb-bar button { background:var(--dark-elev); color:var(--on-dark); border:1px solid #3a3833; border-radius:8px; height:36px; padding:0 16px; cursor:pointer; font-weight:500; }
+  .lb-bar button[aria-pressed=true] { background:var(--on-dark); color:var(--dark); }
+  .lb-body { flex:1; overflow:auto; display:flex; justify-content:center; align-items:flex-start; padding:0 24px 24px; }
+  .lb-body img { max-width:100%; height:auto; background:#fff; border-radius:8px; }
+
+  @container dashboard (max-width:640px) {
+    .step { grid-template-columns:24px minmax(0,1fr); gap:10px; padding:14px 0; }
+    .step > .thumb, .step > .noimg { grid-column:2; }
+    .note dl { grid-template-columns:minmax(0,1fr); gap:2px; }
+    .note dd { margin-bottom:8px; }
+    .chips .tag { white-space:normal; overflow-wrap:anywhere; }
+    .phase-mini { display:none; }
+  }
+  @media (max-width:1280px) { .workarea { grid-template-columns:minmax(264px,300px) minmax(0,1fr); } }
+  @media (max-width:1100px) {
+    .layout, .layout.collapsed { grid-template-columns:minmax(0,1fr); grid-template-rows:auto auto; }
+    .rail { position:static; max-height:none; border-right:0; border-bottom:1px solid var(--line); }
+    .rail header { padding:9px 16px; gap:7px; }
+    .layout.collapsed .rail header { padding:8px 12px; }
+    .hist { padding:9px 16px; }
+    .site-map-active .layout { grid-template-rows:auto; }
+  }
+  @media (max-width:860px) {
+    /* Small screens scroll the page top-to-bottom: no stacked, independently scrolling panes. */
+    .workarea { display:block; }
+    .case-column { border-right:0; border-bottom:1px solid var(--line); }
+    .case-foot { display:none; }
+    .detail-column { padding:14px 16px 28px; }
+    .layout.cases-collapsed .case-list header { justify-content:flex-start; padding:8px 12px; }
+    .layout.cases-collapsed .case-list h2 { display:block; }
+  }
+  @media (max-width:767px) {
+    .top { flex-wrap:wrap; gap:2px 12px; padding:10px 12px 0; }
+    .top .workspace-tabs { order:3; flex-basis:100%; }
+    .workspace-tabs button { flex:1; }
+    .session-head { padding:11px 12px 9px; }
+    .session-title-row h1 { font-size:18px; }
+    .session-meta { margin-bottom:7px; }
+    .rail { max-height:116px; }
+    .track { grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+    .attn-panel, .hint-box { padding:14px; margin-bottom:14px; }
+    .attn-panel h3, .hint-box h3 { font-size:18px; }
+    .session-head .attn-panel { margin:9px 0 0; padding:8px 12px; }
+    .session-head .attn-panel h3 { font:600 13px/1.5 var(--sans); margin:0 6px 0 0; }
+    #scriptsMain, #siteMapMain { padding:16px 12px 24px; }
+    #scriptsMain > .panel { padding:16px; }
+    .detail h2 { font-size:20px; }
+    .reports { gap:8px; margin-bottom:16px; }
+    .btn { max-width:100%; }
+    .lb-bar { flex-wrap:wrap; gap:8px; padding:12px; }
+    .lb-bar .grow { flex-basis:100%; }
+    .lb-bar button { padding:0 12px; }
+    .lb-body { padding:0 12px 12px; }
+  }
+  @media (max-width:480px) {
+    /* The cards carry their own labels; the seven-column header is only noise on a phone. */
+    .case-table thead { display:none; }
+    .session-head { padding:10px 12px 8px; }
+    .session-meta span:not(:first-child):not(:nth-child(2)) { display:none; }
+    .agent-pill, .live-mini details { display:none; }
+    .replay-line > span:first-child { display:none; }
+    .strip > .bar { flex:1 1 100px; }
+  }
+</style>
+</head>
+<body>
+<div class="top"><b>Odoo Test</b><nav class="tabs workspace-tabs" role="tablist" aria-label="Workspace">
+  <button id="tab-progress" role="tab" data-workspace-tab="progress" aria-selected="true" aria-controls="main">Tiến độ test</button>
+  <button id="tab-scripts" role="tab" data-workspace-tab="scripts" aria-selected="false" aria-controls="scriptsMain" tabindex="-1">Scripts</button>
+  <button id="tab-site-map" role="tab" data-workspace-tab="site_map" aria-selected="false" aria-controls="siteMapMain" tabindex="-1">site_map</button>
+</nav><div class="live" aria-live="polite"><span class="dot" id="dot"></span><span id="liveText">đang tải…</span></div></div>
+<div class="layout">
+  <aside class="rail">
+    <header><div class="railtop"><h2>Lịch sử test</h2><button id="railToggle" type="button" aria-expanded="true" aria-controls="history wsFilter" aria-label="Thu gọn danh sách" title="Thu gọn / mở rộng">«</button></div><select id="wsFilter" aria-label="Lọc theo workspace"></select></header>
+    <div id="history"></div>
+  </aside>
+  <main id="main" role="tabpanel" aria-labelledby="tab-progress"></main>
+  <main id="scriptsMain" role="tabpanel" aria-labelledby="tab-scripts" hidden></main>
+  <main id="siteMapMain" role="tabpanel" aria-labelledby="tab-site-map" hidden></main>
+</div>
+<div class="lightbox" id="lb" role="dialog" aria-modal="true" aria-label="Ảnh bằng chứng">
+  <div class="lb-bar"><span class="grow" id="lbTitle"></span>
+    <button id="lbRaw" aria-pressed="false" title="Phím R">Ảnh gốc</button><button id="lbPrev" aria-label="Ảnh trước">←</button><button id="lbNext" aria-label="Ảnh sau">→</button><button id="lbClose">Đóng (Esc)</button></div>
+  <div class="lb-body"><img id="lbImg" alt=""></div>
+</div>
+
+<script>
+const TOKEN = "demo";
+const BOOT = {"select": null};
+const PHASE = { ANALYZE: "Phân tích", CONNECT: "Kết nối", CONFIRM: "Xác nhận", EXECUTE: "Thực thi", REPORT: "Báo cáo", DONE: "Xong" };
+const STATUS = { INTERRUPTED: "Bị bỏ dở", STOPPED: "Đã dừng", PASS: "PASS", FAIL: "FAIL", PENDING: "PENDING", BLOCKED: "BLOCKED", RUNNING: "Đang chạy", REPAIRING: "Đang sửa lỗi", EXPLORING: "Đang xác thực", PLANNED: "Chờ xác thực", BUILT: "Chờ chạy", VERIFIED: "Đã xác thực", TRYING: "Đang thử", HELD: "Cần xử lý trước", NEW: "Mới", "NOT EXECUTED": "Chưa chạy" };
+const ORDER = ["PASS", "FAIL", "REPAIRING", "RUNNING", "EXPLORING", "BUILT", "INTERRUPTED", "STOPPED", "PENDING", "BLOCKED", "PLANNED", "HELD", "NEW", "NOT EXECUTED"];
+const S = { sig: "", histSig: "", open: {}, draft: {}, hintError: "", sessions: [], ws: "", sel: null, view: null, caseId: null, attempt: null, raw: false, gallery: [], index: 0, error: "", busy: false };
+S.replayTiming = { action_delay_ms: 700, step_delay_ms: 1500 };
+S.videoMode = "fail";          // a plain re-run keeps the video only of a failure; the "Quay video" button always records, at a pace where the step notes can be read
+const RECORD_TIMING = { action_delay_ms: 700, step_delay_ms: 1500 };
+try {
+  const saved = JSON.parse(localStorage.getItem("oqaReplayTiming") || "{}");
+  for (const key of Object.keys(S.replayTiming)) {
+    if (Number.isInteger(saved[key]) && saved[key] >= 0 && saved[key] <= 60000) S.replayTiming[key] = saved[key];
+  }
+} catch (e) {}
+S.fast = false; S.fastPrev = { action_delay_ms: 700, step_delay_ms: 1500 };
+try {
+  const mode = JSON.parse(localStorage.getItem("oqaReplayFast") || "{}");
+  if (mode.fast === true) {
+    S.fast = true;
+    for (const key of Object.keys(S.fastPrev)) if (Number.isInteger(mode.prev?.[key]) && mode.prev[key] >= 0 && mode.prev[key] <= 60000) S.fastPrev[key] = mode.prev[key];
+    S.replayTiming.action_delay_ms = 0; S.replayTiming.step_delay_ms = 0;
+  }
+} catch (e) {}
+const saveFast = () => { try { localStorage.setItem("oqaReplayFast", JSON.stringify({ fast: S.fast, prev: S.fastPrev })); } catch (err) {} };
+const RSTATUS = { PASS: "Replay PASS", FAIL: "Replay FAIL", "NOT RUN": "Replay NOT RUN" };
+const replayTag = k => ["PASS", "FAIL"].includes(k.live_status) ? `<span class="tag ${k.replay_status === "FAIL" ? "attn" : ""}" title="${esc(k.replay && k.replay.at || "Chưa chạy lại script")}">${RSTATUS[k.replay_status] || k.replay_status}</span>` : "";
+S.workspaces = []; S.tab = "progress"; S.casesCollapsed = false;
+try { S.casesCollapsed = localStorage.getItem("oqaCasesCollapsed") === "1"; } catch (e) {}
+const M = { ws: "", lang: "", q: "", kind: "", key: "", mode: "buttons", view: "", match: "", required: false, data: null, results: null, screen: null, loading: false, error: "", request: 0, detailRequest: 0 };
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const cls = s => "s-" + String(s).split(" ")[0];
+const LIVE = ["RUNNING", "REPAIRING", "EXPLORING", "TRYING"];          // the server only sends these while something is really working (see view.py)
+const dot = s => LIVE.includes(s) ? '<i class="spin"></i>' : '<i class="sq"></i>';
+
+/* ===== DỮ LIỆU MẪU CHO FILE PREVIEW — KHÔNG CÓ TRONG BẢN CHẠY THẬT ===== */
+const demoImg = (label, tone) => "data:image/svg+xml;utf8," + encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="270"><rect width="480" height="270" fill="#faf9f5"/>` +
+  `<rect x="0" y="0" width="480" height="34" fill="#efe9de"/><circle cx="18" cy="17" r="5" fill="${tone}"/>` +
+  `<text x="34" y="22" font-family="Segoe UI,sans-serif" font-size="13" fill="#3d3d3a">Odoo · màn hình mẫu</text>` +
+  `<rect x="24" y="56" width="190" height="12" rx="4" fill="#e6dfd8"/><rect x="24" y="80" width="300" height="8" rx="4" fill="#efe9de"/>` +
+  `<rect x="24" y="100" width="260" height="8" rx="4" fill="#efe9de"/><rect x="24" y="134" width="432" height="96" rx="6" fill="#fff" stroke="#e6dfd8"/>` +
+  `<rect x="40" y="152" width="120" height="8" rx="4" fill="${tone}" opacity=".55"/>` +
+  `<rect x="40" y="174" width="380" height="6" rx="3" fill="#e6dfd8"/><rect x="40" y="192" width="330" height="6" rx="3" fill="#e6dfd8"/>` +
+  `<text x="40" y="240" font-family="Segoe UI,sans-serif" font-size="12" fill="#6c6a64">${label}</text></svg>`);
+
+const CAPTIONS = ["Mở menu Bán hàng", "Chọn bản ghi cần thao tác", "Nhập thông tin theo case", "Lưu và đọc thông báo", "Đối chiếu kỳ vọng", "Kiểm tra bản ghi liên quan"];
+const EXPECTS = ["Màn hình mở đúng", "Bản ghi đúng được chọn", "Giá trị nhập được giữ", "Có thông báo thành công", "Kết quả khớp testcase", "Dữ liệu liên quan đồng bộ"];
+const toneOf = s => s === "PASS" ? "#2f7a45" : s === "FAIL" ? "#b23c3c" : "#cc785c";
+const mkCase = (spec, row) => {
+  const [id, title, status, opt = {}] = spec;
+  const n = opt.steps || 5;
+  const steps = Array.from({ length: n }, (_, i) => {
+    const num = i + 1;
+    let st = "PENDING";
+    if (status === "PASS") st = "PASS";
+    else if (status === "FAIL") st = num < (opt.failStep || 3) ? "PASS" : num === opt.failStep || 3 ? "FAIL" : "PENDING";
+    else if (status === "RUNNING") st = num < (opt.runStep || 2) ? "PASS" : num === (opt.runStep || 2) ? "RUNNING" : "PENDING";
+    else if (status === "REPAIRING") st = num <= 2 ? "PASS" : num === 3 ? "TRYING" : "PENDING";
+    else if (status === "INTERRUPTED") st = num <= 2 ? "PASS" : "PENDING";
+    const image = ["PASS", "FAIL"].includes(st) && num <= 3 ? [{ annotated: demoImg("Bước " + num + " · " + CAPTIONS[i % 6], toneOf(st)), raw: demoImg("Ảnh gốc · bước " + num, "#6c6a64"), caption: "Bước " + num }] : [];
+    return { n: num, caption: CAPTIONS[i % 6], expected: EXPECTS[i % 6], status: st, checks: 2,
+             actual: st === "PASS" ? "Đúng kỳ vọng" : st === "FAIL" ? "Trường trạng thái hiện 'Nháp' thay vì 'Đã xác nhận'" : "",
+             images: image };
+  });
+  const live = ["RUNNING", "REPAIRING", "EXPLORING", "TRYING"].includes(status);
+  const attempts = ["PASS", "FAIL", "RUNNING", "REPAIRING", "INTERRUPTED"].includes(status) ? [{ n: 1, status, steps, from_step: 1 }] : [];
+  const repairs = status === "REPAIRING" ? [{ attempt: 1, ts: "2026-11-21T09:12:00", cause: "Nút Xác nhận nằm trong menu Hành động", evidence: "Ảnh bước 3 cho thấy nút không nằm trên form", change: "Đổi selector sang menu Hành động", probed: true }] : [];
+  return {
+    id, title, status, row, profile: opt.profile || "ban_hang_vn", depends_on: opt.depends_on || [],
+    clarity: 4, sufficiency: opt.sufficiency || 4, owner: live ? "haiku-2" : "", owner_fresh: live,
+    source: { pre: "Chuẩn bị: có đơn bán hàng ở trạng thái phù hợp.", steps: steps.slice(0, 3).map(s => s.caption), expected: EXPECTS[4] },
+    planned: steps.map(s => ({ ...s, status: "PENDING", images: [], actual: "" })), attempts, explore: null,
+    edge_cases: status === "FAIL" ? ["Đơn đã có hóa đơn"] : [], edge_none: "", data_needs: [], questions: opt.questions || [],
+    timeout_s: 20, repairs, can_hint: ["REPAIRING", "FAIL"].includes(status), exhausted: false, hints: [],
+    review_pending: !!opt.review_pending, review_skipped: opt.review_skipped || "", verdict: opt.review_pending ? "" : "ready",
+    can_replay: ["PASS", "FAIL"].includes(status), replay_status: opt.replay_status || "NOT RUN", replay: null,
+    history: [], can_request: opt.can_request || "", request: {}, reason: opt.reason || "", category: opt.category || "",
+    live_status: status, phase: status === "PASS" ? "Xong" : "Đang chạy"
+  };
+};
+const countsOf = cases => cases.reduce((c, k) => (c[k.status] = (c[k.status] || 0) + 1, c), {});
+const SPEC_MAIN = [
+  ["H01", "Đăng nhập bằng tài khoản bán hàng", "PASS"],
+  ["H02", "Tạo đơn bán hàng cho khách có sẵn", "PASS"],
+  ["H03", "Áp dụng chiết khấu vào dòng đơn", "FAIL", { failStep: 3, replay_status: "FAIL", category: "application", reason: "Trường chiết khấu không cập nhật tổng tiền" }],
+  ["H04", "Xác nhận đơn và kiểm tra trạng thái", "RUNNING", { runStep: 2 }],
+  ["H05", "Tạo hóa đơn từ đơn đã xác nhận", "REPAIRING"],
+  ["H06", "Kiểm tra tồn kho sau khi xác nhận đơn", "PASS", { replay_status: "PASS" }],
+  ["H07", "Cập nhật số lượng dòng đơn", "BLOCKED", { reason: "Thiếu quyền kho" }],
+  ["H08", "Hủy đơn ở trạng thái nháp", "PENDING"],
+  ["H09", "Tìm kiếm đơn theo mã", "PASS", { replay_status: "PASS" }],
+  ["H10", "In báo giá với template mặc định", "NOT EXECUTED"],
+  ["H11", "Gửi email xác nhận đơn", "INTERRUPTED", { can_request: "reassign" }],
+  ["H12", "Đổi khách hàng trên đơn", "PASS", { review_pending: true, questions: ["Có cho phép đổi khách sau khi có hóa đơn không?"] }]
+];
+const SPEC_REVIEW = [
+  ["K01", "Tạo khách hàng từ form rút gọn", "PENDING", { review_pending: true, questions: ["Trường mã khách có bắt buộc không?"] }],
+  ["K02", "Tìm khách theo số điện thoại", "PENDING"], ["K03", "Cập nhật địa chỉ giao hàng", "PENDING"],
+  ["K04", "Đánh dấu khách ưu tiên", "PENDING"], ["K05", "Xem lịch sử đơn của khách", "PENDING"]
+];
+const SPEC_CONFIRM = [
+  ["Q01", "Nhập phiếu nhập kho", "NEW"], ["Q02", "Kiểm tra số lô", "NEW"], ["Q03", "Cập nhật giá vốn", "NEW"],
+  ["Q04", "Đối chiếu tồn kho", "NEW"], ["Q05", "In nhật ký kho", "NEW"], ["Q06", "Khóa phiếu nhập", "NEW"]
+];
+const SPEC_DONE = [
+  ["D01", "Mở danh sách sản phẩm", "PASS"], ["D02", "Tạo sản phẩm mới", "PASS"], ["D03", "Nhập giá bán", "PASS"],
+  ["D04", "Kiểm tra ảnh sản phẩm", "PASS"], ["D05", "Lưu và thoát", "PASS"]
+];
+const SPEC_STOP = [
+  ["T01", "Mở bảng chấm công", "PASS"], ["T02", "Ghi nhận giờ vào", "STOPPED"], ["T03", "Ghi nhận giờ ra", "PENDING"]
+];
+const mkView = (o) => {
+  const cases = o.spec.map((s, i) => mkCase(s, i + 2));
+  const counts = countsOf(cases);
+  const phases = [["ANALYZE", "done"], ["CONNECT", "done"], ["CONFIRM", "done"], ["EXECUTE", o.phase === "EXECUTE" ? "current" : "done"], ["REPORT", ""], ["DONE", ""]].map(([phase, state]) => ({ phase, state, at: state === "done" ? "2026-11-21T08:" + (20 + Math.floor(Math.random() * 30)) + ":00" : "" }));
+  return {
+    file: o.file, workspace: o.ws, session: o.id, created: "2026-11-21T08:14:00", updated: "2026-11-21 09:41",
+    connect: { version: o.version || "17.0" }, knowledge: 12, total: cases.length, cases, counts, phases,
+    now: o.waiting ? "AI đang chờ phản hồi của bạn" : o.can_confirm ? "Chờ duyệt phạm vi chạy" : "Cập nhật lúc 09:41",
+    waiting: o.waiting || null, can_confirm: !!o.can_confirm, strategy: o.strategy || "1. Chạy các case độc lập trước.\n2. Chuẩn bị dữ liệu cho case phụ thuộc.\n3. Chụp ảnh bằng chứng cho mỗi bước.",
+    stopped: !!o.stopped, can_stop: o.phase === "EXECUTE" && !o.stopped, idle: false, idle_hours: 0,
+    free_cases: [], notes: [{ ts: "2026-11-21T09:10:00", agent: "sonnet", text: "Giữ chung profile ban_hang_vn cho các case H01–H12." }],
+    activity: [], refs: [{ name: "BD_ban_hang.xlsx", kind: "file", path: "C:\\tai-lieu\\BD_ban_hang.xlsx" }],
+    reports: [{ main: true, name: "evidence.xlsx" }], workers: { active: cases.filter(k => k.owner_fresh).length, limit: 5 },
+    replay_counts: { PASS: 2, FAIL: 1 }
+  };
+};
+const DEMO_SESSIONS = [
+  { workspace: "Odoo 17 · Bán hàng", session: "20261121-081400", file: "BD_BanHang_Thang11.xlsx", created: "2026-11-21T08:14:00", phase: "EXECUTE", total: 12,
+    counts: countsOf(SPEC_MAIN.map((s, i) => mkCase(s, i + 2))) },
+  { workspace: "Odoo 17 · Bán hàng", session: "20261120-153000", file: "BD_KhachHang.xlsx", created: "2026-11-20T15:30:00", phase: "ANALYZE", total: 5, waiting: true,
+    counts: { PENDING: 5 } },
+  { workspace: "Odoo 18 · Kế toán", session: "20261120-093000", file: "BD_NhapKho.xlsx", created: "2026-11-20T09:30:00", phase: "CONFIRM", total: 6, counts: { NEW: 6 } },
+  { workspace: "Odoo 17 · Bán hàng", session: "20261119-140000", file: "BD_SanPham.xlsx", created: "2026-11-19T14:00:00", phase: "DONE", total: 5, counts: { PASS: 5 } },
+  { workspace: "Odoo 18 · Kế toán", session: "20261118-110000", file: "BD_ChamCong.xlsx", created: "2026-11-18T11:00:00", phase: "EXECUTE", total: 3, stopped: true, counts: { PASS: 1, STOPPED: 1, PENDING: 1 } }
+];
+const current = (s) => ({
+  workspace: s.workspace, session: s.session, file: s.file, created: s.created, phase: s.phase,
+  waiting: !!s.waiting, idle: false, idle_hours: 0, stopped: !!s.stopped, total: s.total, counts: s.counts
+});
+const DEMO_SESSIONS_FULL = DEMO_SESSIONS.map(current);
+const DEMO_VIEWS = {
+  "Odoo 17 · Bán hàng|20261121-081400": mkView({ ws: "Odoo 17 · Bán hàng", id: "20261121-081400", file: "BD_BanHang_Thang11.xlsx", spec: SPEC_MAIN, phase: "EXECUTE" }),
+  "Odoo 17 · Bán hàng|20261120-153000": mkView({ ws: "Odoo 17 · Bán hàng", id: "20261120-153000", file: "BD_KhachHang.xlsx", spec: SPEC_REVIEW, phase: "ANALYZE", waiting: { question: "Trường mã khách có bắt buộc khi tạo từ form rút gọn không? Có tài liệu thiết kế nào cho màn này không?", case: "K01" } }),
+  "Odoo 18 · Kế toán|20261120-093000": mkView({ ws: "Odoo 18 · Kế toán", id: "20261120-093000", file: "BD_NhapKho.xlsx", spec: SPEC_CONFIRM, phase: "CONFIRM", version: "18.0", can_confirm: true }),
+  "Odoo 17 · Bán hàng|20261119-140000": mkView({ ws: "Odoo 17 · Bán hàng", id: "20261119-140000", file: "BD_SanPham.xlsx", spec: SPEC_DONE, phase: "DONE" }),
+  "Odoo 18 · Kế toán|20261118-110000": mkView({ ws: "Odoo 18 · Kế toán", id: "20261118-110000", file: "BD_ChamCong.xlsx", spec: SPEC_STOP, phase: "EXECUTE", version: "18.0", stopped: true })
+};
+const DEMO_WORKSPACES = [
+  { name: "Odoo 17 · Bán hàng", language: "vi", has_sitemap: true },
+  { name: "Odoo 18 · Kế toán", language: "vi", has_sitemap: false }
+];
+function demoApi(path, body) {
+  const [p, query] = String(path).split("?");
+  const q = new URLSearchParams(query || "");
+  const reply = data => Promise.resolve(JSON.parse(JSON.stringify(data)));
+  if (p === "/api/sessions") return reply({ sessions: DEMO_SESSIONS_FULL });
+  if (p === "/api/workspaces") return reply({ workspaces: DEMO_WORKSPACES });
+  if (p === "/api/session") return reply(DEMO_VIEWS[q.get("ws") + "|" + q.get("id")] || { error: "Không tìm thấy phiên mẫu." });
+  if (p === "/api/sitemap") return reply({ workspace: q.get("ws"), available: false, language: "vi" });
+  if (p === "/api/regression") return reply({ scripts: [], environments: ["demo-17", "demo-18"], error: "" });
+  if (body && p === "/api/report") return reply({ ok: true, main: "evidence.xlsx" });
+  return reply({ ok: true, message: "Thao tác mô phỏng trong bản preview." });
+}
+const get = demoApi;
+const post = (path, body) => demoApi(path, body);
+const img = path => path;
+const videoUrl = () => "#";
+const reportUrl = name => "#";
+
+const clock = ts => (ts || "").slice(11, 16);
+const day = ts => (ts || "").slice(0, 10);
+
+function bar(counts, total) {
+  const parts = ORDER.filter(k => counts[k]).map(k => `<i class="${cls(k)}" style="flex:${counts[k]}" title="${esc(STATUS[k] || k)} ${counts[k]}"></i>`).join("");
+  return `<div class="bar" role="img" aria-label="${total} case">${parts}</div>`;
+}
+
+/** Replacing a panel's HTML empties it for an instant, and the browser then forgets how far it was scrolled. Put every scroll position back after a redraw. */
+function scrollers() { return ["#main", ".detail", ".detail-column", ".case-table-scroll", "pre.strategy", ".rail"].map(sel => document.querySelector(sel)); }
+function keepScroll(draw) {
+  const before = scrollers().map(el => ({ top:el?.scrollTop || 0, left:el?.scrollLeft || 0 }));
+  const winTop = window.scrollY;
+  draw();
+  scrollers().forEach((el, i) => { if (el) { el.scrollTop = before[i].top; el.scrollLeft = before[i].left; } });
+  window.scrollTo(0, winTop);
+}
+const isOpen = (key, fallback) => ((key in S.open ? S.open[key] : fallback) ? "open" : "");
+
+function renderHistory() { keepScroll(drawHistory); }
+
+function toggleRail(force) {
+  const box = document.querySelector(".layout");
+  const on = force === undefined ? !box.classList.contains("collapsed") : force;
+  box.classList.toggle("collapsed", on);
+  $("railToggle").textContent = on ? "»" : "«";
+  $("railToggle").setAttribute("aria-expanded", String(!on));
+  $("railToggle").setAttribute("aria-label", on ? "Mở rộng danh sách" : "Thu gọn danh sách");
+  try { localStorage.setItem("oqaRailCollapsed", on ? "1" : "0"); } catch (e) {}
+}
+function toggleCases(force) {
+  const on = force === undefined ? !S.casesCollapsed : force;
+  S.casesCollapsed = on;
+  document.querySelector(".layout")?.classList.toggle("cases-collapsed", on);
+  const btn = $("caseToggle");
+  if (btn) {
+    btn.textContent = on ? "»" : "«";
+    btn.setAttribute("aria-expanded", String(!on));
+    btn.setAttribute("aria-label", on ? "Mở danh sách testcase" : "Thu gọn danh sách testcase");
+    btn.title = on ? "Mở danh sách testcase" : "Thu gọn danh sách testcase";
+  }
+  try { localStorage.setItem("oqaCasesCollapsed", on ? "1" : "0"); } catch (e) {}
+}
+toggleCases(S.casesCollapsed);
+try { if (localStorage.getItem("oqaRailCollapsed") === "1") window.addEventListener("DOMContentLoaded", () => toggleRail(true)); } catch (e) {}
+
+function drawHistory() {
+  const names = [...new Set([...S.workspaces.map(w => w.name), ...S.sessions.map(s => s.workspace)])];
+  $("wsFilter").innerHTML = '<option value="">Tất cả workspace</option>' + names.map(n => `<option ${n === S.ws ? "selected" : ""}>${esc(n)}</option>`).join("");
+  const list = S.sessions.filter(s => !S.ws || s.workspace === S.ws);
+  $("history").innerHTML = list.map(s => {
+    const cur = S.sel && S.sel.ws === s.workspace && S.sel.id === s.session;
+    const file = s.file.split(/[\\/]/).pop();
+    return `<div class="histrow"><button class="del" data-del-ws="${esc(s.workspace)}" data-del-id="${esc(s.session)}" title="Xoá phiên này" aria-label="Xoá phiên này">✕</button><button class="hist" data-ws="${esc(s.workspace)}" data-id="${esc(s.session)}" aria-current="${cur}">
+      <div class="name" title="${esc(file)}">${esc(file)}</div>
+      <div class="sub"><span>${esc(s.workspace)} · ${esc(day(s.created))} ${esc(clock(s.created))}</span><span>${s.waiting ? '<span class="tag attn">chờ bạn</span>' : s.idle ? `<span class="tag" title="Không có hoạt động ${s.idle_hours} giờ">bỏ dở? · ${esc(PHASE[s.phase])}</span>` : `<span class="tag">${esc(PHASE[s.phase])}</span>`}</span></div>
+      ${bar(s.counts, s.total)}</button></div>`;
+  }).join("") || '<p class="muted" style="padding:14px">Chưa có phiên test nào.</p>';
+}
+
+function ticks(c) {
+  const ex = c.explore || { verified: [], trying: null };
+  const last = c.attempts.length ? c.attempts[c.attempts.length - 1].steps
+    : c.planned.map(p => ({ status: ex.trying && ex.trying.step === p.n ? "TRYING" : ex.verified.includes(p.n) ? "PASS" : "PENDING" }));
+  const done = last.filter(s => s.status === "PASS").length;
+  return `<span class="ticks">${last.map(s => `<i class="${s.status === "PASS" ? "p" : s.status === "FAIL" ? "f" : s.status === "TRYING" ? "t" : ""}"></i>`).join("")}</span><span class="muted">${done}/${last.length}</span>`;
+}
+
+function renderMain() { keepScroll(drawMain); }
+
+function refsPanel(v) {
+  if (v.phase === "DONE") return "";
+  const list = (v.refs || []).map(r => `<li><span class="mono">${esc(r.name)}</span> <span class="muted">${r.kind === "folder" ? "thư mục" : "tệp"} · ${esc(r.path)}${r.case ? " · case " + esc(r.case) : ""}</span></li>`).join("");
+  return `<section class="refs-panel"><h3>Tệp tham chiếu</h3><div class="muted">Thiết kế (BD), đặc tả, file import, thư mục đính kèm… Dán đường dẫn trên máy này (mỗi dòng một đường dẫn), AI tự đọc, không cần tải lên.</div>
+      <textarea id="refPath" aria-label="Đường dẫn tệp hoặc thư mục" placeholder="C:\\Users\\bạn\\Documents\\BD_man_hinh_don_hang.xlsx"></textarea>
+      <button class="btn" id="addRef" title="Thêm đường dẫn" ${S.busy ? "disabled" : ""}>Thêm đường dẫn</button>${list ? `<ul>${list}</ul>` : ""}</section>`;
+}
+
+function liveBoard(v) {
+  const active = v.cases.filter(k => k.status === "EXPLORING" || k.status === "RUNNING" || k.status === "REPAIRING" || (k.explore && k.explore.trying));
+  const free = (v.free_cases || []).filter(id => !active.some(k => k.id === id));
+  const freeLine = free.length ? `<div class="lb-free">Chưa có agent nhận: ${free.map(id => `<b class="mono">case ${esc(id)}</b>`).join(", ")}</div>` : "";
+  const notes = (v.notes || []).length ? `<details data-key="notes" ${isOpen("notes", false)}><summary>Ghi chú chung (${v.notes.length})</summary><ul class="activity">${v.notes.map(n => `<li><span class="mono">${esc(String(n.ts).slice(11, 19))}</span> <b>${esc(n.agent)}</b>${n.case ? " · case " + esc(n.case) : ""}: ${esc(n.text)}</li>`).join("")}</ul></details>` : "";
+  if (!active.length) return freeLine || notes ? `<div class="live-mini">${freeLine}${notes}</div>` : "";
+  const rows = active.map(k => {
+    const total = k.planned.length || 1, ex = k.explore || { verified: [], trying: null };
+    const run = k.attempts.length ? k.attempts[k.attempts.length - 1] : null;
+    const done = run ? run.steps.filter(s => s.status === "PASS").length : ex.verified.length;
+    return `<button type="button" class="live-chip" data-case-jump="${esc(k.id)}" title="${esc(k.title || "")}${k.owner ? " · " + esc(k.owner) : ""}">case ${esc(k.id)} · ${done}/${total} bước</button>`;
+  }).join("");
+  return `<div class="live-mini"><b>Đang chạy ${active.length}:</b>${rows}${freeLine}${notes}</div>`;
+}
+
+function activityPanel(v) {
+  const rows = (v.activity || []).map(a => {
+    const when = String(a.ts || "").slice(11, 19);
+    const what = a.kind === "try_started" ? (a.mode === "replay" ? "chạy lại các bước đã xác nhận" : `bắt đầu thử bước ${a.step}`)
+      : a.kind === "explore" ? (a.ok ? `bước ${a.step} đã thử xong, đạt` : `bước ${a.step} thử chưa đạt: ${a.error}`)
+      : a.kind === "built" ? "đã dựng script"
+      : a.kind === "case_started" ? "bắt đầu chạy case"
+      : a.kind === "attempt_finished" ? `lần chạy kết thúc: ${a.status}${a.error ? " (" + a.error + ")" : ""}`
+      : a.kind === "repair" ? `ghi nhận sửa: ${a.cause}` : a.kind;
+    const code = a.kind === "explore" && a.code ? `<div class="muted mono act-code">${esc(a.code.replace(/\s+/g, " "))}</div>` : "";
+    return `<li><span class="mono">${esc(when)}</span> <b class="mono">case ${esc(a.case)}</b> ${esc(what)}${code}</li>`;
+  }).join("");
+  if (!rows) return "";
+  return `<details data-key="activity" ${isOpen("activity", true)}><summary>Hoạt động trực tiếp (mọi agent, mọi case)</summary><ul class="activity">${rows}</ul></details>`;
+}
+
+function drawMain() {
+  const v = S.view;
+  if (!v) { $("main").innerHTML = `<div class="empty"><b>Chưa chọn phiên test</b>Mỗi yêu cầu test là một phiên. Hãy bảo AI test một file testcase, rồi chọn phiên ở cột bên trái.</div>`; return; }
+  const total = v.total, c = v.counts, passed = c.PASS || 0;
+  const settled = ["PASS", "FAIL", "BLOCKED", "PENDING", "NOT EXECUTED"].reduce((n, k) => n + (c[k] || 0), 0);
+  const active = v.cases.filter(k => LIVE.includes(k.status)).length;
+  const phases = v.phases.map(p => `<div class="${p.state}">${esc(PHASE[p.phase])}<small>${p.at ? esc(clock(p.at)) : "&nbsp;"}</small></div>`).join("");
+  const stats = ORDER.filter(k => c[k]).map(k => `<span class="${cls(k)}"><strong>${c[k]}</strong><i class="sq"></i>${esc(STATUS[k] || k)}</span>`).join("") || '<span class="muted">Chưa có case nào.</span>';
+  let attention = "";
+  if (v.stopped) attention = `<section class="head-attention attn-panel"><h3>Bạn đã dừng test</h3><span class="muted">Bước đang chạy được hoàn tất, AI đang đợi.</span><div class="head-actions"><button class="btn primary" id="resume" ${S.busy ? "disabled" : ""}>Tiếp tục test</button></div><div class="err">${esc(S.error)}</div></section>`;
+  else if (v.waiting?.review) attention = `<section class="head-attention attn-panel"><h3>Rà soát testcase</h3><span class="muted">Mở các case Need confirm ở cột giữa để trả lời hoặc bỏ qua.</span></section>`;
+  else if (v.waiting) attention = `<section class="head-attention attn-panel"><h3>AI đang chờ bạn trả lời</h3><span class="q">${esc(v.waiting.question)}</span>${v.waiting.case ? `<span class="muted">· case ${esc(v.waiting.case)}</span>` : ""}
+      <textarea id="answer" aria-label="Câu trả lời" placeholder="Dán thẳng đường dẫn tệp vào đây nếu cần thiết kế, file import… AI tự đọc."></textarea><div class="head-actions"><button class="btn primary" id="sendAnswer" ${S.busy ? "disabled" : ""}>Gửi trả lời</button></div><div class="err">${esc(S.error)}</div></section>`;
+  else if (v.can_confirm) attention = `<section class="head-attention attn-panel"><h3>Chiến lược chờ duyệt</h3><span class="muted">Xem thứ tự và dữ liệu dự phòng trước khi cho AI chạy.</span>
+      <details data-key="strategy" ${isOpen("strategy", false)}><summary>Chiến lược</summary><pre class="strategy">${esc(v.strategy)}</pre></details><div class="head-actions"><button class="btn primary" id="confirm" ${S.busy ? "disabled" : ""}>Xác nhận và bắt đầu test</button></div><div class="err">${esc(S.error)}</div></section>`;
+  const rows = v.cases.map(k => `<tr class="case ${cls(k.status)}" tabindex="0" data-id="${esc(k.id)}" aria-selected="${k.id === S.caseId}">
+      <td class="mono case-id">${esc(k.id)}</td><td><div class="title">${esc(k.title)}</div></td><td>${esc(k.profile) || '<span class="muted">-</span>'}</td><td>${ticks(k)}</td>
+      <td>${k.attempts.length || '<span class="muted">-</span>'}</td><td><span class="status">${dot(k.status)}${esc(STATUS[k.status] || k.status)}</span>
+      ${k.review_pending ? '<span class="tag attn">Need confirm</span>' : k.review_skipped ? '<span class="tag">Đã bỏ qua</span>' : k.verdict === "ready" && v.phase === "ANALYZE" ? '<span class="tag">Ready</span>' : ""}</td><td>${replayTag(k) || '<span class="muted">-</span>'}</td></tr>`).join("");
+  const replay = ["PASS", "FAIL", "NOT RUN"].filter(k => (v.replay_counts || {})[k]).map(k => `<span class="s-${k === "NOT RUN" ? "NEW" : k}"><strong>${v.replay_counts[k]}</strong><i class="sq"></i>${esc(RSTATUS[k])}</span>`).join("") || '<span class="muted">Chưa có case đủ điều kiện chạy lại.</span>';
+  $("main").innerHTML = `
+    <header class="session-head">
+      <div class="session-title-row"><h1>${esc(v.file.split(/[\\/]/).pop())}</h1><span class="tag">${v.stopped ? "Đã dừng" : esc(PHASE[v.phase])}</span>${v.phase === "EXECUTE" && v.can_stop ? `<button class="btn danger" id="stop" ${S.busy ? "disabled" : ""}>Dừng test</button>` : ""}</div>
+      <div class="session-meta"><span>Workspace <b>${esc(v.workspace)}</b></span><span class="mono">${esc(v.session)}</span><span>Bắt đầu ${esc(v.created)}</span>${(v.connect && v.connect.version) ? `<span>Odoo ${esc(v.connect.version)}</span>` : ""}<span>${v.knowledge} mục tri thức</span><span>${esc(v.now)}</span></div>
+      <div class="strip">
+        <div class="progress-summary"><strong>${settled}</strong><span class="muted">/${total} có trạng thái</span></div>
+        ${bar(c, total)}
+        <span class="agent-pill">${active} đang chạy${v.workers ? ` · ${v.workers.active}/${v.workers.limit} slot` : ""}</span>
+        <div class="phase-mini">${phases}</div>
+      </div>
+      <div class="mini-stats"><span><strong>${passed}</strong>/${total} Live đạt</span>${stats}</div>
+      <div class="replay-line" aria-label="Kết quả chạy lại script"><span>Replay</span>${replay}
+        ${v.cases.some(k => k.can_replay) && ["REPORT", "DONE"].includes(v.phase) ? `<button class="btn" data-replay-all="1" title="Chạy lại script của tất cả case đã lưu script">Chạy lại tất cả</button><button class="btn primary" data-replay-all="1" data-record="1" title="Chạy lại tất cả case đã lưu script và quay video có chú thích từng bước">Quay video tất cả</button>` : ""}</div>
+      ${v.idle && !v.waiting ? `<div class="idle">Không có hoạt động ${Math.floor(v.idle_hours)} giờ nay. Bảo AI chạy <span class="mono">oqa status</span> để tiếp tục.</div>` : ""}
+      ${attention}
+      ${v.phase === "EXECUTE" ? liveBoard(v) : ""}
+    </header>
+    <div class="workarea">
+      <section class="case-column">
+        <section class="panel case-list" aria-labelledby="caseListTitle"><header><h2 id="caseListTitle">Testcase <span>${total}</span></h2><button type="button" id="caseToggle" class="case-toggle" aria-controls="caseListBody" aria-expanded="${!S.casesCollapsed}" aria-label="${S.casesCollapsed ? "Mở danh sách testcase" : "Thu gọn danh sách testcase"}" title="${S.casesCollapsed ? "Mở danh sách testcase" : "Thu gọn danh sách testcase"}">${S.casesCollapsed ? "»" : "«"}</button><span class="case-hint">Mã · trạng thái · tiến độ từng bước</span></header>
+          <div class="case-table-scroll" id="caseListBody" role="region" aria-label="Danh sách testcase trong phiên" tabindex="0"><table class="case-table"><colgroup><col><col><col><col><col><col><col></colgroup><thead><tr><th scope="col">Case</th><th scope="col">Nội dung</th><th scope="col">Profile</th><th scope="col">Bước</th><th scope="col">Lần</th><th scope="col">Live</th><th scope="col">Replay</th></tr></thead><tbody>${rows}</tbody></table></div>
+        </section>
+        <div class="case-foot">
+          <details data-key="session-report" ${isOpen("session-report", false)}><summary>Báo cáo · tệp tham chiếu</summary>${reportBar(v)}${refsPanel(v)}</details>
+          ${v.phase === "EXECUTE" ? activityPanel(v) : ""}
+        </div>
+      </section>
+      <section class="detail-column"><div class="panel detail" id="detail"></div></section>
+    </div>`;
+  renderDetail();
+  restoreDrafts();
+}
+
+function renderDetail() {
+  const box = $("detail");
+  if (!box) return;
+  const top = box.scrollTop;
+  drawDetail(box);
+  box.scrollTop = top;
+}
+
+function drawDetail(box) {
+  const v = S.view, k = v && v.cases.find(x => x.id === S.caseId);
+  if (!k) { box.innerHTML = '<p class="muted">Chọn một case để xem từng bước và ảnh bằng chứng.</p>'; return; }
+  const att = k.attempts.find(a => a.n === S.attempt) || k.attempts[k.attempts.length - 1];
+  const ex = k.explore || { verified: [], trying: null };
+  const steps = att ? att.steps : k.planned.map(p => ({ ...p, images: [], actual: "",
+    status: ex.trying && ex.trying.step === p.n ? "TRYING" : ex.verified.includes(p.n) ? "VERIFIED" : "PENDING", mode: ex.trying && ex.trying.step === p.n ? ex.trying.mode : "" }));
+  S.gallery = steps.flatMap(s => s.images.map(im => ({ ...im, caption: im.caption || `Bước ${s.n}: ${s.caption}` })));
+  const chips = [k.profile && `Profile ${k.profile}`, k.depends_on.length && `Tiếp từ ${k.depends_on.join(", ")}`, k.clarity && `Rõ ràng ${k.clarity}/5`, k.sufficiency && `Đủ dữ kiện ${k.sufficiency}/5`, `dòng ${k.row}`].filter(Boolean)
+    .map(t => `<span class="tag">${esc(t)}</span>`).join("");
+  const tabs = k.attempts.length > 1 ? `<div class="tabs" role="tablist">${k.attempts.map(a => `<button role="tab" data-attempt="${a.n}" aria-selected="${att && a.n === att.n}"><i class="sq ${cls(a.status)}"></i>Lần ${a.n} · ${esc(STATUS[a.status] || a.status)}${a.from_step > 1 ? ` · từ bước ${a.from_step}` : ""}</button>`).join("")}</div>` : "";
+  let g = -1;
+  const list = steps.map(s => {
+    const first = s.images[0];
+    const thumb = first ? `<button class="thumb ${s.status === "FAIL" ? "fail" : ""}" data-g="${(g += s.images.length) - s.images.length + 1}" style="background-image:url('${img(first.annotated)}')" aria-label="Phóng to ảnh bước ${s.n}"><span>${s.images.length > 1 ? s.images.length + " ảnh" : "xem"}</span></button>` : `<div class="noimg">${{ PENDING: att ? "chưa chạy" : "chờ xác thực", RUNNING: "đang chạy…", TRYING: "đang thử…", VERIFIED: "đã thử trên trang thật" }[s.status] || "không có ảnh"}</div>`;
+    return `<div class="step ${cls(s.status)}"><div class="n">${LIVE.includes(s.status) ? dot(s.status) : s.n}</div><div><div class="cap">${esc(s.caption)}</div>${s.status === "RUNNING" ? `<div class="live-note">Đang chạy bước này…</div>` : s.status === "TRYING" ? `<div class="live-note">${s.mode === "replay" ? "Đang đưa trang tới bước này…" : "Đang thử trên trang thật…"}</div>` : ""}<div class="exp">Mong đợi: ${esc(s.expected)}${s.checks != null && s.status !== "PENDING" ? ` <span class="tag">${s.checks} kiểm tra</span>` : ""}${s.carried ? ' <span class="tag">giữ từ lần trước</span>' : ""}</div>
+      ${s.evidence ? `<div class="exp">Ảnh cần chụp: ${esc(s.evidence)}</div>` : ""}
+      ${s.actual && s.status !== "PENDING" ? `<div class="act">${s.status === "PASS" ? "Thực tế: " : ""}${esc(s.actual)}</div>` : ""}</div>${thumb}</div>`;
+  }).join("");
+  const base = (k.edge_cases.length || k.edge_none || k.data_needs.length || k.questions.length || k.timeout_s) ? `<ul>
+      ${k.edge_cases.map(e => `<li>Tình huống biên: ${esc(e)}</li>`).join("")}${k.edge_none ? `<li>Không có tình huống biên: ${esc(k.edge_none)}</li>` : ""}
+      ${k.data_needs.map(d => `<li>Dữ liệu có thể thiếu: ${esc(d.what)} → ${esc(d.fallback)}</li>`).join("")}${k.questions.map(q => `<li>Cần hỏi: ${esc(q)}</li>`).join("")}
+      ${k.timeout_s ? `<li>Mỗi lần chờ tối đa ${k.timeout_s} giây</li>` : ""}</ul>` : "";
+  const notes = k.repairs.length ? `<div class="ai-notes">${k.repairs.map((r, i) => `<div class="note"><h4>AI phân tích lại sau lần ${r.attempt} · ${esc(clock(r.ts))}${r.probed ? ' · đã dò trang thật' : ' · chưa dò trang'}</h4><dl>
+      <dt>Nguyên nhân</dt><dd>${esc(r.cause)}</dd><dt>Căn cứ</dt><dd>${esc(r.evidence)}</dd><dt>Đã sửa</dt><dd>${esc(r.change)}</dd>
+      ${r.reanalysis ? `<dt>Hiểu lại case</dt><dd>${esc(r.reanalysis)}</dd>` : ""}${r.timeout_s ? `<dt>Thời gian chờ</dt><dd>${r.timeout_s} giây</dd>` : ""}${r.unchanged_reason ? `<dt>Script giữ nguyên</dt><dd>${esc(r.unchanged_reason)}</dd>` : ""}</dl></div>`).join("")}</div>` : "";
+  const analysis = (base || notes) ? `<details data-key="analysis-${esc(k.id)}" ${isOpen("analysis-" + k.id, k.repairs.length > 0)}><summary>Phân tích của AI${k.repairs.length ? ` · đã sửa ${k.repairs.length} lần` : ""}</summary>${base}${notes}</details>` : "";
+  box.innerHTML = `<h2><span class="mono">${esc(k.id)}</span> ${esc(k.title)}</h2>
+    <div><span class="muted">Live</span> <span class="status ${cls(k.status)}">${dot(k.status)}${esc(STATUS[k.status] || k.status)}</span>${k.category ? ` <span class="tag">${esc(CATEGORY[k.category] || k.category)}</span>` : ""}${k.reason ? ` <span class="muted">· ${esc(k.reason)}</span>` : ""}${replayTag(k) ? ` &nbsp; ${replayTag(k)}` : ""}${k.replay && k.replay.timing ? ` <span class="muted">· ${esc(timingText(k.replay))}</span>` : ""}${k.replay && k.replay.status === "FAIL" ? ` <span class="muted">· ${esc((k.replay.reason || "").slice(0, 200))}</span>` : ""}</div>${historyBox(k)}
+    ${dispatchBar(k)}${replayBar(k)}<div class="chips">${chips}</div>${reviewBox(k)}
+    <section aria-label="Testcase gốc">
+      <h3>Testcase gốc</h3>
+      <p>${esc(k.source.pre)}</p>
+      <ol>${k.source.steps.map(step => `<li>${esc(step)}</li>`).join("")}</ol>
+      <p>Mong đợi: ${esc(k.source.expected)}</p>
+    </section>
+    ${hintBox(k)}${tabs}${list ? "<h3>Các bước sau đánh giá</h3>" : ""}${list}${analysis}`;
+}
+
+function reviewBox(k) {
+  if (k.review_skipped) return `<p><span class="tag">Đã bỏ qua</span> ${esc(k.review_skipped)}</p>`;
+  if (!k.review_pending) return k.verdict === "ready" ? '<span class="tag">Ready</span>' : "";
+  return `<section class="attn-panel"><h3>Need confirm</h3>
+    <ul>${k.questions.map(question => `<li>${esc(question)}</li>`).join("")}</ul>
+    <textarea id="reviewText" data-draft="review-${esc(k.id)}" aria-label="Câu trả lời hoặc lý do bỏ qua"></textarea>
+    <button id="sendReview" class="btn primary" ${S.busy ? "disabled" : ""}>Gửi trả lời</button>
+    <button id="skipReview" class="btn" ${S.busy ? "disabled" : ""}>Bỏ qua testcase</button>
+    <div class="err">${esc(S.error)}</div></section>`;
+}
+
+/** Asking the coordinator for a worker. The request takes no slot and starts nothing: the coordinator re-checks and answers here (accepted with the worker's name, waiting with the reason, or refused). */
+function dispatchBar(k) {
+  const r = k.request || {}, v = S.view, w = v.workers || { active: 0, limit: 5 };
+  const open = ["pending", "waiting"].includes(r.status);
+  const label = { dispatch: "Yêu cầu điều phối", reassign: "Yêu cầu giao lại" }[k.can_request];
+  const full = w.active >= w.limit;
+  const say = r.status === "pending" ? "Đã gửi yêu cầu, đang chờ agent điều phối nhận."
+    : r.status === "waiting" ? `Đang chờ: ${esc(r.note)}`
+    : r.status === "accepted" ? `Đã giao cho ${esc(r.worker)}.`
+    : r.status === "rejected" ? `Yêu cầu bị từ chối: ${esc(r.note)}` : "";
+  const failure = r.failure ? `<div class="idle" role="status"><b>Lỗi worker</b> (${esc(clock(r.failure.at))}, chưa phải kết luận của case): ${esc(r.failure.message)}</div>` : "";
+  if (!label && !say && !failure) return "";
+  return `<section class="dispatchbar" style="margin:10px 0">${failure}<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+    ${label && !open ? `<button class="btn" data-request-case="${esc(k.id)}" ${full || S.busy ? "disabled" : ""} title="${full ? `Đủ ${w.limit}/${w.limit} worker` : "Báo agent điều phối giao case này cho worker rảnh"}">${label}</button>` : ""}
+    ${label && !open && full ? `<span class="muted">Hết slot: đang có ${w.active}/${w.limit} worker.</span>` : ""}
+    ${say ? `<span class="${r.status === "rejected" ? "err" : "muted"}" id="requestMsg">${say}</span>` : ""}<span class="err" id="requestErr">${esc(S.requestError && S.requestError.case === k.id ? S.requestError.text : "")}</span></div></section>`;
+}
+
+/** After the case ended (PASS or FAIL): run its saved script again, same account and Odoo, with the browser in view. */
+/* demo: videoUrl defined with the mock data above */
+function replayBar(k) {
+  if (!["PASS", "FAIL"].includes(k.status)) return "";
+  const note = k.can_replay ? "Mở browser và chạy script đã lưu của case này." : "Chưa có script đã lưu.";
+  return `<div class="replaybar" style="margin:10px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+    <label title="Đặt cả hai khoảng nghỉ trình diễn về 0. Thời gian chờ ứng dụng không đổi."><input type="checkbox" data-fast-mode ${S.fast ? "checked" : ""}> Chạy nhanh</label>
+    <label>Nghỉ sau thao tác (ms) <input data-replay-delay="action_delay_ms" aria-label="Nghỉ sau thao tác (ms)" type="number" min="0" max="60000" step="100" value="${S.replayTiming.action_delay_ms}" ${S.fast ? "disabled" : ""} style="width:90px"></label>
+    <label>Nghỉ sau bước (ms) <input data-replay-delay="step_delay_ms" aria-label="Nghỉ sau bước (ms)" type="number" min="0" max="60000" step="100" value="${S.replayTiming.step_delay_ms}" ${S.fast ? "disabled" : ""} style="width:90px"></label>
+    <button class="replay" data-replay="${esc(k.id)}" ${k.can_replay ? "" : "disabled"} title="${esc(note)}">Chạy lại testcase</button>
+    <button class="replay primary" data-replay="${esc(k.id)}" data-record="1" ${k.can_replay ? "" : "disabled"} title="${k.can_replay ? "Chạy lại testcase và quay video có chú thích từng bước" : "Chưa có script đã lưu."}">Quay video</button>
+    ${k.replay?.video ? `<a class="btn" href="${videoUrl(S.sel.ws, k.replay.video)}" target="_blank" rel="noopener">Xem video</a>` : ""}
+    <span class="muted" id="replayMsg">${esc(note)} Kết quả chạy lại hiển thị riêng (Replay), không thay đổi kết quả Live. Thời gian chờ ứng dụng giữ theo testcase.</span></div>`;
+}
+
+const CATEGORY = { application: "Lỗi ứng dụng", automation: "Lỗi automation", precondition: "Thiếu điều kiện kiểm thử" };
+const timingText = r => { const t = r.timing; return `${r.fast ? "Chạy nhanh · " : ""}${t.total_s}s (nghỉ trình diễn ${t.pause_s}s, ${t.calls} lần gọi trình duyệt ${t.call_s}s)`; };
+function historyBox(k) {
+  if (!(k.history || []).length) return "";
+  return `<details data-key="history-${esc(k.id)}" ${isOpen("history-" + k.id, false)}><summary>Lịch sử kết luận · ${k.history.length} lần được sửa</summary><ul>${k.history.map(h => `<li>${esc(h.at || "")} · ${esc(h.status)}${h.category ? " · " + esc(CATEGORY[h.category] || h.category) : ""} · ${esc(h.reason || "")}${h.superseded_by ? " → " + esc(h.superseded_by) : ""}</li>`).join("")}</ul></details>`;
+}
+/* demo: reportUrl defined with the mock data above */
+
+/** The Excel evidence: one workbook for the run, one sheet per case. Always available (it can be rebuilt from what has run so far). */
+function reportBar(v) {
+  const main = v.reports.find(r => r.main);
+  const label = main ? "Cập nhật báo cáo Excel" : "Xuất báo cáo Excel";
+  return `<div class="reports"><button class="btn ${main ? "" : "primary"}" id="exportReport" title="${esc(label)}" ${S.busy ? "disabled" : ""}>${label}</button>
+    ${main ? `<a class="btn primary" href="${reportUrl(main.name)}" download>Tải file Evidence (.xlsx)</a>` : ""}
+    ${v.cases.some(k => k.can_replay) ? `<a class="btn" href="${reportUrl("").replace("/api/report?", "/api/scripts?")}" download>Tải ZIP script</a>` : ""}</div>`;
+}
+
+function hintBox(k) {
+  if (!k.can_hint) return "";
+  const said = k.hints.map(h => `<div class="said">Bạn · ${esc(clock(h.at))}: ${esc(h.text)}</div>`).join("");
+  return `<section class="hint-box"><h3>${k.exhausted ? "Đã hết số lần sửa: AI cần gợi ý của bạn" : "Gợi ý cho AI"}</h3>
+    <div class="muted">AI sẽ đọc gợi ý này, rồi chạy lại case này với số lần sửa mới.</div>${said}
+    <textarea id="hint" data-draft="hint-${esc(k.id)}" aria-label="Gợi ý cho AI về case ${esc(k.id)}" placeholder="Ví dụ: nút Lưu nằm trong menu Hành động; dùng khách hàng Azure Interior…"></textarea>
+    <button class="btn primary" id="sendHint" ${S.busy ? "disabled" : ""}>Gửi và chạy lại</button><div class="err">${esc(S.hintError)}</div></section>`;
+}
+
+function restoreDrafts() {
+  document.querySelectorAll("textarea").forEach(el => { const key = el.dataset.draft || el.id; if (S.draft[key]) el.value = S.draft[key]; });
+}
+
+function openLightbox(i) { S.index = i; $("lb").classList.add("open"); drawLightbox(); }
+function drawLightbox() {
+  const im = S.gallery[S.index];
+  if (!im) return;
+  $("lbImg").src = img(S.raw ? im.raw : im.annotated);
+  $("lbTitle").textContent = `${S.index + 1}/${S.gallery.length} · ${im.caption}`;
+  $("lbRaw").setAttribute("aria-pressed", S.raw);
+  $("lbRaw").textContent = S.raw ? "Ảnh khoanh đỏ" : "Ảnh gốc";
+}
+
+const mapWorkspace = () => S.ws || (S.sel && S.sel.ws) || (S.workspaces.length === 1 ? S.workspaces[0].name : "");
+const mapGet = params => get("/api/sitemap?" + new URLSearchParams({ ws: M.ws, lang: M.lang, ...params })).then(data => {
+  if (data.error) throw new Error(data.error);
+  return data;
+});
+
+function workspaceTab(tab) {
+  S.tab = tab;
+  document.body.classList.toggle("site-map-active", tab === "site_map");
+  $("main").hidden = tab !== "progress";
+  $("siteMapMain").hidden = tab !== "site_map";
+  $("scriptsMain").hidden = tab !== "scripts";
+  document.querySelectorAll("[data-workspace-tab]").forEach(button => {
+    const selected = button.dataset.workspaceTab === tab;
+    button.setAttribute("aria-selected", selected); button.tabIndex = selected ? 0 : -1;
+  });
+  const url = new URL(location.href);
+  if (tab === "site_map") url.searchParams.set("tab", "site_map"); else url.searchParams.delete("tab");
+  if (tab === "site_map" && mapWorkspace()) url.searchParams.set("workspace", mapWorkspace()); else url.searchParams.delete("workspace");
+  history.replaceState(null, "", url);
+  if (tab === "site_map") loadMap();
+  if (tab === "scripts") loadScripts();
+}
+
+const R = { ws: "", data: null, msg: "", busy: false };
+function scriptsWorkspace() {
+  const names = (S.workspaces || []).map(w => w.name);
+  return R.ws && names.includes(R.ws) ? R.ws : (S.sel && S.sel.ws) || S.ws || names[0] || "";
+}
+async function loadScripts() {
+  R.ws = scriptsWorkspace();
+  if (!R.ws) { $("scriptsMain").innerHTML = '<section class="panel"><p class="muted">Chưa có workspace nào.</p></section>'; return; }
+  const data = await get("/api/regression?ws=" + encodeURIComponent(R.ws));
+  if (data.error) { R.msg = data.error; return renderScripts(); }
+  R.data = data; renderScripts();
+}
+function resultCell(r) {
+  const status = r.status || "NOT RUN";
+  return `<td class="res ${cls(status)}">${esc(status)}${r.at ? `<small>${esc(r.at)}</small>` : ""}${r.video ? `<small><a href="/api/video?ws=${encodeURIComponent(R.ws)}&path=${encodeURIComponent(r.video)}&t=${TOKEN}" target="_blank" rel="noopener">xem video</a></small>` : ""}${status === "FAIL" && r.reason ? `<small title="${esc(r.reason)}">${esc(String(r.reason).slice(0, 80))}</small>` : ""}</td>`;
+}
+function renderScripts() {
+  const box = $("scriptsMain"), d = R.data;
+  if (!d) { box.innerHTML = `<section class="panel"><div class="err">${esc(R.msg)}</div></section>`; return; }
+  const wsOptions = (S.workspaces || []).map(w => `<option ${w.name === R.ws ? "selected" : ""}>${esc(w.name)}</option>`).join("");
+  const runAll = d.environments.map(e => `<button class="btn" data-regress-env="${esc(e)}" ${R.busy ? "disabled" : ""}>Chạy tất cả trên ${esc(e)}</button><button class="btn primary" data-regress-env="${esc(e)}" data-record="1" ${R.busy ? "disabled" : ""} title="Chạy tất cả script trên ${esc(e)} và quay video có chú thích từng bước">Quay video tất cả trên ${esc(e)}</button>`).join("");
+  const rows = d.scripts.map(k => `<tr><td>${k.session ? `<a href="#" data-script-open="${esc(k.session)}" data-script-case="${esc(k.case_id)}">${esc(k.case_id)}</a>` : esc(k.case)}<small class="muted" style="display:block">${esc(k.workbook)}</small></td>
+    ${d.environments.map(e => resultCell(k.results[e] || {})).join("")}
+    <td>${k.case_id ? d.environments.map(e => `<button class="btn" data-regress-env="${esc(e)}" data-regress-case="${esc(k.case_id)}" ${R.busy ? "disabled" : ""} title="Chạy lại script này trên ${esc(e)}">▶ ${esc(e)}</button> <button class="btn primary" data-regress-env="${esc(e)}" data-regress-case="${esc(k.case_id)}" data-record="1" ${R.busy ? "disabled" : ""} title="Chạy script này trên ${esc(e)} và quay video có chú thích từng bước">Quay video</button>`).join(" ") : '<span class="muted">chưa có phiên để chạy</span>'}</td></tr>`).join("");
+  box.innerHTML = `<section class="panel"><header><h2>Script của workspace (${d.scripts.length})</h2><span>Bấm tên case để mở testcase. Kết quả theo từng môi trường; chưa chạy hiện NOT RUN.</span></header>
+    <div class="scripts-bar"><select id="scriptsWs" aria-label="Workspace">${wsOptions}</select>${runAll}<button class="btn" id="scriptsReload">Tải lại</button><span class="muted">${esc(R.msg)}</span></div>
+    ${d.scripts.length ? `<div class="case-table-scroll"><table class="scripts-table"><thead><tr><th>Script / testcase</th>${d.environments.map(e => `<th>${esc(e)}</th>`).join("")}<th>Chạy lại</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">Workspace này chưa có script nào được lưu (chỉ case PASS mới lưu script).</p>'}</section>`;
+}
+
+/* Workspace graph viewer. SVG coordinates stay separate from pan/zoom and inspector state. */
+const G = { focus: "", expanded: new Set(), route: [], inspector: false, searchOpen: false, x: 0, y: 0, zoom: 1, fit: true, layout: null, drag: null };
+const graphNodeWidth = 280, graphNodeHeight = 96;
+
+function graphIndex() {
+  const graph = M.data && M.data.graph || { nodes: [], edges: [] };
+  const nodes = new Map(graph.nodes.map(node => [node.key, node])), outgoing = new Map(), incoming = new Map();
+  const orphans = [];
+  graph.edges.forEach(edge => {
+    if (edge.kind === "menu" && nodes.has(edge.to) && !nodes.has(edge.from)) orphans.push(edge.to);
+    if (!nodes.has(edge.from) || !nodes.has(edge.to)) return;
+    if (!outgoing.has(edge.from)) outgoing.set(edge.from, []);
+    if (!incoming.has(edge.to)) incoming.set(edge.to, []);
+    outgoing.get(edge.from).push(edge); incoming.get(edge.to).push(edge);
+  });
+  const edges = [...graph.edges];
+  if (orphans.length) {
+    const key = "other-menus";
+    nodes.set(key, { key, kind: "group", label: M.lang === "ja" ? "その他のメニュー" : "Other menus", model: M.lang === "ja" ? `${orphans.length} メニュー · 親メニュー未取得` : `${orphans.length} menus · parent unavailable` });
+    outgoing.set(key, orphans.map(to => ({ from: key, to, kind: "menu" })));
+    outgoing.get(key).forEach(edge => { incoming.set(edge.to, [edge]); edges.push(edge); });
+  }
+  return { nodes, outgoing, incoming, edges };
+}
+
+function graphAncestors(key, index) {
+  const queue = [[key]], seen = new Set([key]);
+  for (let cursor = 0; cursor < queue.length; cursor++) {
+    const chain = queue[cursor], current = chain[0], node = index.nodes.get(current);
+    const incoming = (index.incoming.get(current) || []).filter(edge => ["menu", "opens", "shows", "button"].includes(edge.kind));
+    if (node && ["menu", "group"].includes(node.kind) && !incoming.some(edge => edge.kind === "menu")) return chain;
+    for (const edge of incoming) if (!seen.has(edge.from)) { seen.add(edge.from); queue.push([edge.from, ...chain]); }
+  }
+  return [key];
+}
+
+function revealGraph(key) {
+  const index = graphIndex(), chain = graphAncestors(key, index);
+  if (!chain.includes(G.focus)) G.focus = chain[0];
+  chain.forEach(item => G.expanded.add(item));
+  const node = index.nodes.get(key);
+  if (node && node.kind === "menu") {
+    (index.outgoing.get(key) || []).filter(edge => edge.kind === "opens").forEach(edge => G.expanded.add(edge.to));
+  }
+  G.fit = true;
+}
+
+function graphLayout() {
+  const index = graphIndex(), positions = new Map(), links = [];
+  if (!G.focus || !index.nodes.has(G.focus)) {
+    const roots = [...index.nodes.values()].filter(node => ["menu", "group"].includes(node.kind) && !(index.incoming.get(node.key) || []).some(edge => edge.kind === "menu"));
+    const columns = roots.length > 6 ? 2 : 1, rows = Math.max(1, Math.ceil(roots.length / columns));
+    positions.set("workspace", { key: "workspace", kind: "workspace", label: M.ws, x: 0, y: (rows - 1) * 136 / 2 });
+    roots.forEach((node, i) => {
+      positions.set(node.key, { ...node, x: 420 + Math.floor(i / rows) * 380, y: (i % rows) * 136 });
+      links.push({ from: "workspace", to: node.key, kind: "menu", overview: true });
+    });
+  } else {
+    const visited = new Set([G.focus]), children = new Map(), tree = new Set();
+    function visit(key) {
+      const next = [];
+      if (G.expanded.has(key)) for (const edge of index.outgoing.get(key) || []) {
+        if (!visited.has(edge.to)) { visited.add(edge.to); next.push(edge.to); tree.add(edge); visit(edge.to); }
+      }
+      children.set(key, next);
+    }
+    visit(G.focus);
+    const heights = new Map();
+    function measure(key) {
+      const height = Math.max(132, (children.get(key) || []).reduce((sum, child) => sum + measure(child), 0));
+      heights.set(key, height); return height;
+    }
+    function place(key, depth, top) {
+      positions.set(key, { ...index.nodes.get(key), x: depth * 380, y: top + (heights.get(key) - graphNodeHeight) / 2 });
+      for (const child of children.get(key) || []) { place(child, depth + 1, top); top += heights.get(child); }
+    }
+    measure(G.focus); place(G.focus, 0, 0);
+    index.edges.forEach(edge => { if (positions.has(edge.from) && positions.has(edge.to)) links.push({ ...edge, secondary: !tree.has(edge) }); });
+  }
+  const values = [...positions.values()];
+  const bounds = { x: -40, y: -80, width: Math.max(600, ...values.map(node => node.x + graphNodeWidth)) + 80,
+    height: Math.max(300, ...values.map(node => node.y + graphNodeHeight)) + 135 };
+  return { positions, links, bounds, index };
+}
+
+function svgLines(label, limit = 25) {
+  const chars = [...String(label)], lines = [""], width = char => /[^\u0000-\u02ff]/.test(char) ? 1.7 : 1;
+  let length = 0;
+  chars.forEach(char => { if (length + width(char) > limit && lines.length < 2) { lines.push(""); length = 0; } lines[lines.length - 1] += char; length += width(char); });
+  if (length > limit) { let n = 0; lines[1] = [...lines[1]].filter(char => (n += width(char)) < limit - 1).join("") + "…"; }
+  return lines;
+}
+
+function graphSvg(layout) {
+  const routeEdges = new Set(G.route.map(edge => `${edge.from}|${edge.to}|${edge.kind}`));
+  const paths = layout.links.map(edge => {
+    const a = layout.positions.get(edge.from), b = layout.positions.get(edge.to);
+    const x = a.x + graphNodeWidth, y = a.y + 48, tx = b.x, ty = b.y + 48;
+    let path;
+    if (edge.overview) path = b.x > 700 ? `M${x},${y}H340V-35H760V${ty}H${tx}` : `M${x},${y}H340V${ty}H${tx}`;
+    else if (tx > x) path = `M${x},${y}C${x + (tx - x)/2},${y} ${x + (tx - x)/2},${ty} ${tx},${ty}`;
+    else { const end = b.x + graphNodeWidth, rail = Math.max(x, end) + 65; path = `M${x},${y}C${rail},${y} ${rail},${ty} ${end},${ty}`; }
+    const active = routeEdges.has(`${edge.from}|${edge.to}|${edge.kind}`);
+    const label = !edge.overview && !edge.secondary ? ({ menu: "menu", opens: "opens", shows: "shows", button: edge.label || "button", row: "open row" }[edge.kind] || "") : "";
+    return `<g><path class="diagram-edge${edge.secondary ? " secondary" : ""}${active ? " on-route" : ""}" d="${path}" marker-end="url(#${active ? "map-arrow-active" : "map-arrow"})"/>${label ? `<text class="diagram-edge-label" x="${(x + tx)/2}" y="${ty - 10}" text-anchor="middle">${esc(label.length > 26 ? label.slice(0,25) + "…" : label)}</text>` : ""}</g>`;
+  }).join("");
+  const nodes = [...layout.positions.values()].map(node => {
+    const outgoing = layout.index.outgoing.get(node.key) || [];
+    const expandable = outgoing.length > 0 && node.kind !== "workspace";
+    const subtitle = node.kind === "workspace" ? `${M.data.meta.menus} menus · ${M.data.meta.actions} actions · ${M.data.meta.views} views`
+      : node.kind === "view" ? `${node.fields} fields · ${node.buttons} buttons` : node.model || node.xmlid || `${outgoing.length} connections`;
+    const lines = svgLines(node.label);
+    return `<g class="diagram-node ${node.kind}${node.key === M.key ? " selected" : ""}" transform="translate(${node.x},${node.y})">
+      <g class="map-item" ${node.kind === "workspace" ? 'data-map-home="true"' : node.kind === "group" ? `data-map-focus="${esc(node.key)}"` : `data-map-screen="${esc(node.key)}"`} role="button" tabindex="0" aria-label="${esc(node.trail || node.label)}" aria-current="${node.key === M.key}">
+        <rect class="node-body" width="280" height="96" rx="11"/><rect class="node-strip" x="0" y="19" width="3" height="58" rx="1.5"/>
+        <text class="node-type" x="20" y="22">${node.kind === "workspace" ? "WORKSPACE" : esc(node.kind.toUpperCase()) + (node.kind === "view" ? " / " + esc(node.type) : "")}</text>
+        <text class="node-title" x="20" y="${lines.length === 1 ? 48 : 44}">${lines.map((line, i) => `<tspan x="20" dy="${i ? 18 : 0}">${esc(line)}</tspan>`).join("")}</text>
+        <text class="node-sub" x="20" y="81">${esc(subtitle.length > 38 ? subtitle.slice(0,37) + "…" : subtitle)}</text><title>${esc(node.trail || node.label)}${node.xmlid ? " · " + esc(node.xmlid) : ""}</title>
+      </g>${expandable ? `<g class="node-expander" data-map-expand="${esc(node.key)}" role="button" tabindex="0" aria-label="${G.expanded.has(node.key) && G.focus ? "Thu gọn" : "Mở nhánh"} ${esc(node.label)}"><circle cx="280" cy="48" r="12"/><text x="280" y="54">${G.expanded.has(node.key) && G.focus ? "−" : "+"}</text></g>` : ""}</g>`;
+  }).join("");
+  return `<defs><pattern id="map-dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="var(--map-grid)"/></pattern><marker id="map-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0L7 3.5L0 7Z" fill="var(--map-edge)"/></marker><marker id="map-arrow-active" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0L7 3.5L0 7Z" fill="var(--map-blue)"/></marker></defs>
+    <rect width="100%" height="100%" fill="url(#map-dots)"/><g id="mapGraphViewport">${paths}${nodes}</g>`;
+}
+
+function graphTransform() {
+  const viewport = $("mapGraphViewport"), svg = $("mapDiagram");
+  if (!viewport || !svg) return;
+  viewport.setAttribute("transform", `translate(${G.x},${G.y}) scale(${G.zoom})`);
+  if ($("mapZoomLevel")) $("mapZoomLevel").textContent = Math.round(G.zoom * 100) + "%";
+  const mini = $("mapMiniViewport");
+  if (mini) { mini.setAttribute("x", -G.x/G.zoom); mini.setAttribute("y", -G.y/G.zoom); mini.setAttribute("width", svg.clientWidth/G.zoom); mini.setAttribute("height", svg.clientHeight/G.zoom); }
+}
+
+function graphFit(initial = false) {
+  const svg = $("mapDiagram");
+  if (!svg || !G.layout || !svg.clientWidth) return;
+  const b = G.layout.bounds;
+  let width = svg.clientWidth, height = svg.clientHeight, top = 65;
+  const inspector = $("mapScreen");
+  if (G.inspector && inspector && window.innerWidth <= 767) { height = Math.max(180, inspector.offsetTop - 15); top = 135; }
+  else if (G.inspector && inspector && window.innerWidth <= 1100) width = Math.max(210, width - inspector.offsetWidth - 30);
+  G.zoom = Math.min(1.15, (width - 80)/b.width, (height - top - 45)/b.height);
+  const minimum = initial ? (svg.clientWidth < 600 ? .58 : .65) : .15;
+  const clamped = G.zoom < minimum;
+  G.zoom = Math.max(minimum, G.zoom);
+  G.x = (width - b.width * G.zoom)/2 - b.x*G.zoom;
+  G.y = (height - b.height * G.zoom)/2 - b.y*G.zoom + top/2;
+  const selected = G.layout.positions.get(M.key);
+  if (clamped && selected) {
+    G.x = width/2 - (selected.x + graphNodeWidth/2)*G.zoom;
+    G.y = (top + height)/2 - (selected.y + graphNodeHeight/2)*G.zoom;
+  }
+  graphTransform();
+}
+
+function graphZoom(factor, x, y) {
+  const svg = $("mapDiagram");
+  if (!svg) return;
+  x = x ?? svg.clientWidth/2; y = y ?? svg.clientHeight/2;
+  const next = Math.max(.15, Math.min(2.5, G.zoom * factor)), ratio = next/G.zoom;
+  G.x = x - (x - G.x)*ratio; G.y = y - (y - G.y)*ratio; G.zoom = next; graphTransform();
+}
+
+function resetGraph() { G.focus = ""; G.expanded.clear(); G.inspector = false; G.route = []; G.fit = true; M.key = ""; M.screen = null; renderMap(); }
+
+function selectGraphScreen(key) {
+  if (M.key !== key) { M.view = ""; M.match = ""; M.required = false; }
+  M.key = key; M.screen = null; G.inspector = true; G.searchOpen = false; revealGraph(key); loadMapScreen();
+}
+
+function renderMapScreen() {
+  const screen = M.screen, japanese = M.lang === "ja";
+  const title = screen ? screen.label : (graphIndex().nodes.get(M.key) || {}).label || "Chi tiết màn hình";
+  let content = '<p class="map-note" role="status">Đang tải màn hình…</p>';
+  if (M.detailError) content = `<div class="map-error" role="alert">${esc(M.detailError)}</div>`;
+  else if (screen && !M.detailLoading) {
+    const controls = screen.controls || { buttons: [], fields: [] };
+    if (M.mode === "path") content = (screen.route || []).map((step, i) => `<div class="map-route-step"><span class="number">${i + 1}</span><div><small>${esc(step.via === "start" ? (japanese ? "開始" : "Start") : step.via)}</small><h3>${esc(step.label)}</h3><small>${esc(step.key)}</small></div></div>`).join("") || `<p class="map-note">${esc(screen.path)}</p>`;
+    else content = (controls[M.mode] || []).map(item => {
+      const flags = [];
+      if (item.required) flags.push(item.required === true ? (japanese ? "必須" : "Required") : `${japanese ? "必須条件" : "Required if"}: ${item.required}`);
+      if (item.readonly) flags.push(japanese ? "読み取り専用" : "Read only");
+      return `<article class="map-control"><h3>${esc(item.label || item.name)}</h3><div class="technical">${esc(item.name)}</div><div class="map-badges"><span class="map-badge type">${esc(item.type)}</span><span class="map-badge">${esc(item.view)}</span>${flags.map(flag => `<span class="map-badge">${esc(flag)}</span>`).join("")}</div>
+        ${item.target_label ? `<p>→ ${esc(item.target_label)}</p>` : item.type === "object" ? `<p>${japanese ? "メソッド呼び出し · 遷移先は実行時に判明" : "Method call · destination known when run"}</p>` : ""}
+        ${item.relation ? `<p>→ ${esc(item.relation)}</p>` : ""}${item.invisible ? `<p>${japanese ? "表示条件" : "Shown if"}: not (${esc(item.invisible)})</p>` : ""}
+        ${item.options ? `<p>${item.options.map(option => esc(option)).join(" · ")}</p>` : ""}<code>${esc(item.selector)}</code></article>`;
+    }).join("");
+    if (!content) content = `<p class="map-note">${M.match ? "Không có mục khớp bộ lọc." : "Không có mục nào được khai báo trong sitemap của màn hình này."}</p>`;
+    if (controls[M.mode + "_total"] > 60) content += '<p class="map-note">Hiển thị 60 mục đầu. Dùng bộ lọc để thu hẹp.</p>';
+  }
+  return `<div class="map-inspector-head"><div><div class="map-eyebrow">SCREEN INSPECTOR</div><h2>${esc(title)}</h2><div class="map-note">${esc(M.key)}</div></div><button class="map-close" id="mapCloseInspector" aria-label="Đóng chi tiết">×</button></div>
+    <div class="map-inspector-body"><div class="tabs" role="tablist" aria-label="Chi tiết sitemap">${[["buttons", "Nút"], ["fields", "Trường"], ["path", "Đường đi"]].map(([key, label]) => `<button role="tab" data-map-mode="${key}" aria-selected="${M.mode === key}">${label}</button>`).join("")}</div>
+    ${screen && M.mode !== "path" ? `<form id="mapDetailForm" class="map-toolbar"><label class="map-query"><input id="mapMatch" aria-label="Lọc nút hoặc trường" value="${esc(M.match)}" placeholder="Lọc Anh / Nhật…"></label><label><select id="mapView" aria-label="Loại view"><option value="">Tự chọn</option>${screen.views.map(type => `<option ${M.view === type ? "selected" : ""}>${esc(type)}</option>`).join("")}</select></label>${M.mode === "fields" ? `<label class="map-required"><input type="checkbox" id="mapRequired" ${M.required ? "checked" : ""}>Bắt buộc</label>` : ""}<button class="btn" type="submit">Lọc</button></form>` : ""}
+    <div id="mapScreenText" role="tabpanel">${content}</div></div>`;
+}
+
+function renderMap() {
+  if (G.resizeObserver) { G.resizeObserver.disconnect(); G.resizeObserver = null; }
+  const ws = mapWorkspace(), data = M.data, meta = data && data.meta;
+  const workspaceSelect = `<select id="mapWorkspace" aria-label="Workspace sitemap"><option value="">Chọn workspace</option>${S.workspaces.map(workspace => `<option value="${esc(workspace.name)}" ${workspace.name === ws ? "selected" : ""}>${esc(workspace.name)}</option>`).join("")}</select>`;
+  let body;
+  if (!ws) body = '<div class="diagram-empty"><h2>Chọn workspace để khám phá</h2><p>Sơ đồ hiển thị cách menu, action và view nối với nhau.</p></div>';
+  else if (M.loading) body = '<div class="diagram-empty" role="status"><h2>Đang dựng sơ đồ…</h2><p>Đang đọc sitemap của workspace.</p></div>';
+  else if (M.error) body = `<div class="map-error" role="alert">${esc(M.error)}</div>`;
+  else if (data && !data.available) body = `<div class="diagram-empty"><h2>Workspace chưa có sitemap</h2><p>Nhờ AI dựng sitemap cho <b>${esc(ws)}</b>, rồi bấm tải lại.</p></div>`;
+  else if (data) {
+    G.layout = graphLayout();
+    const focus = G.layout.index.nodes.get(G.focus), bounds = G.layout.bounds;
+    const miniNodes = [...G.layout.positions.values()].map(node => `<rect x="${node.x}" y="${node.y}" width="280" height="96" rx="10" fill="${node.kind === "action" ? "var(--map-purple)" : node.kind === "view" ? "var(--map-teal)" : "var(--map-blue)"}" opacity=".7"/>`).join("");
+    const search = G.searchOpen && M.results !== null ? `<section class="map-results"><header>${M.results.length} kết quả<button class="map-close" id="mapCloseSearch" aria-label="Đóng kết quả">×</button></header>${M.results.map(item => `<button class="map-result" data-map-screen="${esc(item.key)}"><strong>${esc(item.label)}</strong><small>${esc(item.kind)} · ${esc(item.key)}</small></button>`).join("") || '<p class="map-note">Không có kết quả. Thử nhãn Anh/Nhật hoặc tên kỹ thuật.</p>'}${M.results.length === 60 ? '<p class="map-note">Hiển thị tối đa 60 kết quả.</p>' : ""}</section>` : "";
+    body = `<div class="diagram-space"><div class="diagram-breadcrumb"><button data-map-home="true">Tổng quan workspace</button>${focus ? `<span> / </span><strong>${esc(focus.label)}</strong>` : '<strong>Ứng dụng & menu gốc</strong>'}</div>
+      <svg id="mapDiagram" tabindex="0" role="img" aria-label="Sơ đồ menu, action và view của workspace">${graphSvg(G.layout)}</svg>${search}
+      <div class="diagram-legend"><span><i></i>Menu</span><span class="action"><i></i>Action</span><span class="view"><i></i>View</span></div>
+      <div class="diagram-tools"><button id="mapZoomOut" aria-label="Thu nhỏ">−</button><output id="mapZoomLevel" aria-label="Mức thu phóng">100%</output><button id="mapZoomIn" aria-label="Phóng to">+</button><button id="mapFit">Vừa khung</button><button id="mapCollapse" ${G.focus ? "" : "disabled"}>Thu nhánh</button></div>
+      <svg class="diagram-minimap" viewBox="${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}" aria-hidden="true">${miniNodes}<rect id="mapMiniViewport" fill="none" stroke="var(--map-blue)" stroke-width="8"/></svg></div>
+      ${G.inspector ? `<aside class="map-inspector" id="mapScreen" aria-label="Chi tiết màn hình">${renderMapScreen()}</aside>` : ""}`;
+  }
+  $("siteMapMain").innerHTML = `<header class="map-heading"><div><div class="map-eyebrow">WORKSPACE EXPLORER</div><h1>Sơ đồ workspace</h1></div>${meta ? `<div class="map-stats"><span><strong>${meta.menus}</strong> menu</span><span><strong>${meta.actions}</strong> action</span><span><strong>${meta.views}</strong> view</span></div>` : ""}</header>
+    <form id="mapSearchForm" class="map-toolbar"><label>${workspaceSelect}</label><label class="map-query"><span class="map-search-box"><input type="search" id="mapQuery" value="${esc(M.q)}" placeholder="Tìm menu, action, view…  English / 日本語" aria-label="Tìm trong sitemap"><button class="btn primary" type="submit">Tìm</button></span></label>
+    <label><select class="map-kind" id="mapKind" aria-label="Loại màn hình"><option value="">Tất cả</option>${["menu", "action", "view"].map(kind => `<option ${M.kind === kind ? "selected" : ""}>${kind}</option>`).join("")}</select></label><label><select id="mapLanguage" aria-label="Ngôn ngữ nội dung"><option value="en" ${M.lang !== "ja" ? "selected" : ""}>English</option><option value="ja" ${M.lang === "ja" ? "selected" : ""}>日本語</option></select></label><button class="btn" type="button" id="mapReload" ${M.loading ? "disabled" : ""} aria-label="Tải lại sitemap">↻</button></form>
+    <section class="diagram-shell${G.inspector ? " has-inspector" : ""}">${body}</section><footer class="diagram-footer"><span>Kéo để di chuyển · cuộn để zoom · dấu + để mở nhánh · bấm node để xem chi tiết</span><span>${meta ? `${G.layout ? G.layout.positions.size : 0} node đang hiển thị · Odoo ${esc(meta.odoo_version)} · ${esc(meta.generated.slice(0,10))}${data.unresolved_count ? " · " + data.unresolved_count + " mục chưa đọc được" : ""}` : ""}</span></footer>`;
+  const svg = $("mapDiagram");
+  if (svg) {
+    if (G.fit || (G.inspector && window.innerWidth <= 1100)) { graphFit(true); G.fit = false; } else graphTransform();
+    let measured = `${svg.clientWidth}|${svg.clientHeight}`;
+    G.resizeObserver = new ResizeObserver(() => {
+      const size = `${svg.clientWidth}|${svg.clientHeight}`;
+      if (size !== measured && svg.isConnected && S.tab === "site_map") { measured = size; graphFit(true); }
+    });
+    G.resizeObserver.observe(svg);
+    svg.addEventListener("wheel", event => { event.preventDefault(); const bounds = svg.getBoundingClientRect(); graphZoom(event.deltaY < 0 ? 1.12 : 1/1.12, event.clientX - bounds.left, event.clientY - bounds.top); }, { passive: false });
+    svg.addEventListener("pointerdown", event => {
+      if (event.target.closest("[role=button]") || event.button !== 0) return;
+      G.drag = { id: event.pointerId, x: event.clientX, y: event.clientY, ox: G.x, oy: G.y }; svg.setPointerCapture(event.pointerId); svg.classList.add("dragging");
+    });
+    svg.addEventListener("pointermove", event => { if (G.drag && G.drag.id === event.pointerId) { G.x = G.drag.ox + event.clientX - G.drag.x; G.y = G.drag.oy + event.clientY - G.drag.y; graphTransform(); } });
+    const release = () => { G.drag = null; svg.classList.remove("dragging"); };
+    svg.addEventListener("pointerup", release); svg.addEventListener("pointercancel", release);
+  }
+}
+
+async function loadMap() {
+  const ws = mapWorkspace();
+  if (ws !== M.ws) {
+    Object.assign(M, { ws, lang: (S.workspaces.find(w => w.name === ws) || {}).language === "ja" ? "ja" : "en", q: "", kind: "", key: "", view: "", match: "", required: false, data: null, results: null, screen: null, detailError: "" });
+    G.focus = ""; G.expanded.clear(); G.inspector = false; G.route = []; G.searchOpen = false; G.fit = true;
+    M.detailRequest++;
+  }
+  const request = ++M.request;
+  M.detailRequest++; M.detailLoading = false;
+  if (!ws) return renderMap();
+  M.loading = true; M.error = ""; renderMap();
+  try {
+    const data = await mapGet({ what: "show" });
+    if (request !== M.request) return;
+    let results = null;
+    if (data.available && (M.q.trim() || M.kind)) { const found = await mapGet({ what: "find", q: M.q, kind: M.kind }); results = found.results || []; }
+    if (request !== M.request) return;
+    M.data = data; M.results = results; M.loading = false; renderMap();
+    if (data.available && M.key && G.inspector) loadMapScreen();
+  } catch (error) { if (request === M.request) { M.loading = false; M.error = error.message; renderMap(); } }
+}
+
+async function loadMapScreen() {
+  const request = ++M.detailRequest;
+  M.detailLoading = true; M.detailError = ""; renderMap();
+  try {
+    const screen = await mapGet({ what: "screen", screen: M.key, view: M.view, match: M.match, required: String(M.required) });
+    if (request !== M.detailRequest) return;
+    M.screen = screen; M.detailLoading = false; G.route = screen.route_edges || []; renderMap();
+  } catch (error) { if (request === M.detailRequest) { M.detailLoading = false; M.detailError = error.message; renderMap(); } }
+}
+
+window.addEventListener("resize", () => { if (S.tab === "site_map" && $("mapDiagram")) graphFit(true); });
+
+
+async function refreshList() {
+  const [sessions, workspaces] = await Promise.all([get("/api/sessions"), get("/api/workspaces")]);
+  const list = sessions.sessions;
+  const sig = JSON.stringify([list, workspaces.workspaces]);
+  if (sig === S.histSig) return;                       // nothing new: leave the list alone
+  S.histSig = sig; S.sessions = list; S.workspaces = workspaces.workspaces || []; renderHistory();
+}
+/** True while the person is reading something they selected or typing: the page must not move under them. */
+function busyReading() {
+  const sel = window.getSelection();
+  return (document.activeElement && document.activeElement.tagName === "TEXTAREA") || (sel && !sel.isCollapsed && sel.toString().trim() !== "");
+}
+async function refreshView() {
+  if (!S.sel) return renderMain();
+  const v = await get(`/api/session?ws=${encodeURIComponent(S.sel.ws)}&id=${encodeURIComponent(S.sel.id)}`);
+  if (v.error) return;
+  const sig = JSON.stringify(v);
+  const changed = sig !== S.sig;
+  S.view = v;
+  if (!v.cases.some(c => c.id === S.caseId)) {
+    const pick = v.cases.find(c => ["FAIL", "REPAIRING", "RUNNING", "EXPLORING"].includes(c.status)) || v.cases[0];
+    S.caseId = pick ? pick.id : null; S.attempt = null;
+  }
+  if (changed && !busyReading()) { S.sig = sig; renderMain(); }        // redraw only when the data changed, and not while they are reading or typing
+  const live = v.phase !== "DONE";
+  $("dot").className = "dot" + (live ? " on" : "");
+  $("liveText").textContent = live ? `Trực tiếp · cập nhật ${new Date().toLocaleTimeString("vi-VN")}` : `Đã xong · ${v.updated}`;
+}
+function select(ws, id) { S.sel = { ws, id }; S.view = null; S.sig = ""; S.caseId = null; S.attempt = null; history.replaceState(null, "", `#${encodeURIComponent(ws)}/${encodeURIComponent(id)}`); renderHistory(); refreshView(); if (S.tab === "site_map") loadMap(); }
+
+document.addEventListener("click", async e => {
+  const del = e.target.closest("[data-del-id]");
+  if (del) {
+    e.stopPropagation();
+    if (!confirm("Xoá phiên test này? Ảnh bằng chứng và dữ liệu của phiên sẽ mất, không khôi phục được.")) return;
+    const r = await post("/api/delete_session", { ws: del.dataset.delWs, id: del.dataset.delId });
+    if (r.error) { alert(r.error); return; }
+    if (S.sel && S.sel.ws === del.dataset.delWs && S.sel.id === del.dataset.delId) { S.sel = null; S.view = null; }
+    await refreshList();
+    return;
+  }
+  const ask = e.target.closest("[data-request-case]");
+  if (ask && S.sel) {
+    ask.disabled = true;                                           // a double click sends one request; the server keeps one per case anyway
+    const r = await post("/api/dispatch-request", { ws: S.sel.ws, id: S.sel.id, case: ask.dataset.requestCase });
+    S.requestError = r.error ? { case: ask.dataset.requestCase, text: r.error } : null;
+    await refreshView(); renderDetail();
+    return;
+  }
+  const rep = e.target.closest("[data-replay], [data-replay-all]");
+  if (rep && S.sel) {
+    rep.disabled = true;
+    const record = rep.dataset.record === "1";
+    const r = await post("/api/replay", { ws: S.sel.ws, id: S.sel.id, case: rep.dataset.replayAll ? "all" : rep.dataset.replay,
+      ...(record ? RECORD_TIMING : S.replayTiming), fast: record ? false : S.fast, video: record ? "on" : S.videoMode });
+    const msg = $("replayMsg");
+    if (msg) msg.textContent = r.error || r.message || "Đã bắt đầu.";
+    else if (r.error) alert(r.error);
+    setTimeout(() => { rep.disabled = false; refreshList(); }, 4000);
+    return;
+  }
+  if (e.target.closest("#railToggle")) { toggleRail(); return; }
+  if (e.target.closest("#caseToggle")) { toggleCases(); return; }
+  const jump = e.target.closest("[data-case-jump]");
+  if (jump && S.sel) { S.caseId = jump.dataset.caseJump; S.attempt = null; renderMain(); return; }
+  const open = e.target.closest("[data-script-open]");
+  if (open) { e.preventDefault(); workspaceTab("progress"); select(R.ws, open.dataset.scriptOpen); S.caseId = open.dataset.scriptCase; S.attempt = null; return; }
+  const t = e.target.closest("button, tr.case, [data-map-screen], [data-map-expand], [data-map-home], [data-map-focus]");
+  if (!t) return;
+  if (t.dataset.workspaceTab) return workspaceTab(t.dataset.workspaceTab);
+  if (t.id === "scriptsReload") return loadScripts();
+  if (t.dataset.regressEnv) {
+    R.busy = true; renderScripts();
+    const r = await post("/api/regress", { ws: R.ws, env: t.dataset.regressEnv, case: t.dataset.regressCase || "", video: t.dataset.record === "1" ? "on" : S.videoMode });
+    R.msg = r.error || r.message || "Đã bắt đầu."; renderScripts();
+    setTimeout(() => { R.busy = false; loadScripts(); }, 4000);
+    return;
+  }
+  if (t.id === "mapReload") return loadMap();
+  if (t.dataset.mapHome) return resetGraph();
+  if (t.dataset.mapFocus) { G.focus = t.dataset.mapFocus; G.expanded.add(G.focus); G.inspector = false; G.fit = true; return renderMap(); }
+  if (t.dataset.mapExpand) {
+    e.preventDefault();
+    const key = t.dataset.mapExpand;
+    if (!G.focus) { G.focus = key; G.expanded.add(key); }
+    else if (G.expanded.has(key)) G.expanded.delete(key); else G.expanded.add(key);
+    G.fit = true; G.searchOpen = false; return renderMap();
+  }
+  if (t.id === "mapZoomIn") return graphZoom(1.25);
+  if (t.id === "mapZoomOut") return graphZoom(1/1.25);
+  if (t.id === "mapFit") return graphFit();
+  if (t.id === "mapCollapse") { G.expanded.clear(); G.expanded.add(G.focus); G.fit = true; return renderMap(); }
+  if (t.id === "mapCloseInspector") { G.inspector = false; G.fit = true; return renderMap(); }
+  if (t.id === "mapCloseSearch") { G.searchOpen = false; return renderMap(); }
+  if (t.dataset.mapScreen) {
+    e.preventDefault();
+    return selectGraphScreen(t.dataset.mapScreen);
+  }
+  if (t.dataset.mapMode) { M.mode = t.dataset.mapMode; return renderMap(); }
+  if (t.classList.contains("hist")) return select(t.dataset.ws, t.dataset.id);
+  if (t.matches("tr.case")) {
+    S.caseId = t.dataset.id; S.attempt = null; renderMain();
+    if (window.matchMedia("(max-width: 860px)").matches) $(".detail-column")?.scrollIntoView({ block:"start", behavior:"smooth" });
+    return;
+  }
+  if (t.dataset.attempt) { S.attempt = +t.dataset.attempt; return renderDetail(); }
+  if (t.dataset.g !== undefined) return openLightbox(+t.dataset.g);
+  if (t.id === "lbClose") return $("lb").classList.remove("open");
+  if (t.id === "lbPrev") { S.index = (S.index + S.gallery.length - 1) % S.gallery.length; return drawLightbox(); }
+  if (t.id === "lbNext") { S.index = (S.index + 1) % S.gallery.length; return drawLightbox(); }
+  if (t.id === "lbRaw") { S.raw = !S.raw; return drawLightbox(); }
+  const where = { ws: S.sel && S.sel.ws, id: S.sel && S.sel.id };
+  const call = {
+    exportReport: () => post("/api/report", where),
+    confirm: () => post("/api/confirm", where), stop: () => post("/api/stop", where), resume: () => post("/api/resume", where),
+    sendAnswer: () => post("/api/answer", { ...where, text: ($("answer") || {}).value || "" }),
+    sendReview: () => post("/api/review", { ...where, case: S.caseId, text: ($("reviewText") || {}).value || "" }),
+    skipReview: () => post("/api/review", { ...where, case: S.caseId, text: ($("reviewText") || {}).value || "", skip: true }),
+    addRef: () => post("/api/refs", { ...where, path: ($("refPath") || {}).value || "" }),
+    sendHint: () => post("/api/hint", { ...where, case: S.caseId, text: ($("hint") || {}).value || "" }),
+  }[t.id];
+  if (call) {
+    S.busy = true; S.error = ""; S.hintError = ""; renderMain();
+    const r = await call();
+    S.busy = false;
+    if (t.id === "sendHint") { S.hintError = r.error || ""; if (!r.error) delete S.draft["hint-" + S.caseId]; } else S.error = r.error || "";
+    if (t.id === "sendAnswer" && !r.error) delete S.draft.answer;
+    if (["sendReview", "skipReview"].includes(t.id) && !r.error) delete S.draft["review-" + S.caseId];
+    if (t.id === "addRef" && r.ok) delete S.draft.refPath;
+    await refreshView();
+    renderMain();
+    if (t.id === "exportReport" && !r.error) window.location.assign(reportUrl(r.main));        // hand the workbook over as soon as it is built
+  }
+});
+document.addEventListener("toggle", e => { const d = e.target; if (d.dataset && d.dataset.key) S.open[d.dataset.key] = d.open; }, true);
+document.addEventListener("input", e => {
+  if (e.target.tagName === "TEXTAREA") S.draft[e.target.dataset.draft || e.target.id] = e.target.value;
+  if (e.target.id === "mapQuery") M.q = e.target.value;
+  if (e.target.id === "mapMatch") M.match = e.target.value;
+});
+document.addEventListener("submit", e => {
+  if (e.target.id === "mapSearchForm") { e.preventDefault(); G.searchOpen = true; return loadMap(); }
+  if (e.target.id === "mapDetailForm") { e.preventDefault(); return loadMapScreen(); }
+});
+document.addEventListener("change", e => {
+  if (e.target.dataset.fastMode !== undefined) {
+    if (e.target.checked) { S.fastPrev = { ...S.replayTiming }; S.replayTiming.action_delay_ms = 0; S.replayTiming.step_delay_ms = 0; }
+    else S.replayTiming = { ...S.fastPrev };
+    S.fast = e.target.checked;
+    saveFast();
+    try { localStorage.setItem("oqaReplayTiming", JSON.stringify(S.replayTiming)); } catch (err) {}
+    if (S.view) renderDetail();
+    return;
+  }
+  if (e.target.dataset.replayDelay) {
+    if (!e.target.checkValidity() || !Number.isInteger(Number(e.target.value)) || e.target.value === "") {
+      e.target.value = S.replayTiming[e.target.dataset.replayDelay]; return;
+    }
+    S.replayTiming[e.target.dataset.replayDelay] = Number(e.target.value);
+    try { localStorage.setItem("oqaReplayTiming", JSON.stringify(S.replayTiming)); } catch (err) {}
+    return;
+  }
+  if (e.target.id === "mapWorkspace") { S.ws = e.target.value; renderHistory(); return workspaceTab("site_map"); }
+  if (e.target.id === "scriptsWs") { R.ws = e.target.value; return loadScripts(); }
+  if (e.target.id === "mapLanguage") { M.lang = e.target.value; return loadMap(); }
+  if (e.target.id === "mapKind") { M.kind = e.target.value; G.searchOpen = !!(M.kind || M.q); return loadMap(); }
+  if (e.target.id === "mapView") { M.view = e.target.value; return loadMapScreen(); }
+  if (e.target.id === "mapRequired") { M.required = e.target.checked; return loadMapScreen(); }
+});
+document.addEventListener("keydown", e => {
+  if (e.target.matches("[data-map-screen], [data-map-expand], [data-map-home], [data-map-focus]") && ["Enter", " "].includes(e.key)) { e.preventDefault(); e.target.dispatchEvent(new MouseEvent("click", { bubbles:true })); return; }
+  if (e.target.id === "mapDiagram") {
+    if (["+", "="].includes(e.key)) { e.preventDefault(); return graphZoom(1.25); }
+    if (e.key === "-") { e.preventDefault(); return graphZoom(1/1.25); }
+    if (e.key === "Home") { e.preventDefault(); return graphFit(); }
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) { e.preventDefault(); G.x += e.key === "ArrowLeft" ? 45 : e.key === "ArrowRight" ? -45 : 0; G.y += e.key === "ArrowUp" ? 45 : e.key === "ArrowDown" ? -45 : 0; return graphTransform(); }
+  }
+  if (e.key === "Escape" && S.tab === "site_map") { G.inspector = false; G.searchOpen = false; return renderMap(); }
+  if (e.target.dataset.workspaceTab && ["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) {
+    e.preventDefault();
+    const tab = e.key === "Home" ? "progress" : e.key === "End" ? "site_map" : e.target.dataset.workspaceTab === "progress" ? "site_map" : "progress";
+    workspaceTab(tab); $(tab === "progress" ? "tab-progress" : "tab-site-map").focus(); return;
+  }
+  if (e.key === "Enter" && e.target.matches("tr.case")) return e.target.click();
+  if (!$("lb").classList.contains("open")) return;
+  if (e.key === "Escape") $("lb").classList.remove("open");
+  else if (e.key === "ArrowLeft") $("lbPrev").click();
+  else if (e.key === "ArrowRight") $("lbNext").click();
+  else if (e.key.toLowerCase() === "r") $("lbRaw").click();
+});
+$("wsFilter").onchange = e => { S.ws = e.target.value; renderHistory(); if (S.tab === "site_map") workspaceTab("site_map"); };
+
+(async function start() {
+  await refreshList();
+  const params = new URLSearchParams(location.search);
+  if (S.workspaces.some(w => w.name === params.get("workspace"))) S.ws = params.get("workspace");
+  const hash = location.hash.slice(1).split("/").map(decodeURIComponent);
+  const first = (hash.length === 2 && S.sessions.find(s => s.workspace === hash[0] && s.session === hash[1])) || (BOOT.select && S.sessions.find(s => s.workspace === BOOT.select[0] && s.session === BOOT.select[1])) || S.sessions.find(s => !S.ws || s.workspace === S.ws);
+  if (first) select(first.workspace, first.session); else { renderMain(); $("liveText").textContent = "chưa có phiên test"; }
+  renderHistory();
+  if (params.get("tab") === "site_map") workspaceTab("site_map");
+  setInterval(() => { if (!$("lb").classList.contains("open")) refreshView(); }, 1500);
+  setInterval(refreshList, 6000);
+  setInterval(() => { if (S.tab === "scripts" && !R.busy) loadScripts(); }, 5000);
+})();
+</script>
+</body>
+</html>

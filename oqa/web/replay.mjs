@@ -33,9 +33,12 @@ if (!Object.hasOwn(manifest.cases, caseId)) {
 }
 const base = new URL(process.env.OQA_BASE_URL || manifest.baseUrl);
 const original = new URL(manifest.baseUrl);
-const stamp = randomUUID().slice(0, 10);
-const prefix = manifest.prefix || "ZZ_AUTOTEST_";
-const fresh = text => text.replaceAll(prefix, `${prefix}r${stamp}_`);
+const stamp = randomUUID().replaceAll("-", "").slice(0, 10);
+const prefix = manifest.prefix || "AUTO_TEST_";
+const item = manifest.cases[caseId];
+const sourcePrefixes = item.fixtureSources || [prefix];
+const fixturePattern = new RegExp(sourcePrefixes.map(value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g");
+const fresh = text => text.replace(fixturePattern, () => `${item.fixtureStem || prefix}r${stamp}_`);
 const runDir = `evidence/${caseId.replace(/[^\w.-]/g, "_")}-${stamp}`;
 await mkdir(runDir, { recursive: true });
 // The outcome goes in result.json beside the pictures and in the exit code (0 = PASS, 1 = FAIL), so a run by hand can be told apart without reading the log.

@@ -186,6 +186,8 @@ await page.getByRole('cell', {name: 'ITEM'}).click();
 
 
 def test_dashboard_style_replay_runs_saved_actions_in_headed_browser(live, tmp_path, monkeypatch):
+    from oqa import replay_browser
+
     session, ws, store = live
     approve(session, ws, store)
     script = tmp_path / "case.js"
@@ -195,16 +197,22 @@ def test_dashboard_style_replay_runs_saved_actions_in_headed_browser(live, tmp_p
     history = events.read(session.dir)
     sessions = set(session.dir.parent.iterdir())
     calls = []
-    monkeypatch.setattr(livemod, "open_browser", lambda *a, **kw: calls.append(kw) or "Admin")
-    monkeypatch.setattr(livemod, "run_actions", lambda browser, code: calls.append(list(code)))
+
+    def run(session, workspace, initial, blocks, timings, video_dir):
+        calls.extend(blocks)
+        assert video_dir is None
+        return {"status": "PASS", "timing": {"total_s": 1}}
+
+    monkeypatch.setattr(replay_browser, "run", run)
     monkeypatch.setattr(livemod.uuid, "uuid4", lambda: type("ReplayStamp", (), {"hex": "0123456789"})())
     result = livemod.replay(session, "T-1", action_delay_ms=0, step_delay_ms=0)
     assert result["session"] == session.id and result["status"] == "COMPLETED"
-    assert calls[0]["headed"] is True and calls[0]["browser_id"].startswith("replay-")
-    assert calls[1][:2] == ["await page.goto('http://x/web');",
+    assert replays.latest(session, "T-1")["headed"] is True
+    assert calls[0]["label"].startswith("Bước 1/") and " — " in calls[0]["label"]
+    assert calls[0]["code"][:2] == ["await page.goto('http://x/web');",
                             "await page.getByRole('button', { name: 'Save' }).click();"]
-    assert "ZZ_AUTOTEST_r0123456789_order" in str(calls[1:])
-    assert len(calls) == 9
+    assert "AUTO_TEST_create-an-order_r0123456789_order" in str(calls)
+    assert all(len(block["check"]) == 2 for block in calls)
     assert session.state() == before and events.read(session.dir) == history
     assert replays.status(session, "T-1") == "PASS"
     assert set(session.dir.parent.iterdir()) == sessions
@@ -278,3 +286,23 @@ def test_a_pass_must_show_the_specific_value_the_expectation_names():
 def test_literal_check_compares_text_after_normalising_whitespace():
     code = livemod.literal_check("1-1 / 1", 3000)
     assert "replace(/[\\s\\u00a0\\u202f]+/g" in code and "includes(norm(text))" in code
+def test_evidence_caption_uses_its_language_without_changing_the_observation(live, pw, monkeypatch):
+    from oqa import evidence, workspace
+
+    session, ws, store = live
+    ws = workspace.save({**ws, "evidence_language": "ja", "replay_caption_language": "en"}, store)
+    approve(session, ws, store)
+    livemod.start(session, "T-1")
+    labels = []
+    annotate = evidence.annotate
+
+    def capture(raw, boxes, label, out, ok=True):
+        labels.append(label)
+        return annotate(raw, boxes, label, out, ok=ok)
+
+    monkeypatch.setattr(evidence, "annotate", capture)
+    observation = "Danh sách hiển thị ba dòng."
+    livemod.step(session, "T-1", 1, "PASS", observation, target=".o_list_view")
+    step = next(e for e in events.read(session.dir) if e["kind"] == "step")
+    assert labels == ["手順 1/4 · 合格"]
+    assert step["actual"] == observation and step["images"][0]["caption"] == labels[0]

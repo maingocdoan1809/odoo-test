@@ -10,10 +10,10 @@ import unicodedata
 from pathlib import Path
 from urllib.parse import quote
 
-from . import live, paths, refs, regression, report, script_bundle, sitemap, view, workspace
+from . import captions, dispatch_requests, live, paths, refs, regression, report, script_bundle, sitemap, view, workspace
 from .localserver import LocalApp, font_faces
 from .state import GateError, Session
-from .store import SchemaError
+from .store import SchemaError, read_json
 
 PAGE = Path(__file__).with_name("web") / "dashboard.html"
 SITE_MAP_SCRIPT = PAGE.with_name("site_map.js")
@@ -168,6 +168,25 @@ class Dashboard(LocalApp):
             if method == "GET" and path == "/api/scripts":
                 session = self._session(query)
                 return 200, script_bundle.build(session), "application/zip", {"Content-Disposition": _attachment("oqa-scripts.zip")}
+            if method == "GET" and path == "/api/script":
+                session = self._session(query)
+                case = str(query.get("case", ""))
+                if case not in {c["id"] for c in session.cases()["cases"]}:
+                    return 404, {"error": "no such case"}
+                script = live.script_file(session, case)
+                if not script.is_file():
+                    return 404, {"error": "no saved script"}
+                if query.get("view") == "steps":
+                    analysis = read_json(session.dir / "analysis.json", {}) or {}
+                    item = next((row for row in analysis.get("cases", []) if row["id"] == case), {})
+                    translation = captions.localized_cases(session).get(case, {})
+                    steps = {step["n"]: step for step in captions.localized_steps(item.get("steps") or [], translation)}
+                    blocks, problems = live.parse_script(script.read_text(encoding="utf-8"), list(steps.values()))
+                    return 200, {"steps": [{**block, "action": steps[block["n"]]["action"],
+                                            "expected": steps[block["n"]]["expected"]} for block in blocks],
+                                 "problems": problems}
+                headers = {"Content-Disposition": _attachment(f"{re.sub(r'[^A-Za-z0-9._-]+', '_', case)}.js")} if query.get("download") == "1" else {}
+                return 200, script.read_bytes(), "text/javascript; charset=utf-8", headers
             if method == "GET" and path == "/api/regression":
                 return 200, regression.matrix(paths.resolve_workspace(query.get("ws")))
             if method == "GET" and path == "/api/video":
@@ -181,6 +200,9 @@ class Dashboard(LocalApp):
                 video = body.get("video", "fail")
                 if video not in live.VIDEO_MODES:
                     return 200, {"error": "Chế độ quay video không hợp lệ."}
+                caption_language = body.get("caption_language")
+                if caption_language is not None and caption_language not in captions.LANGUAGES:
+                    return 200, {"error": "Ngôn ngữ chú thích Replay không hợp lệ."}
                 ws = paths.resolve_workspace(body.get("ws"))
                 env = workspace.for_env(workspace.load(ws), str(body.get("env", "")) or None)["env"]
                 case = str(body.get("case", "")).strip()
@@ -191,7 +213,7 @@ class Dashboard(LocalApp):
                     subprocess.Popen([sys.executable, str(entry), "regress", "--ws", ws, "--env", env, *(["--cases", case] if case else []),
                                       # a video you mean to watch keeps the viewing pauses so each step note can be read; otherwise the run is fast
                                       *(["--action-delay-ms", str(live.DEFAULT_ACTION_DELAY_MS), "--step-delay-ms", str(live.DEFAULT_STEP_DELAY_MS)] if video == "on" else ["--fast"]),
-                                      "--video", video,
+                                      "--video", video, *(["--caption-language", caption_language] if caption_language else []),
                                       *(["--headed"] if body.get("headed") is True else [])],
                                      stdout=out, stderr=out, stdin=subprocess.DEVNULL, start_new_session=True,
                                      creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
@@ -204,10 +226,14 @@ class Dashboard(LocalApp):
                 video = body.get("video", "off")
                 if video not in live.VIDEO_MODES:
                     return 200, {"error": "Chế độ quay video không hợp lệ."}
+                caption_language = body.get("caption_language")
+                if caption_language is not None and caption_language not in captions.LANGUAGES:
+                    return 200, {"error": "Ngôn ngữ chú thích Replay không hợp lệ."}
                 fast = body.get("fast") is True
                 action_delay, step_delay = live.replay_delays(body.get("action_delay_ms", live.DEFAULT_ACTION_DELAY_MS),
                                                               body.get("step_delay_ms", live.DEFAULT_STEP_DELAY_MS), fast)
                 session = self._session(body)
+                env = workspace.for_env(workspace.load(session.ws), str(body.get("env") or ""))["env"]
                 case = str(body.get("case", ""))
                 state = session.state()
                 if state["phase"] not in ("REPORT", "DONE") and case not in state["results"] and case != "all":
@@ -226,7 +252,8 @@ class Dashboard(LocalApp):
                 entry = Path(__file__).resolve().parent.parent / "oqa.py"
                 with log.open("ab") as out:
                     subprocess.Popen([sys.executable, str(entry), "live", "replay", case, "--ws", session.ws, "--session", session.id,
-                                      "--action-delay-ms", str(action_delay), "--step-delay-ms", str(step_delay), "--video", video, *(["--fast"] if fast else [])],
+                                      "--action-delay-ms", str(action_delay), "--step-delay-ms", str(step_delay), "--video", video, "--env", env,
+                                      *(["--caption-language", caption_language] if caption_language else []), *(["--fast"] if fast else [])],
                                      stdout=out, stderr=out,
                                      stdin=subprocess.DEVNULL, start_new_session=True,
                                      creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
@@ -250,6 +277,10 @@ class Dashboard(LocalApp):
             if method == "POST" and path == "/api/resume":
                 self._session(body).resume("dashboard")
                 return 200, {"ok": True}
+            if method == "POST" and path == "/api/dispatch-request":
+                session = self._session(body)
+                entry, created = dispatch_requests.submit(session, str(body.get("case", "")))
+                return 200, {"ok": True, "created": created, "request": dispatch_requests.of_case(session, str(body.get("case", "")))}
             if method == "POST" and path == "/api/hint":
                 self._session(body).hint(str(body.get("case", "")), str(body.get("text", "")), "dashboard")
                 return 200, {"ok": True}

@@ -2,7 +2,7 @@
 they can never disagree about a case, a step or a picture."""
 import time
 
-from . import claims, events, knowledge, live, paths, refs, replays
+from . import captions, claims, dispatch_requests, events, knowledge, live, paths, record_names, refs, replays, workspace
 from .state import MAX_REPAIRS, PHASES, Session
 from .store import read_json
 
@@ -74,8 +74,11 @@ def _steps(planned, ran, carried=None, running=False):
         e = e or kept
         now_running = going and not e                 # the attempt is on: the first step with no result yet is the one being run
         going = going and not now_running
+        actual = e["actual"] if e else ""
+        if actual and actual == step.get("actual_source"):
+            actual = step.get("actual", actual)
         out.append({"n": step["n"], "caption": step["action"], "expected": step["expected"], "evidence": step.get("evidence", ""), "status": e["status"] if e else ("RUNNING" if now_running else "PENDING"),
-                    "actual": e["actual"] if e else "", "images": e["images"] if e else [], "checks": e.get("checks") if e else None, "carried": bool(kept)})
+                    "actual": actual, "images": e["images"] if e else [], "checks": e.get("checks") if e else None, "carried": bool(kept)})
     return out
 
 
@@ -100,6 +103,27 @@ def _explore(session, ident, mine, current, state, log):
     return {"verified": verified, "trying": trying, "built": built, "live": live, "stage": stage if live else "", "queued_step": (queued or {}).get("step")}
 
 
+def _latest_video(slot):
+    """The newest replay run of the case that kept a video (a later run without one does not hide it): {video, at, status, frame_ms} or None."""
+    for run in reversed((slot or {}).get("runs", [])):
+        if run.get("video"):
+            return {"video": run["video"], "at": run.get("at", ""), "status": run.get("status", ""), "env": run.get("env", "main")}
+    return None
+
+
+def _mtime(path):
+    try:
+        return int(path.stat().st_mtime)
+    except OSError:
+        return 0
+
+
+def worker_load(records):
+    """How many case workers are on the session right now: a case with a live claim, or one the runner is working on. The limit is the claim limit."""
+    active = [r["id"] for r in records if r["owner_fresh"] or r["status"] in LIVE]
+    return {"active": len(active), "limit": claims.MAX_WORKERS, "cases": active}
+
+
 def case_records(session: Session):
     """One record per case of the workbook, in the order the strategy runs them (cases held back come after)."""
     cases = session.cases()["cases"]
@@ -115,10 +139,14 @@ def case_records(session: Session):
     out = []
     owners = claims.table(session)
     saved_replays = replays.load(session)
+    asked = dispatch_requests.load(session)
+    translations = captions.localized_cases(session)
     worked = [e for e in log if e["kind"] in WORK and e.get("case")]
     current = worked[-1]["case"] if worked else None          # the case the assistant touched last: the one being worked on, if any is
     for ident in ordered:
         case, item = by_id[ident], analysis.get(ident, {})
+        translated = translations.get(ident, {})
+        planned = captions.localized_steps(item.get("steps") or [], translated)
         mine = [e for e in log if e.get("case") == ident]
         attempts = []
         for n in sorted({e["attempt"] for e in mine if e["kind"] in ("case_started", "step", "attempt_finished")}):
@@ -138,7 +166,7 @@ def case_records(session: Session):
                         recorded["images"].extend(supplement["images"])
             attempts.append({"n": n, "status": ended["status"] if ended else "RUNNING", "reason": ended["reason"] if ended else "", "failed_step": ended.get("failed_step") if ended else None,
                              "from_step": from_step,
-                             "steps": _steps(item.get("steps") or [{"n": i, "action": s, "expected": ""} for i, s in enumerate(case["steps"], 1)],
+                             "steps": _steps(planned or [{"n": i, "action": s, "expected": ""} for i, s in enumerate(case["steps"], 1)],
                                              ran, carried, running=not ended and not state.get("stopped"))})
         explore = _explore(session, ident, mine, current, state, log)
         result = state["results"].get(ident)
@@ -156,11 +184,14 @@ def case_records(session: Session):
             status = "NEW"
         repairs = [{k: e[k] for k in ("ts", "attempt", "cause", "evidence", "change", "reanalysis", "probed", "timeout_s", "unchanged_reason") if k in e} for e in mine if e["kind"] == "repair"]
         saved = (saved_replays.get(ident) or {}).get("latest")
-        out.append({"id": ident, "live_status": status, "replay_status": (saved or {}).get("status", replays.NOT_RUN), "replay": saved, "history": (state.get("history") or {}).get(ident, []), "category": (result or {}).get("category", ""), "can_replay": live.script_file(session, ident).is_file(), "title": case["title"], "row": case["row"], "reuse": item.get("reuse", ""), "repairs": repairs, "timeout_s": state.get("timeouts", {}).get(ident) or item.get("timeout_s"),
+        reason = (result or {}).get("reason") or held.get(ident, {}).get("reason", "")
+        if reason and reason == translated.get("reason_source"):
+            reason = translated.get("reason", reason)
+        out.append({"id": ident, "live_status": status, "replay_status": (saved or {}).get("status", replays.NOT_RUN), "replay": saved, "replay_video": _latest_video(saved_replays.get(ident)), "script_at": _mtime(live.script_file(session, ident)), "history": (state.get("history") or {}).get(ident, []), "category": (result or {}).get("category", ""), "can_replay": live.script_file(session, ident).is_file(), "title": record_names.title(case, item, translated), "row": case["row"], "reuse": item.get("reuse", ""), "repairs": repairs, "timeout_s": state.get("timeouts", {}).get(ident) or item.get("timeout_s"),
                     "source": {"sheet": case.get("sheet", ""), "original_id": case.get("original_id", case["id"]), "category": case.get("category", ""), "type": case.get("type", ""), "pre": case.get("pre", ""), "steps": case.get("steps", []),
                               "expected": case.get("expected", ""), "note": case.get("note", ""), "role": case.get("role", "")}, "profile": item.get("profile", ""), "verdict": item.get("verdict", held.get(ident, {}).get("verdict", "")),
-                    "explore": explore, "owner": (owners.get(ident) or {}).get("agent", ""), "owner_fresh": bool((owners.get(ident) or {}).get("fresh")), "status": status, "reason": (result or {}).get("reason") or held.get(ident, {}).get("reason", ""), "attempts": attempts,
-                    "planned": [{"n": s["n"], "caption": s["action"], "expected": s["expected"], "evidence": s.get("evidence", "")} for s in item.get("steps") or []],
+                    "request": dispatch_requests.of_case(session, ident, asked), "can_request": dispatch_requests.kind_for(session, ident, state), "last_ts": mine[-1]["ts"] if mine else "", "last_kind": mine[-1]["kind"] if mine else "", "explore": explore, "owner": (owners.get(ident) or {}).get("agent", ""), "owner_fresh": bool((owners.get(ident) or {}).get("fresh")), "status": status, "reason": reason, "attempts": attempts,
+                    "planned": [{"n": s["n"], "caption": s["action"], "expected": s["expected"], "evidence": s.get("evidence", "")} for s in planned],
                     "depends_on": item.get("depends_on") or [], "edge_cases": item.get("edge_cases") or [], "edge_none": item.get("edge_cases_none_reason", ""),
                     "data_needs": item.get("data_needs") or [], "clarity": (item.get("clarity") or {}).get("score"), "sufficiency": (item.get("sufficiency") or {}).get("score"),
                     "questions": item.get("questions") or [],
@@ -216,6 +247,7 @@ def activity(log, limit=40):
 
 def session_view(session: Session):
     state = session.state()
+    replay_language = workspace.load(session.ws).get("replay_caption_language", "vi")
     log = events.read(session.dir)
     hours = idle_hours(state, log)
     records = interrupted(case_records(session), hours, quiet_seconds(state, log))
@@ -225,9 +257,9 @@ def session_view(session: Session):
     phases = [{"phase": p, "at": reached.get(p, ""), "state": "current" if p == current else ("done" if i < here else "todo")} for i, p in enumerate(PHASES)]
     latest = next((e for e in reversed(log) if e["kind"] == "phase"), None)
     strategy_md = session.dir / "strategy.md"
-    return {"workspace": session.ws, "session": session.id, "file": state["file"], "phase": current, "phases": phases, "waiting": state["waiting"], "stopped": state.get("stopped"), "can_stop": current != "DONE" and not state.get("stopped"),
+    return {"workspace": session.ws, "session": session.id, "replay_caption_language": replay_language, "file": state["file"], "phase": current, "phases": phases, "waiting": state["waiting"], "stopped": state.get("stopped"), "can_stop": current != "DONE" and not state.get("stopped"),
             "confirmed": bool(state["confirmation"]), "created": state["created"], "updated": log[-1]["ts"] if log else state["created"], "idle_hours": round(hours, 1), "idle": hours >= IDLE_HOURS, "now": latest["text"] if latest else "",
-            "counts": counts(records), "replay_counts": replay_counts(records), "total": len(records), "cases": records, "activity": activity(log), "free_cases": claims.free_cases(session) if current == "EXECUTE" else [], "notes": claims.notes(session, 12), "connect": state.get("connect"),
+            "counts": counts(records), "workers": worker_load(records), "replay_counts": replay_counts(records), "total": len(records), "cases": records, "activity": activity(log), "free_cases": claims.free_cases(session) if current == "EXECUTE" else [], "notes": claims.notes(session, 12), "connect": state.get("connect"),
             "reports": reports(session), "strategy": strategy_md.read_text(encoding="utf-8") if strategy_md.exists() else "", "can_confirm": current == "CONFIRM" and bool(state.get("strategy_sha")) and (session.dir / "strategy.json").exists()
             and state["strategy_sha"] is not None, "knowledge": len(knowledge.search(session.ws)),
             "refs": [{k: i.get(k) for k in ("name", "path", "kind", "by", "case")} for i in refs.items(session)]}
@@ -244,7 +276,8 @@ def list_sessions():
                 hours = idle_hours(state, events.read(session.dir))
                 records = interrupted(case_records(session), hours, quiet_seconds(state, events.read(session.dir)))
                 out.append({"workspace": ws, "session": sid, "file": state["file"], "created": state["created"], "phase": state["phase"], "waiting": bool(state["waiting"]),
-                            "idle": hours >= IDLE_HOURS, "idle_hours": round(hours, 1), "counts": counts(records), "total": len(records)})
+                            "idle": hours >= IDLE_HOURS, "idle_hours": round(hours, 1), "stopped": bool(state.get("stopped")), "reviews": len(state.get("reviews") or {}), "can_confirm": state["phase"] == "CONFIRM" and bool(state.get("strategy_sha")), "counts": counts(records), "total": len(records),
+                            "workers": worker_load(records)["active"]})
             except Exception:
                 continue                    # a session folder that is being written or damaged must not hide the others
     return sorted(out, key=lambda s: s["created"], reverse=True)

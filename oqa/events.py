@@ -62,6 +62,8 @@ KINDS = {
     "diagnosis": ("case", "attempt", "category", "detail"),
     "handover": ("case", "attempt", "reason"),
     "data_created": ("case", "attempt", "model", "field", "key"),
+    "dispatch_requested": ("case", "request"),
+    "dispatch_resolved": ("case", "status"),
     "session_finished": ("counts",),
 }
 USER_KINDS = ("confirmed", "answered", "ref_added", "hint", "stopped", "resumed")        # what only the user does: the assistant waits for these
