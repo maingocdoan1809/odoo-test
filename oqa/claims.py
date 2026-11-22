@@ -5,7 +5,7 @@ agent that died or stalled never holds a case hostage. A floating agent simply c
 import json
 import time
 
-from . import events
+from . import events, textfix
 from .state import GateError
 from .store import locked, read_json, write_json
 
@@ -135,7 +135,7 @@ def assign(session, case, agent):
 
 
 def add_note(session, agent, text, case=""):
-    line = {"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "agent": agent or "?", "case": case, "text": text.strip()}
+    line = {"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "agent": agent or "?", "case": case, "text": textfix.repair_text(text.strip())}
     with locked(_file(session).with_name("notes.lock")):
         with open(session.dir / "notes.jsonl", "a", encoding="utf-8") as handle:
             handle.write(json.dumps(line, ensure_ascii=False) + "\n")
@@ -149,7 +149,7 @@ def notes(session, limit=30):
     out = []
     for raw in path.read_text(encoding="utf-8").splitlines():
         try:
-            out.append(json.loads(raw))
+            out.append(textfix.repair(json.loads(raw)))
         except ValueError:
             continue
     return out[-limit:]

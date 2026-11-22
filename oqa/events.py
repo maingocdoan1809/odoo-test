@@ -31,6 +31,7 @@ import os
 import time
 from pathlib import Path
 
+from . import textfix
 from .store import SchemaError
 
 KINDS = {
@@ -97,7 +98,7 @@ def append(session_dir, kind, **data):
     """Validate and append one event. Unlike progress reporting in the old kit, a malformed event is an error: the file is the evidence."""
     validate(kind, data)
     record = {"ts": time.strftime("%Y-%m-%d %H:%M:%S")}
-    record.update(data)
+    record.update(textfix.repair(data))
     record["kind"] = kind
     file = Path(session_dir) / "events.jsonl"
     file.parent.mkdir(parents=True, exist_ok=True)
@@ -117,7 +118,7 @@ def read(session_dir):
     if file.exists():
         for line in file.read_text(encoding="utf-8").splitlines():
             try:
-                out.append(json.loads(line))
+                out.append(textfix.repair(json.loads(line)))
             except ValueError:
                 continue
     return out

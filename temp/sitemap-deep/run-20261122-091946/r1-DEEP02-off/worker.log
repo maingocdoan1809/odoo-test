@@ -1,0 +1,8 @@
+Trang Records của Customer Service hiển thị đúng bản ghi cần tìm, nhưng tôi **không đi theo đường Orders → Archive**.
+
+- **Đường đã đi:** Customer Service → Records (`/odoo/action-96`). Menu này chỉ có một mục "Records", không thấy mục Archive, nên tôi không xác nhận được đây có phải kho lưu trữ Orders hay không.
+- **Cột Service Site:** có, hiển thị giá trị `ZZ_AUTOTEST_H10_SITE`.
+- **Bản ghi ZZ_AUTOTEST_H10_REQ:** có, là bản ghi duy nhất (1-1 / 1). Dòng của nó có Name là `ZZ_AUTOTEST_H10_REQ` và Service Site là `ZZ_AUTOTEST_H10_SITE`.
+- **Records của Finance:** chưa kiểm tra.
+
+Nếu cần đúng kho Orders → Archive, tôi có thể thử lại bằng đường dẫn nội bộ hoặc tìm mục Archive trong menu, nhưng cần biết action id hoặc tên menu chính xác.

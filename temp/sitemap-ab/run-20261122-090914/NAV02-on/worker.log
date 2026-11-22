@@ -1,0 +1,12 @@
+Testcase đọc đã hoàn thành, harness báo Verified checkpoints 6/6. Tôi chỉ điều hướng và mở màn hình Import; không mở bản ghi nào, không lưu, sửa, xóa hay upload gì.
+
+Kết quả từng bước (profile Manager, bắt đầu từ Sites):
+
+1. **Items (action-91):** danh sách có các cột Name, Code, Site, Cost, Active. Cột Code và Cost đều có.
+2. **Import của Items (`/odoo/action-91/import`):** có nút **Upload Data File**, breadcrumb là Items.
+3. **Quay về Items:** bấm breadcrumb, về lại `/odoo/action-91`.
+4. **Requests (action-92):** danh sách mở bình thường, 159 bản ghi.
+5. **Import của Requests (`/odoo/action-92/import`):** có nút **Upload Data File** và breadcrumb Requests.
+6. **Hủy:** bấm Cancel, về danh sách Requests (`/odoo/action-92`).
+
+Không có bước nào bị bỏ qua hoặc gặp lỗi. Các màn hình đều tải xong ngay khi điều hướng.

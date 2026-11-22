@@ -1,0 +1,453 @@
+[
+  {
+    "repeat": 1,
+    "arm": "fresh",
+    "exit": 0,
+    "wall_s": 30.91,
+    "sitemap_calls": 4,
+    "navigation": 2,
+    "evidence": "r1-fresh",
+    "queue_visits": [
+      {
+        "action": 94,
+        "headings": [
+          "",
+          "Name",
+          "Storage Site",
+          "State"
+        ]
+      }
+    ],
+    "first_screen": 94,
+    "first_screen_correct": true,
+    "screen_verified": true,
+    "form_reached": true,
+    "current_record": 11,
+    "first_record": 11,
+    "first_record_correct": true,
+    "submitted_verified": true,
+    "first_field": "x_ab_customer_reference",
+    "first_field_correct": false,
+    "verified": true,
+    "complete": true
+  },
+  {
+    "repeat": 1,
+    "arm": "stale",
+    "exit": 0,
+    "wall_s": 42.01,
+    "sitemap_calls": 5,
+    "navigation": 6,
+    "evidence": "r1-stale",
+    "queue_visits": [
+      {
+        "action": 95,
+        "headings": [
+          "",
+          "Name",
+          "Inventory Site"
+        ]
+      },
+      {
+        "action": 93,
+        "headings": [
+          "",
+          "Name",
+          "Loading Site",
+          "State"
+        ]
+      },
+      {
+        "action": 94,
+        "headings": [
+          "",
+          "Name",
+          "Storage Site",
+          "State"
+        ]
+      }
+    ],
+    "first_screen": 95,
+    "first_screen_correct": false,
+    "screen_verified": true,
+    "form_reached": true,
+    "current_record": 11,
+    "first_record": 11,
+    "first_record_correct": true,
+    "submitted_verified": true,
+    "first_field": "x_ab_customer_reference",
+    "first_field_correct": false,
+    "verified": true,
+    "complete": true
+  },
+  {
+    "repeat": 1,
+    "arm": "off",
+    "exit": 0,
+    "wall_s": 44.98,
+    "sitemap_calls": 0,
+    "navigation": 13,
+    "evidence": "r1-off",
+    "queue_visits": [
+      {
+        "action": 93,
+        "headings": [
+          "",
+          "Name",
+          "Loading Site",
+          "State"
+        ]
+      },
+      {
+        "action": 95,
+        "headings": [
+          "",
+          "Name",
+          "Inventory Site"
+        ]
+      },
+      {
+        "action": 94,
+        "headings": [
+          "",
+          "Name",
+          "Storage Site",
+          "State"
+        ]
+      }
+    ],
+    "first_screen": 93,
+    "first_screen_correct": false,
+    "screen_verified": true,
+    "form_reached": true,
+    "current_record": 11,
+    "first_record": 11,
+    "first_record_correct": true,
+    "submitted_verified": true,
+    "first_field": "x_ab_carrier_reference",
+    "first_field_correct": true,
+    "verified": true,
+    "complete": true
+  },
+  {
+    "repeat": 2,
+    "arm": "stale",
+    "exit": 0,
+    "wall_s": 39.61,
+    "sitemap_calls": 3,
+    "navigation": 6,
+    "evidence": "r2-stale",
+    "queue_visits": [
+      {
+        "action": 93,
+        "headings": [
+          "",
+          "Name",
+          "Loading Site",
+          "State"
+        ]
+      },
+      {
+        "action": 94,
+        "headings": [
+          "",
+          "Name",
+          "Storage Site",
+          "State"
+        ]
+      },
+      {
+        "action": 95,
+        "headings": [
+          "",
+          "Name",
+          "Inventory Site"
+        ]
+      },
+      {
+        "action": 94,
+        "headings": [
+          "",
+          "Name",
+          "Storage Site",
+          "State"
+        ]
+      }
+    ],
+    "first_screen": 93,
+    "first_screen_correct": false,
+    "screen_verified": true,
+    "form_reached": true,
+    "current_record": 11,
+    "first_record": 11,
+    "first_record_correct": true,
+    "submitted_verified": true,
+    "first_field": "x_ab_customer_reference",
+    "first_field_correct": false,
+    "verified": true,
+    "complete": true
+  },
+  {
+    "repeat": 2,
+    "arm": "off",
+    "exit": 0,
+    "wall_s": 41.17,
+    "sitemap_calls": 0,
+    "navigation": 7,
+    "evidence": "r2-off",
+    "queue_visits": [
+      {
+        "action": 93,
+        "headings": [
+          "",
+          "Name",
+          "Loading Site",
+          "State"
+        ]
+      },
+      {
+        "action": 95,
+        "headings": [
+          "",
+          "Name",
+          "Inventory Site"
+        ]
+      },
+      {
+        "action": 94,
+        "headings": [
+          "",
+          "Name",
+          "Storage Site",
+          "State"
+        ]
+      }
+    ],
+    "first_screen": 93,
+    "first_screen_correct": false,
+    "screen_verified": true,
+    "form_reached": true,
+    "current_record": 11,
+    "first_record": 11,
+    "first_record_correct": true,
+    "submitted_verified": true,
+    "first_field": "x_ab_customer_reference",
+    "first_field_correct": false,
+    "verified": true,
+    "complete": true
+  },
+  {
+    "repeat": 2,
+    "arm": "fresh",
+    "exit": 0,
+    "wall_s": 35.91,
+    "sitemap_calls": 1,
+    "navigation": 5,
+    "evidence": "r2-fresh",
+    "queue_visits": [
+      {
+        "action": 93,
+        "headings": [
+          "",
+          "Name",
+          "Loading Site",
+          "State"
+        ]
+      },
+      {
+        "action": 94,
+        "headings": [
+          "",
+          "Name",
+          "Storage Site",
+          "State"
+        ]
+      },
+      {
+        "action": 95,
+        "headings": [
+          "",
+          "Name",
+          "Inventory Site"
+        ]
+      },
+      {
+        "action": 94,
+        "headings": [
+          "",
+          "Name",
+          "Storage Site",
+          "State"
+        ]
+      }
+    ],
+    "first_screen": 93,
+    "first_screen_correct": false,
+    "screen_verified": true,
+    "form_reached": true,
+    "current_record": 11,
+    "first_record": 11,
+    "first_record_correct": true,
+    "submitted_verified": true,
+    "first_field": "x_ab_customer_reference",
+    "first_field_correct": false,
+    "verified": true,
+    "complete": true
+  },
+  {
+    "repeat": 3,
+    "arm": "off",
+    "exit": 0,
+    "wall_s": 49.77,
+    "sitemap_calls": 0,
+    "navigation": 11,
+    "evidence": "r3-off",
+    "queue_visits": [
+      {
+        "action": 93,
+        "headings": [
+          "",
+          "Name",
+          "Loading Site",
+          "State"
+        ]
+      },
+      {
+        "action": 95,
+        "headings": [
+          "",
+          "Name",
+          "Inventory Site"
+        ]
+      },
+      {
+        "action": 94,
+        "headings": [
+          "",
+          "Name",
+          "Storage Site",
+          "State"
+        ]
+      }
+    ],
+    "first_screen": 93,
+    "first_screen_correct": false,
+    "screen_verified": true,
+    "form_reached": true,
+    "current_record": 11,
+    "first_record": 11,
+    "first_record_correct": true,
+    "submitted_verified": true,
+    "first_field": "x_ab_customer_reference",
+    "first_field_correct": false,
+    "verified": true,
+    "complete": true
+  },
+  {
+    "repeat": 3,
+    "arm": "fresh",
+    "exit": 0,
+    "wall_s": 37.27,
+    "sitemap_calls": 5,
+    "navigation": 5,
+    "evidence": "r3-fresh",
+    "queue_visits": [
+      {
+        "action": 93,
+        "headings": [
+          "",
+          "Name",
+          "Loading Site",
+          "State"
+        ]
+      },
+      {
+        "action": 94,
+        "headings": [
+          "",
+          "Name",
+          "Storage Site",
+          "State"
+        ]
+      },
+      {
+        "action": 95,
+        "headings": [
+          "",
+          "Name",
+          "Inventory Site"
+        ]
+      },
+      {
+        "action": 94,
+        "headings": [
+          "",
+          "Name",
+          "Storage Site",
+          "State"
+        ]
+      }
+    ],
+    "first_screen": 93,
+    "first_screen_correct": false,
+    "screen_verified": true,
+    "form_reached": true,
+    "current_record": 11,
+    "first_record": 11,
+    "first_record_correct": true,
+    "submitted_verified": true,
+    "first_field": "x_ab_customer_reference",
+    "first_field_correct": false,
+    "verified": true,
+    "complete": true
+  },
+  {
+    "repeat": 3,
+    "arm": "stale",
+    "exit": 0,
+    "wall_s": 51.17,
+    "sitemap_calls": 4,
+    "navigation": 7,
+    "evidence": "r3-stale",
+    "queue_visits": [
+      {
+        "action": 93,
+        "headings": [
+          "",
+          "Name",
+          "Loading Site",
+          "State"
+        ]
+      },
+      {
+        "action": 95,
+        "headings": [
+          "",
+          "Name",
+          "Inventory Site"
+        ]
+      },
+      {
+        "action": 94,
+        "headings": [
+          "",
+          "Name",
+          "Storage Site",
+          "State"
+        ]
+      }
+    ],
+    "first_screen": 93,
+    "first_screen_correct": false,
+    "screen_verified": true,
+    "form_reached": true,
+    "current_record": 11,
+    "first_record": 11,
+    "first_record_correct": true,
+    "submitted_verified": true,
+    "first_field": "x_ab_customer_reference",
+    "first_field_correct": false,
+    "verified": true,
+    "complete": true
+  }
+]

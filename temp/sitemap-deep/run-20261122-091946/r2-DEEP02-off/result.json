@@ -1,0 +1,13 @@
+{
+  "repeat": 2,
+  "case": "DEEP02",
+  "arm": "off",
+  "exit": 0,
+  "wall_s": 39.59,
+  "navigation": 5,
+  "sitemap_calls": 0,
+  "evidence": "r2-DEEP02-off",
+  "first_screen": 96,
+  "first_screen_correct": true,
+  "verified": true
+}

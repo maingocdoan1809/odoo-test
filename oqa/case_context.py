@@ -2,7 +2,7 @@
 import re
 from pathlib import Path
 
-from . import captions, claims, events, knowledge, memory, record_names, refs, sitemap, workspace
+from . import captions, claims, events, memory, record_names, refs, retrieval, workspace
 from .state import GateError
 from .store import read_json
 
@@ -43,25 +43,30 @@ def messages(session, texts, references):
     return [{"code": code, **found.get(code, {"source": "", "text": "not found in the shared references: ask the coordinator, do not guess"})} for code in codes]
 
 
-def build(session, case_id, screen="", issue=""):
+def build(session, case_id, screen="", issue="", *, only="", profile="", state=""):
+    if only not in ("", "sitemap", "knowledge"):
+        raise GateError("Case context section must be sitemap or knowledge.")
     original = next((item for item in session.cases()["cases"] if item["id"] == case_id), None)
     if original is None:
         raise GateError(f"Case {case_id} is not in this session.")
     analysis = read_json(session.dir / "analysis.json", {}) or {}
     assessed = next((item for item in analysis.get("cases", []) if item["id"] == case_id), None)
+    config = workspace.load(session.ws)
+    retriever = retrieval.WorkspaceContext(session.ws, config.get("language", "en"), only=only)
+    context = retriever.lookup(
+        original, assessed=assessed, screen=screen, issue=issue,
+        profile=profile or (assessed or {}).get("profile") or original.get("role")
+        or (config["profiles"][0]["name"] if len(config["profiles"]) == 1 else ""),
+        state=state, only=only, detail=bool(only or screen or issue))
+    if only:
+        result = {"case": case_id, only: context.get(only, [])}
+        if only in retriever.unavailable:
+            result["unavailable"] = retriever.unavailable[only]
+        return result
     state = session.state()
     history = events.read(session.dir)
-    query = screen or issue or original["title"]
-    config = workspace.load(session.ws)
     prefix = config["test_prefix"]
     translation = captions.localized_cases(session).get(case_id, {})
-    screens = []
-    if sitemap.file_of(session.ws).exists():
-        for key, node, match in sitemap.find(sitemap.load(session.ws), query, limit=5):
-            screens.append({
-                "key": key, "label": node.get("label"), "model": node.get("model"),
-                "match": match,
-            })
     references = [ref for ref in refs.items(session) if ref.get("case") in (None, "", case_id)]
     texts = [original.get("expected", ""), original.get("note", ""), original.get("pre", ""), *original.get("steps", []),
              *[f"{step.get('action', '')} {step.get('expected', '')}" for step in (assessed or {}).get("steps", [])]]
@@ -82,8 +87,9 @@ def build(session, case_id, screen="", issue=""):
         "evidence_language": config.get("evidence_language", "vi"),
         "conclusions": {"result_history": (state.get("history") or {}).get(case_id, []),
                         "rule": "FAIL = the application differs from the expectation (verify the operated control first). Automation problems and missing preconditions are BLOCKED/PENDING after `diagnose`."},
-        "sitemap": screens,
-        "knowledge": knowledge.related(session.ws, f"{query} {issue}"),
+        "sitemap": context.get("sitemap", []),
+        "knowledge": context.get("knowledge", []),
+        **({"context_unavailable": retriever.unavailable} if retriever.unavailable else {}),
         "previous": memory.recall(session.ws, memory.stem_of(state["file"]), case_id),
         "notes": [note for note in claims.notes(session) if note["case"] in ("", case_id)][-8:],
         "recent": [e for e in history if e.get("case") == case_id

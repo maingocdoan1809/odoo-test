@@ -1,0 +1,17 @@
+{"tool": "inspect", "args": {}, "elapsed_s": 1.39, "result": ["Profile: Manager", "URL: /odoo/action-90", "Verified checkpoints: 0/6"], "error": ""}
+{"tool": "click", "args": {"role": "menuitem", "name": "Requests"}, "elapsed_s": 3.09, "result": ["Profile: Manager", "URL: /odoo/action-92", "Verified checkpoints: 1/6"], "error": ""}
+{"tool": "inspect", "args": {}, "elapsed_s": 4.11, "result": ["Profile: Manager", "URL: /odoo/action-92", "Verified checkpoints: 1/6"], "error": ""}
+{"tool": "click", "args": {"role": "cell", "name": "ZZ_AUTOTEST_H10_REQ"}, "elapsed_s": 5.8, "result": ["Profile: Manager", "URL: /odoo/action-92/11", "Verified checkpoints: 2/6"], "error": ""}
+{"tool": "inspect", "args": {}, "elapsed_s": 6.64, "result": ["Profile: Manager", "URL: /odoo/action-92/11", "Verified checkpoints: 2/6"], "error": ""}
+{"tool": "profile", "args": {"name": "Operator"}, "elapsed_s": 7.94, "result": ["Profile: Operator", "URL: /odoo/action-90", "Verified checkpoints: 2/6"], "error": ""}
+{"tool": "inspect", "args": {}, "elapsed_s": 13.17, "result": ["Profile: Operator", "URL: /odoo/action-90", "Verified checkpoints: 2/6"], "error": ""}
+{"tool": "click", "args": {"role": "menuitem", "name": "Requests"}, "elapsed_s": 14.69, "result": ["Profile: Operator", "URL: /odoo/action-92", "Verified checkpoints: 3/6"], "error": ""}
+{"tool": "inspect", "args": {}, "elapsed_s": 15.58, "result": ["Profile: Operator", "URL: /odoo/action-92", "Verified checkpoints: 3/6"], "error": ""}
+{"tool": "click", "args": {"role": "cell", "name": "ZZ_AUTOTEST_H10_REQ"}, "elapsed_s": 16.73, "result": ["Profile: Operator", "URL: /odoo/action-92/11", "Verified checkpoints: 4/6"], "error": ""}
+{"tool": "inspect", "args": {}, "elapsed_s": 17.69, "result": ["Profile: Operator", "URL: /odoo/action-92/11", "Verified checkpoints: 4/6"], "error": ""}
+{"tool": "click", "args": {"role": "menuitem", "name": "Sites"}, "elapsed_s": 19.22, "result": ["Profile: Operator", "URL: /odoo/action-90", "Verified checkpoints: 5/6"], "error": ""}
+{"tool": "inspect", "args": {}, "elapsed_s": 20.23, "result": ["Profile: Operator", "URL: /odoo/action-90", "Verified checkpoints: 5/6"], "error": ""}
+{"tool": "click", "args": {"role": "cell", "name": "ZZ_AUTOTEST_H01_SITE"}, "elapsed_s": 21.62, "result": [""], "error": "Locator.click: Error: strict mode violation: get_by_role(\"cell\", name=\"ZZ_AUTOTEST_H01_SITE\", exact=True) resolved to 2 elements:"}
+{"tool": "inspect", "args": {}, "elapsed_s": 21.77, "result": ["Profile: Operator", "URL: /odoo/action-90", "Verified checkpoints: 5/6"], "error": ""}
+{"tool": "click", "args": {"role": "cell", "name": "ZZ_AUTOTEST_H01_SITE", "occurrence": 1}, "elapsed_s": 23.67, "result": ["Profile: Operator", "URL: /odoo/action-90/27", "Verified checkpoints: 6/6"], "error": ""}
+{"tool": "inspect", "args": {}, "elapsed_s": 24.53, "result": ["Profile: Operator", "URL: /odoo/action-90/27", "Verified checkpoints: 6/6"], "error": ""}

@@ -1,0 +1,18 @@
+Đã thực hiện xong case chỉ đọc.
+
+**Màn hình Queue có cột Storage Site**
+- Đường dẫn: OQA Harness / Finance / Billing / Reviews / Queue, URL `/odoo/action-94`.
+- Đã xác nhận trên danh sách: cột là "Name | Storage Site | State", 2 bản ghi.
+- Hai màn Queue còn lại không có cột này: Dispatch (action-93) có "Loading Site", Warehouse (action-95) có "Inventory Site".
+
+**Bản ghi đã mở**
+- Hai dòng cùng tên ZZ_AUTOTEST_H10_REQ: dòng Draft được bỏ qua, mở dòng **Submitted**.
+- URL: `/odoo/action-94/11`, trang 2/2.
+- Trạng thái: **Submitted**.
+
+**Hai ô Reference**
+- Ô thứ nhất (Customer Reference): **CUS-8431**.
+- Ô thứ hai (Transport Reference): **CAR-7129**.
+- Mã của đơn vị vận chuyển là **CAR-7129**. Tôi xác định theo nhãn "Transport Reference" hiển thị trên form, không chỉ dựa vào thứ tự.
+
+Ghi chú: lệnh `sitemap_fields` cho form của màn này trả về một menu, không trả về danh sách trường, nên việc đối chiếu nhãn tôi làm bằng giao diện thật. Không có thay đổi dữ liệu nào.

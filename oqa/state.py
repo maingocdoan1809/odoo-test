@@ -108,7 +108,11 @@ class Session:
             if state["waiting"]:
                 raise GateError("The session is waiting for the user to answer; run `oqa answer` first.")
             if document is not None:
-                write_json(self.dir / "analysis.json", document)
+                saved = {key: value for key, value in document.items() if key not in ("_context_more", "_context_unavailable")}
+                if isinstance(saved.get("cases"), list):
+                    saved["cases"] = [{key: value for key, value in case.items() if key != "_context"}
+                                      if isinstance(case, dict) else case for case in saved["cases"]]
+                write_json(self.dir / "analysis.json", saved)
             state["strategy_sha"] = None
             if reviews:
                 if state["phase"] != "ANALYZE":

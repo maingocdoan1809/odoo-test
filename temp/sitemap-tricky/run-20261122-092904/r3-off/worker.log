@@ -1,0 +1,8 @@
+Đã hoàn thành. Chỉ đọc, không thay đổi dữ liệu.
+
+- **Màn hình:** `/odoo/action-94` (menu Finance → Billing Reviews → Queue). Đây là màn hình duy nhất có cột **Storage Site**. Các màn hình Queue khác (action-93 và action-95) chỉ có Loading Site hoặc Inventory Site. Danh sách có 2 bản ghi `ZZ_AUTOTEST_H10_REQ`: một Draft, một Submitted.
+- **Bản ghi đã mở:** `/odoo/action-94/11`, trạng thái **Submitted**. Tôi bỏ qua bản Draft.
+- **Đơn vị vận chuyển:** ô **Transport Reference** đọc được giá trị **`CAR-7129`**.
+- **Ô còn lại:** ô Customer Reference có giá trị `CUS-8431`, không phải mã đơn vị vận chuyển nên không dùng.
+
+Lưu ý: tôi chọn ô Transport Reference dựa trên nhãn, vì đề bài yêu cầu mã của đơn vị vận chuyển. Tôi không kiểm tra thêm ngoài việc đọc nhãn và giá trị của hai ô.

@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "bench": {
+      "command": "C:\\Users\\maido\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "args": [
+        "C:\\Users\\maido\\odoo-test\\temp\\sitemap-ab\\benchmark.py",
+        "serve",
+        "C:\\Users\\maido\\odoo-test\\temp\\sitemap-ab\\run-20261122-090523\\NAV02-off",
+        "NAV02",
+        "off"
+      ]
+    }
+  }
+}

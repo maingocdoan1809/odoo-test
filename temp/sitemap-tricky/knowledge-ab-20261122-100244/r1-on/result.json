@@ -1,0 +1,32 @@
+{
+  "repeat": 1,
+  "arm": "on",
+  "exit": 0,
+  "wall_s": 24.19,
+  "sitemap_calls": 2,
+  "navigation": 2,
+  "evidence": "r1-on",
+  "queue_visits": [
+    {
+      "action": 94,
+      "headings": [
+        "",
+        "Name",
+        "Storage Site",
+        "State"
+      ]
+    }
+  ],
+  "first_screen": 94,
+  "first_screen_correct": true,
+  "screen_verified": true,
+  "form_reached": true,
+  "current_record": 11,
+  "first_record": 11,
+  "first_record_correct": true,
+  "submitted_verified": true,
+  "first_field": "x_ab_carrier_reference",
+  "first_field_correct": true,
+  "verified": true,
+  "complete": true
+}

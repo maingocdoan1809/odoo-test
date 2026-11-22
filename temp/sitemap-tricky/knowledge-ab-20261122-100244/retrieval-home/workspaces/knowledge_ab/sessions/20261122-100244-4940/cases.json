@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "source": {
+    "file": "C:\\Users\\maido\\odoo-test\\temp\\sitemap-tricky\\sitemap-tricky.xlsx",
+    "name": "sitemap-tricky.xlsx",
+    "sha256": "ecef9789e77cbbdf5e2fe7988d651b376c97bad84cd59af48840303105ea6ff6",
+    "sheet": "Testcases",
+    "header_row": 1,
+    "columns": {
+      "no": 1,
+      "view": 2,
+      "role": 3,
+      "act": 4,
+      "exp": 5
+    }
+  },
+  "warnings": [],
+  "cases": [
+    {
+      "id": "TRICKY01",
+      "title": "Màn hình đổi vị trí, trùng bản ghi và nhãn field",
+      "category": "",
+      "type": "",
+      "role": "Manager",
+      "pre": "",
+      "steps": [
+        "Có nhiều màn hình cùng tên Queue. Tìm màn hình đang có cột Storage Site và xác nhận cột trên danh sách. Có hai bản ghi cùng tên ZZ_AUTOTEST_H10_REQ. Mở bản ghi đang Submitted, bỏ qua bản Draft. Trong form có hai ô cùng nhãn Reference. Dùng read_reference để đọc mã của đơn vị vận chuyển rồi trả về đường dẫn màn hình, trạng thái bản ghi và giá trị đã đọc."
+      ],
+      "expected": "Danh sách thật có Storage Site. Chọn bản ghi Submitted và đọc mã vận chuyển CAR-7129.",
+      "note": "",
+      "sheet": "Testcases",
+      "row": 2,
+      "refs": [],
+      "vague": [],
+      "case_refs": []
+    }
+  ]
+}

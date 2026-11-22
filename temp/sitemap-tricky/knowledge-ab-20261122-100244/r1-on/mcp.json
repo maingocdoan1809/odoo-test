@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "bench": {
+      "command": "C:\\Users\\maido\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "args": [
+        "C:\\Users\\maido\\odoo-test\\temp\\sitemap-tricky\\benchmark.py",
+        "serve",
+        "C:\\Users\\maido\\odoo-test\\temp\\sitemap-tricky\\knowledge-ab-20261122-100244\\r1-on",
+        "fresh"
+      ]
+    }
+  }
+}

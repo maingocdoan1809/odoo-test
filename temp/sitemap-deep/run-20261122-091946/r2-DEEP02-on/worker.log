@@ -1,0 +1,8 @@
+Bản ghi `ZZ_AUTOTEST_H10_REQ` có trong kho hồ sơ Customer Service, cột **Service Site** hiển thị `ZZ_AUTOTEST_H10_SITE`. Tổng cộng 1 bản ghi (1-1 / 1).
+
+Ghi chú về cách làm:
+- Click vào menu Customer Service bị timeout, và có hộp thoại "Odoo Session Expired" hiện trên trang. Nút Close trong hộp thoại không click được. Tôi mở trực tiếp `/odoo/action-96`.
+- Action 96 có cột Service Site, nên đây là kho Customer Service. Action 97 là bản Finance, có cột Archived Amount và cũng có `ZZ_AUTOTEST_H10_REQ` nhưng giá trị là 10.
+- Tôi không xác minh được trực tiếp action 96 ứng với menu ID 91 (không có action number trong đường dẫn menu). Việc xác nhận dựa trên cột hiển thị.
+
+Không có dữ liệu nào bị lưu hay thay đổi.

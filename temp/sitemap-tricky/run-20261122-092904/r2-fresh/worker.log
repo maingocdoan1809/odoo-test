@@ -1,0 +1,12 @@
+Case đã thực hiện xong, chỉ đọc, không thay đổi dữ liệu.
+
+**Kết quả**
+
+- **Đường dẫn màn hình:** Queue, action 94 (`/odoo/action-94`). Đây là màn hình duy nhất có cột **Storage Site**. Hai action 93 và 95 cùng tên "Queue" nhưng có cột Loading Site và Inventory Site.
+- **Cột trên danh sách:** Name | Storage Site | State. Đã xác nhận trực tiếp trên giao diện.
+- **Bản ghi đã mở:** ZZ_AUTOTEST_H10_REQ, trạng thái **Submitted**, URL `/odoo/action-94/11`. Bản Draft cùng tên (không mở) có Storage Site là ZZ_AUTOTEST_H10_SITE.
+- **Mã đơn vị vận chuyển:** **CAR-7129**. Đọc bằng `read_reference` occurrence 2. Nhãn của ô này là "Transport Reference", đã đối chiếu trên form.
+
+**Các giá trị đã đọc trên form:**
+- Reference occurrence 1 (Customer Reference): CUS-8431
+- Reference occurrence 2 (Transport Reference): CAR-7129

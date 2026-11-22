@@ -35,7 +35,7 @@ def _says(value, minimum=MIN_WORDS):
     return len(str(value or "").strip()) >= minimum
 
 
-def template(cases_doc, workspace, session=None):
+def template(cases_doc, workspace, session=None, *, include_context=True):
     """A skeleton to fill in: every case with its steps and the references intake found, judgement fields left empty. With a `session` it also carries what the user said
     and shared since intake (answers, files they pasted by path), and a reference that is missing is looked for again among those files."""
     profiles = [p["name"] for p in workspace["profiles"]]
@@ -83,6 +83,21 @@ def template(cases_doc, workspace, session=None):
                                     for ref in assessed.get("refs", item["refs"])]
         out["_user_answers"] = [{"case": e.get("case"), "answer": e["answer"]} for e in events.read(session.dir) if e["kind"] == "answered"]
         out["_shared_files"] = [{"name": i["name"], "path": i["path"], "kind": i["kind"], "case": i.get("case")} for i in refs.items(session)]
+    if include_context:
+        from . import retrieval
+
+        context = retrieval.WorkspaceContext(workspace["name"], workspace.get("language", "en"))
+        if context.unavailable:
+            out["_context_unavailable"] = context.unavailable
+        budget = retrieval.WORKBOOK_LIMIT
+        for case, item in zip(cases_doc["cases"], items):
+            found = context.lookup(case, assessed=item)
+            compact = retrieval.fit(found, budget)
+            if compact:
+                item["_context"] = compact
+                budget -= len(json.dumps(compact, ensure_ascii=False)) + 20
+            if compact != found:
+                out["_context_more"] = True
     return out
 
 

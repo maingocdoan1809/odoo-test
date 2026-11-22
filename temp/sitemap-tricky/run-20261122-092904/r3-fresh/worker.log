@@ -1,0 +1,17 @@
+Đã hoàn tất case chỉ đọc. Không có thay đổi dữ liệu nào.
+
+**1. Màn hình Queue có cột Storage Site**
+- Có ba màn hình tên Queue: action-93 (cột Loading Site), action-94 (cột Storage Site) và action-95 (cột Inventory Site).
+- Màn hình đúng là **action-94**, đường dẫn menu: OQA Harness / Finance / Billing / Reviews / Queue.
+- Danh sách có 2 bản ghi, cả hai tên ZZ_AUTOTEST_H10_REQ: một bản Draft và một bản Submitted.
+
+**2. Bản ghi đã mở**
+- Đã mở bản **Submitted** (bỏ qua bản Draft).
+- Đường dẫn: **/odoo/action-94/11**
+- Trạng thái: **Submitted**
+
+**3. Giá trị đã đọc bằng read_reference**
+- Occurrence 1 (Customer Reference): CUS-8431
+- Occurrence 2 (Transport Reference): **CAR-7129**
+
+Mã của đơn vị vận chuyển là **CAR-7129**. Tôi xác định occurrence 2 là Transport Reference dựa trên nội dung giao diện đã đọc ("Customer Reference CUS-8431 Transport Reference CAR-7129"), không phải từ nhãn riêng của ô đó.

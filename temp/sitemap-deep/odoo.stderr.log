@@ -1,0 +1,241 @@
+2026-11-22 02:15:08,516 24848 WARNING oqa_sitemap_deep odoo.modules.module: Missing `author` key in manifest for 'oqa_harness', defaulting to '' 
+2026-11-22 02:15:35,811 24848 ERROR oqa_sitemap_deep odoo.http: Exception during request handling. 
+Traceback (most recent call last):
+  File "C:\Users\maido\odoo\odoo\http.py", line 2928, in __call__
+    response = request._serve_db()
+               ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\http.py", line 2407, in _serve_db
+    raise self._update_served_exception(exc)
+  File "C:\Users\maido\odoo\odoo\http.py", line 2405, in _serve_db
+    return service_model.retrying(serve_func, env=self.env)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\service\model.py", line 188, in retrying
+    result = func()
+             ^^^^^^
+  File "C:\Users\maido\odoo\odoo\http.py", line 2455, in _serve_ir_http
+    response = self.dispatcher.dispatch(rule.endpoint, args)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\http.py", line 2577, in dispatch
+    return self.request.registry['ir.http']._dispatch(endpoint)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\addons\base\models\ir_http.py", line 353, in _dispatch
+    result = endpoint(**request.params)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\http.py", line 837, in route_wrapper
+    result = endpoint(self, *args, **params_ok)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\users\maido\odoo\addons\web\controllers\binary.py", line 114, in content_assets
+    stream = env['ir.binary']._get_stream_from(attachment, 'raw', filename)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\addons\base\models\ir_binary.py", line 135, in _get_stream_from
+    stream = self._record_to_stream(record, field_name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\addons\base\models\ir_binary.py", line 70, in _record_to_stream
+    return record._to_http_stream()
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\addons\base\models\ir_attachment.py", line 957, in _to_http_stream
+    stat = os.stat(stream.path)
+           ^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [WinError 3] The system cannot find the path specified: 'c:\\users\\maido\\odoo-dev\\data\\filestore\\oqa_sitemap_deep/3f/3fc9dce163a512201d17c3f3c034ed60e1b6126a'
+2026-11-22 02:15:35,901 24848 ERROR oqa_sitemap_deep odoo.http: Exception during request handling. 
+Traceback (most recent call last):
+  File "C:\Users\maido\odoo\odoo\http.py", line 2928, in __call__
+    response = request._serve_db()
+               ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\http.py", line 2407, in _serve_db
+    raise self._update_served_exception(exc)
+  File "C:\Users\maido\odoo\odoo\http.py", line 2405, in _serve_db
+    return service_model.retrying(serve_func, env=self.env)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\service\model.py", line 188, in retrying
+    result = func()
+             ^^^^^^
+  File "C:\Users\maido\odoo\odoo\http.py", line 2455, in _serve_ir_http
+    response = self.dispatcher.dispatch(rule.endpoint, args)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\http.py", line 2577, in dispatch
+    return self.request.registry['ir.http']._dispatch(endpoint)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\addons\base\models\ir_http.py", line 353, in _dispatch
+    result = endpoint(**request.params)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\http.py", line 837, in route_wrapper
+    result = endpoint(self, *args, **params_ok)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\users\maido\odoo\addons\web\controllers\binary.py", line 114, in content_assets
+    stream = env['ir.binary']._get_stream_from(attachment, 'raw', filename)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\addons\base\models\ir_binary.py", line 135, in _get_stream_from
+    stream = self._record_to_stream(record, field_name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\addons\base\models\ir_binary.py", line 70, in _record_to_stream
+    return record._to_http_stream()
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\addons\base\models\ir_attachment.py", line 957, in _to_http_stream
+    stat = os.stat(stream.path)
+           ^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [WinError 3] The system cannot find the path specified: 'c:\\users\\maido\\odoo-dev\\data\\filestore\\oqa_sitemap_deep/eb/eb7ff2e0899853139bcdda47df1dd91080a66149'
+2026-11-22 02:15:39,281 24848 ERROR oqa_sitemap_deep odoo.http: Exception during request handling. 
+Traceback (most recent call last):
+  File "C:\Users\maido\odoo\odoo\http.py", line 2928, in __call__
+    response = request._serve_db()
+               ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\http.py", line 2407, in _serve_db
+    raise self._update_served_exception(exc)
+  File "C:\Users\maido\odoo\odoo\http.py", line 2405, in _serve_db
+    return service_model.retrying(serve_func, env=self.env)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\service\model.py", line 188, in retrying
+    result = func()
+             ^^^^^^
+  File "C:\Users\maido\odoo\odoo\http.py", line 2455, in _serve_ir_http
+    response = self.dispatcher.dispatch(rule.endpoint, args)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\http.py", line 2577, in dispatch
+    return self.request.registry['ir.http']._dispatch(endpoint)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\addons\base\models\ir_http.py", line 353, in _dispatch
+    result = endpoint(**request.params)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\http.py", line 837, in route_wrapper
+    result = endpoint(self, *args, **params_ok)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\users\maido\odoo\addons\web\controllers\binary.py", line 114, in content_assets
+    stream = env['ir.binary']._get_stream_from(attachment, 'raw', filename)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\addons\base\models\ir_binary.py", line 135, in _get_stream_from
+    stream = self._record_to_stream(record, field_name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\addons\base\models\ir_binary.py", line 70, in _record_to_stream
+    return record._to_http_stream()
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\addons\base\models\ir_attachment.py", line 957, in _to_http_stream
+    stat = os.stat(stream.path)
+           ^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [WinError 3] The system cannot find the path specified: 'c:\\users\\maido\\odoo-dev\\data\\filestore\\oqa_sitemap_deep/be/beb39e9dac60f66fe32bfce9ddd4934fefbae7fd'
+2026-11-22 02:15:39,283 24848 ERROR oqa_sitemap_deep odoo.http: Exception during request handling. 
+Traceback (most recent call last):
+  File "C:\Users\maido\odoo\odoo\http.py", line 2928, in __call__
+    response = request._serve_db()
+               ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\http.py", line 2407, in _serve_db
+    raise self._update_served_exception(exc)
+  File "C:\Users\maido\odoo\odoo\http.py", line 2405, in _serve_db
+    return service_model.retrying(serve_func, env=self.env)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\service\model.py", line 188, in retrying
+    result = func()
+             ^^^^^^
+  File "C:\Users\maido\odoo\odoo\http.py", line 2455, in _serve_ir_http
+    response = self.dispatcher.dispatch(rule.endpoint, args)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\http.py", line 2577, in dispatch
+    return self.request.registry['ir.http']._dispatch(endpoint)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\addons\base\models\ir_http.py", line 353, in _dispatch
+    result = endpoint(**request.params)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\http.py", line 837, in route_wrapper
+    result = endpoint(self, *args, **params_ok)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\users\maido\odoo\addons\web\controllers\binary.py", line 114, in content_assets
+    stream = env['ir.binary']._get_stream_from(attachment, 'raw', filename)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\addons\base\models\ir_binary.py", line 135, in _get_stream_from
+    stream = self._record_to_stream(record, field_name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\addons\base\models\ir_binary.py", line 70, in _record_to_stream
+    return record._to_http_stream()
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\addons\base\models\ir_attachment.py", line 957, in _to_http_stream
+    stat = os.stat(stream.path)
+           ^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [WinError 3] The system cannot find the path specified: 'c:\\users\\maido\\odoo-dev\\data\\filestore\\oqa_sitemap_deep/b3/b398873bc92f2e5037c0df47745ad53c10bb5d86'
+2026-11-22 02:15:39,313 24848 ERROR oqa_sitemap_deep odoo.http: Exception during request handling. 
+Traceback (most recent call last):
+  File "C:\Users\maido\odoo\odoo\http.py", line 2928, in __call__
+    response = request._serve_db()
+               ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\http.py", line 2407, in _serve_db
+    raise self._update_served_exception(exc)
+  File "C:\Users\maido\odoo\odoo\http.py", line 2405, in _serve_db
+    return service_model.retrying(serve_func, env=self.env)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\service\model.py", line 188, in retrying
+    result = func()
+             ^^^^^^
+  File "C:\Users\maido\odoo\odoo\http.py", line 2455, in _serve_ir_http
+    response = self.dispatcher.dispatch(rule.endpoint, args)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\http.py", line 2577, in dispatch
+    return self.request.registry['ir.http']._dispatch(endpoint)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\addons\base\models\ir_http.py", line 353, in _dispatch
+    result = endpoint(**request.params)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\http.py", line 837, in route_wrapper
+    result = endpoint(self, *args, **params_ok)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\users\maido\odoo\addons\web\controllers\binary.py", line 114, in content_assets
+    stream = env['ir.binary']._get_stream_from(attachment, 'raw', filename)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\addons\base\models\ir_binary.py", line 135, in _get_stream_from
+    stream = self._record_to_stream(record, field_name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\addons\base\models\ir_binary.py", line 70, in _record_to_stream
+    return record._to_http_stream()
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\addons\base\models\ir_attachment.py", line 957, in _to_http_stream
+    stat = os.stat(stream.path)
+           ^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [WinError 3] The system cannot find the path specified: 'c:\\users\\maido\\odoo-dev\\data\\filestore\\oqa_sitemap_deep/c1/c19be431ef783e319b77c58d42599c715cf6b914'
+2026-11-22 02:17:56,354 24848 WARNING oqa_sitemap_deep odoo.http: You are not allowed to access 'Model Data' (ir.model.data) records.
+
+This operation is allowed for the following groups:
+	- Access Rights
+
+Contact your administrator to request access if necessary. 
+2026-11-22 02:17:56,409 24848 WARNING oqa_sitemap_deep odoo.http: You are not allowed to access 'Action Window' (ir.actions.act_window) records.
+
+This operation is allowed for the following groups:
+	- Role / Administrator
+
+Contact your administrator to request access if necessary. 
+2026-11-22 03:06:33,320 24848 ERROR ? odoo.addons.bus.models.bus: Bus.loop error, sleep and retry 
+Traceback (most recent call last):
+  File "c:\users\maido\odoo\addons\bus\models\bus.py", line 266, in run
+    self.loop()
+  File "c:\users\maido\odoo\addons\bus\models\bus.py", line 249, in loop
+    conn.poll()
+psycopg2.OperationalError: server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+
+Exception in thread odoo.service.cron.cron1:
+Traceback (most recent call last):
+  File "C:\Users\maido\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "C:\Users\maido\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\maido\odoo\odoo\service\server.py", line 615, in cron_thread
+    with contextlib.closing(conn.cursor()) as cr:
+                            ^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\sql_db.py", line 769, in cursor
+    return Cursor(self.__pool, self.__dbname, self.__dsn)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\sql_db.py", line 365, in __init__
+    self._cnx: PsycoConnection = pool.borrow(dsn)
+                                 ^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\tools\func.py", line 88, in locked
+    return func(inst, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\sql_db.py", line 693, in borrow
+    result = psycopg2.connect(
+             ^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo-venv\Lib\site-packages\psycopg2\__init__.py", line 135, in connect
+    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.OperationalError: connection to server at "127.0.0.1", port 5432 failed: server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+

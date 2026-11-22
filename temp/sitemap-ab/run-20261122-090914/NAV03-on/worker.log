@@ -1,0 +1,17 @@
+Đã hoàn thành testcase đọc, đủ 6/6 Verified checkpoints. Không lưu, sửa, xóa hay duyệt bản ghi nào.
+
+**Manager (ZZ_AUTOTEST_H10_REQ)**
+- Từ danh sách Requests (159 bản ghi) mở ZZ_AUTOTEST_H10_REQ, URL `/odoo/action-92/11`.
+- Trạng thái: Submitted. Có nút **Approve** và **Reset to Draft**.
+- Total: 10. Dòng item: ZZ_AUTOTEST_H10_ITEM, số lượng 1, thành tiền 10.
+
+**Operator (cùng request)**
+- Chuyển profile sang Operator, mở menu Requests rồi vào đúng ZZ_AUTOTEST_H10_REQ.
+- Trạng thái vẫn Submitted, Total 10.
+- Có **Reset to Draft**, không có **Approve**.
+
+**Sites (đối chiếu form)**
+- Từ menu Sites mở ZZ_AUTOTEST_H01_SITE (URL `/odoo/action-90/27`, dòng 20/80).
+- Form có Name và Code (cùng là ZZ_AUTOTEST_H01_SITE) và checkbox Active đang được tích.
+
+Lưu ý: tên ZZ_AUTOTEST_H01_SITE xuất hiện ở hai ô trong dòng danh sách, nên tôi chọn ô đầu tiên khi mở. Form không có nút Save nào được bấm.

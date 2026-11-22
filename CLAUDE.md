@@ -1,11 +1,9 @@
 # odoo-test (skill `oqa`)
 
-**This folder is the source of truth.** When asked to change the skill (SKILL.md, `oqa/`, `hooks/`, `references/`), change it HERE, run the tests, and only then put it where the agent reads it:
+This repository is the source of truth. Edit `SKILL.md`, `oqa.py`, `oqa/`, `hooks/`, and `references/` here. Put POC code, plans, audit prompts, previews, and other experimental artifacts in `temp/`. Keep regression tests in `tests/` and the Odoo acceptance suite in `harness/`.
 
-    python3 oqa.py publish        # skill folder (~/.agents/skills/odoo-test, old one backed up in ~/.odoo-test/backup) + plugin (~/.odoo-test/plugin)
+Run `python -m pytest` to test changes. Run `python oqa.py publish` from the repository to replace the deployed skill in `~/.agents/skills/odoo-test` and rebuild the Claude Code plugin in `~/.odoo-test/plugin`. The publish command packages only the skill files. Use Git history to recover earlier versions.
 
-Never edit `~/.agents/skills/odoo-test`, `~/.claude/skills/odoo-test` or `~/.odoo-test/plugin` by hand: `publish` overwrites them. A new Claude Code window is needed to load the published version.
+Make changes in this repository so the next publish includes them. Open a new Claude Code window to load the published version.
 
-- Tests: `~/.odoo-test/venv/bin/python -m pytest -q` (about 6 minutes; `tests/test_hooks.py tests/test_plugin.py tests/test_library.py` run in seconds).
-- The skill's frontmatter hooks and the plugin's hooks both exist: hooks must tolerate running twice (see `hooks/stop.py`).
-- This file is not copied into the skill or the plugin.
+Keep the stop hook idempotent. The same event can reach it through the skill and through Claude Code's plugin hooks.

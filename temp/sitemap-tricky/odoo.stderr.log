@@ -1,0 +1,39 @@
+2026-11-22 02:26:34,219 16396 WARNING oqa_sitemap_tricky odoo.modules.module: Missing `author` key in manifest for 'oqa_harness', defaulting to '' 
+2026-11-22 03:06:33,325 16396 ERROR ? odoo.addons.bus.models.bus: Bus.loop error, sleep and retry 
+Traceback (most recent call last):
+  File "c:\users\maido\odoo\addons\bus\models\bus.py", line 266, in run
+    self.loop()
+  File "c:\users\maido\odoo\addons\bus\models\bus.py", line 249, in loop
+    conn.poll()
+psycopg2.OperationalError: server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+
+Exception in thread odoo.service.cron.cron1:
+Traceback (most recent call last):
+  File "C:\Users\maido\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "C:\Users\maido\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\maido\odoo\odoo\service\server.py", line 615, in cron_thread
+    with contextlib.closing(conn.cursor()) as cr:
+                            ^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\sql_db.py", line 769, in cursor
+    return Cursor(self.__pool, self.__dbname, self.__dsn)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\sql_db.py", line 365, in __init__
+    self._cnx: PsycoConnection = pool.borrow(dsn)
+                                 ^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\tools\func.py", line 88, in locked
+    return func(inst, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo\odoo\sql_db.py", line 693, in borrow
+    result = psycopg2.connect(
+             ^^^^^^^^^^^^^^^^^
+  File "C:\Users\maido\odoo-venv\Lib\site-packages\psycopg2\__init__.py", line 135, in connect
+    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.OperationalError: connection to server at "127.0.0.1", port 5432 failed: server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+

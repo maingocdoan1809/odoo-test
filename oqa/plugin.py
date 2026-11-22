@@ -15,8 +15,20 @@ from . import VERSION
 
 ROOT = Path(__file__).resolve().parents[1]
 NAME = "odoo-test"
-SKIP = shutil.ignore_patterns(".git", ".venv", "tests", "test_skill", "__pycache__", ".pytest_cache", "*.pyc", "pytest.ini", "hooks", ".gitignore", "CLAUDE.md")
+SKILL_ITEMS = {"SKILL.md", "oqa.py", "oqa", "references"}
+SKIP_DEV = shutil.ignore_patterns("temp", "tests", "__pycache__", ".pytest_cache", "*.pyc", "*.pyo")
 DESCRIPTION = "Test an Odoo system from a testcase workbook: plan, run every case in a browser with red-framed screenshots, repair, and write the Excel evidence."
+
+
+def copy_skill(target, *, include_hooks=True):
+    items = SKILL_ITEMS | {"hooks"} if include_hooks else SKILL_ITEMS
+
+    def ignore(directory, names):
+        if Path(directory) == ROOT:
+            return set(names) - items
+        return SKIP_DEV(directory, names)
+
+    shutil.copytree(ROOT, target, ignore=ignore)
 
 
 def hooks_json():
@@ -38,10 +50,12 @@ def skill_text():
 def build(out):
     out = Path(out).expanduser().resolve()
     plugin = out / NAME
+    if plugin.resolve() != plugin or plugin == ROOT or plugin in ROOT.parents:
+        raise ValueError(f"Cannot replace {plugin} with a plugin build.")
     if plugin.exists():
         shutil.rmtree(plugin)
     skill = plugin / "skills" / NAME
-    shutil.copytree(ROOT, skill, ignore=SKIP)
+    copy_skill(skill, include_hooks=False)
     (skill / "SKILL.md").write_text(skill_text(), encoding="utf-8")
     (plugin / "hooks").mkdir(parents=True)
     for script in ("guard.py", "stop.py", "prompt.py"):

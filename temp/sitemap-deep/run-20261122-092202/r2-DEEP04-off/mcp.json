@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "bench": {
+      "command": "C:\\Users\\maido\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "args": [
+        "C:\\Users\\maido\\odoo-test\\temp\\sitemap-deep\\benchmark.py",
+        "serve",
+        "C:\\Users\\maido\\odoo-test\\temp\\sitemap-deep\\run-20261122-092202\\r2-DEEP04-off",
+        "DEEP04",
+        "off"
+      ]
+    }
+  }
+}

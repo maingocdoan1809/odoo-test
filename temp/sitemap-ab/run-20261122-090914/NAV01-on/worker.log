@@ -1,0 +1,7 @@
+Đã hoàn thành testcase đọc, đạt 6/6 checkpoint. Không lưu, sửa, xóa hay duyệt bản ghi nào.
+
+1. **Sites**: mở `ZZ_AUTOTEST_8e0634fe_site`. Code = `ZZ_AUTOTEST_8e0634fe_site`, Active = đã chọn.
+2. **Items**: mở `ZZ_AUTOTEST_8e0634fe_item`. Site = `ZZ_AUTOTEST_8e0634fe_site`, Cost = `7`.
+3. **Requests**: mở `ZZ_AUTOTEST_H10_REQ`. Site = `ZZ_AUTOTEST_H10_SITE`, Total = `10`, trạng thái Submitted. Bảng có các cột Item, Quantity, Subtotal, với một dòng `[ZZ_AUTOTEST_H10_ITEM] ZZ_AUTOTEST_H10_ITEM`, Quantity 1, Subtotal 10.
+
+Form Request hiện các nút Approve và Reset to Draft. Tôi không bấm vào nút nào.

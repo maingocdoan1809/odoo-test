@@ -1,0 +1,3 @@
+Reference của đơn vị vận chuyển trên ZZ_AUTOTEST_H10_REQ là **CAR-7129**.
+
+Field này là `x_ab_carrier_reference`, nhãn "Reference" nằm trong nhóm Transport. Field còn lại (`x_ab_customer_reference`, giá trị CUS-8431) là Reference của khách hàng nên tôi không dùng. Tôi chỉ đọc, không sửa hay lưu gì.

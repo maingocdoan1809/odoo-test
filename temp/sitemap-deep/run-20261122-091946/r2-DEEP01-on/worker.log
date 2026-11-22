@@ -1,0 +1,7 @@
+**Kết quả: đạt.**
+
+- Đường dẫn: Operations → Dispatch Reviews → Queue (menu:88, `/odoo/action-93`). Có hai mục "Queue" trong menu; tôi chọn mục dưới Dispatch Reviews, và sitemap xác nhận menu:88 là "OQA Harness / Operations / Dispatch / Reviews / Queue".
+- Cột: **Name**, **Loading Site**, **State**. Có cột Loading Site.
+- Bản ghi: 1 bản ghi (1-1 / 1): `ZZ_AUTOTEST_H10_REQ`, Loading Site `ZZ_AUTOTEST_H10_SITE`, State `Submitted`.
+
+Không có thay đổi dữ liệu nào.

@@ -1,0 +1,19 @@
+Testcase đang dừng ở checkpoint **1/6**. Không thể vào màn hình Import nên các bước còn lại chưa làm được.
+
+**Đã xác nhận (profile Manager):**
+- Items (`/odoo/action-91`): danh sách có cột **Code** và **Cost** (243 bản ghi). Đây là checkpoint 1/6.
+- Requests (`/odoo/action-92`): đã mở danh sách, 159 bản ghi, các cột Name, Site, Total, State. Đây chưa được tính vào checkpoint.
+
+**Bị chặn:**
+- Items → Actions menu → Import: cả `menuitem "Import"`, `button "Import"`, `link "Import"` và `menuitem "Import records"` đều bị công cụ từ chối với thông báo "Choose a read-only menu, breadcrumb, wizard control or synthetic record" (riêng "Import records" bị timeout).
+- Route trực tiếp `/odoo/action-91/import` bị từ chối với "Choose an OQA Harness action path".
+- Requests → Actions menu → Import: cũng bị từ chối y như Items.
+
+Công cụ có vẻ coi mục Import là thao tác không chỉ đọc, nên không mở được màn hình Import của cả Items lẫn Requests. Vì vậy chưa xác nhận được nút Upload Data File, breadcrumb trên màn hình Import, và bước hủy wizard.
+
+Tôi không thử cách nào khác để vượt qua giới hạn này. Muốn hoàn thành testcase, cần một trong các cách sau:
+1. Cho phép công cụ mở menu Import ở chế độ chỉ đọc (chỉ mở rồi hủy, không upload).
+2. Cung cấp URL đúng của màn hình import mà công cụ chấp nhận.
+3. Tự xác nhận hai màn hình Import và bấm Cancel, rồi báo lại để tôi ghi nhận kết quả.
+
+Hiện Requests đang mở ở danh sách, chưa có wizard nào đang mở, nên không cần hủy gì thêm.

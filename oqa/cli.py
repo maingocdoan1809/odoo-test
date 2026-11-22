@@ -8,6 +8,7 @@ import re
 import shutil
 import signal
 import sys
+import tempfile
 import textwrap
 import time
 import urllib.request
@@ -146,7 +147,7 @@ def cmd_analyze(args):
     cases = session.cases()
     if args.template:
         session.require("ANALYZE", "CONNECT", "CONFIRM")
-        skeleton = analysis.template(cases, config, session)
+        skeleton = analysis.template(cases, config, session, include_context=not args.no_context)
         if args.out:
             write_json(args.out, skeleton)
             return {"template": args.out}, f"Wrote the template for {len(skeleton['cases'])} cases to {args.out}. Fill every judgement field, then: oqa analyze --submit {args.out}"
@@ -343,7 +344,8 @@ def cmd_case(args):
     from . import case_context
 
     session = Session.open(args.ws, args.session)
-    data = case_context.build(session, args.case, args.screen, args.issue)
+    data = case_context.build(session, args.case, args.screen, args.issue,
+                              only=args.only or "", profile=args.profile, state=args.state)
     return data, json.dumps(data, ensure_ascii=False, indent=2)
 
 
@@ -768,22 +770,12 @@ def cmd_plugin(args):
 
 
 def cmd_publish(args):
-    """This folder is the source. `publish` puts it where the agent reads it: the skill folder (the old one is kept under ~/.odoo-test/backup) and the plugin."""
+    """Publish the runnable skill and build its Claude Code plugin."""
     import subprocess
     from . import plugin
-    root = Path(__file__).resolve().parents[1]
-    target = Path(args.skills).expanduser() / "odoo-test"
-    lines = []
-    if target.exists():
-        if not (target / "oqa.py").exists():
-            raise GateError(f"{target} does not look like this skill; remove it yourself if you are sure.")
-        backup = Path.home() / ".odoo-test" / "backup" / f"odoo-test-{time.strftime('%Y%m%d-%H%M%S')}"
-        backup.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(target, backup, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-        lines.append(f"Old skill folder kept at {backup}")
-        shutil.rmtree(target)
-    shutil.copytree(root, target, ignore=shutil.ignore_patterns(".git", ".venv", "tests", "test_skill", "__pycache__", ".pytest_cache", "*.pyc", "pytest.ini", ".gitignore", "CLAUDE.md"))
-    lines.append(f"Skill folder now matches {root}: {target}")
+    target = Path(args.skills).expanduser().resolve() / plugin.NAME
+    _install_skill(target, force=True)
+    lines = [f"Skill published to {target}"]
     built = plugin.build(Path.home() / ".odoo-test" / "plugin")
     done = subprocess.run(["claude", "plugin", "update", f"{plugin.NAME}@{plugin.NAME}-local"], capture_output=True, text=True, encoding="utf-8", errors="replace") if shutil.which("claude") else None
     lines.append(f"Plugin rebuilt at {built}" + (f" ({(done.stdout + done.stderr).strip().splitlines()[-1]})" if done and (done.stdout + done.stderr).strip() else ""))
@@ -796,17 +788,29 @@ def cmd_publish(args):
 
 
 def cmd_install(args):
-    """Copy this skill (without its dev files) into a skills folder, so it can be taken to another machine or to the add-in's skills."""
-    root = Path(__file__).resolve().parents[1]
-    target = Path(args.to).expanduser() / root.name
+    """Copy the runnable skill into a skills folder."""
+    from . import plugin
+    target = Path(args.to).expanduser().resolve() / plugin.ROOT.name
+    _install_skill(target, force=args.force)
+    return {"installed": str(target)}, f"Installed to {target}"
+
+
+def _install_skill(target, *, force):
+    from . import plugin
+    if target.resolve() != target or target == plugin.ROOT or target in plugin.ROOT.parents:
+        raise GateError(f"Cannot replace {target} with a skill install.")
     if target.exists():
-        if not args.force:
+        if not force:
             raise GateError(f"{target} already exists. Use --force to replace it.")
         if not (target / "oqa.py").exists():
             raise GateError(f"{target} does not look like this skill; remove it yourself if you are sure.")
-        shutil.rmtree(target)
-    shutil.copytree(root, target, ignore=shutil.ignore_patterns(".git", ".venv", "tests", "test_skill", "__pycache__", ".pytest_cache", "*.pyc", "pytest.ini", ".gitignore", "CLAUDE.md"))
-    return {"installed": str(target)}, f"Installed to {target}"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=target.parent) as staging:
+        prepared = Path(staging) / target.name
+        plugin.copy_skill(prepared)
+        if target.exists():
+            shutil.rmtree(target)
+        prepared.rename(target)
 
 
 def cmd_ask(args):
@@ -900,10 +904,12 @@ def cmd_status(args):
 def cmd_knowledge(args):
     ws = paths.resolve_workspace(args.ws)
     if args.what == "learn":
-        result = knowledge.learn(ws, args.screen, args.kind, args.fact, args.tag, args.ref)
+        result = knowledge.learn(ws, args.screen, args.kind, args.fact, args.tag, args.ref,
+                                 action=args.action, condition=args.condition, profile=args.profile,
+                                 state=args.state, evidence=args.evidence)
         return {"result": result}, f"Knowledge {result}."
     found = knowledge.search(ws, args.screen, args.kind, args.text)
-    return {"items": found}, "\n".join(f"[screen:{i['screen']}] [kind:{i['kind']}] {i['fact']} -> {i['ref']}" for i in found) or "Nothing known yet."
+    return {"items": found}, "\n".join(knowledge.describe(item) for item in found) or "Nothing known yet."
 
 
 # --- wiring -----------------------------------------------------------------------
@@ -944,6 +950,9 @@ def build_parser():
     p.add_argument("case")
     p.add_argument("--screen", default="")
     p.add_argument("--issue", default="")
+    p.add_argument("--only", choices=["sitemap", "knowledge"], help="return just this context section")
+    p.add_argument("--profile", default="", help="look up knowledge for this role")
+    p.add_argument("--state", default="", help="look up knowledge for this initial state")
     p = add("fixture", cmd_fixture, "plan and create approved test records")
     p.add_argument("action", choices=["plan", "apply", "advise", "ui", "ref", "key", "cleanup"])
     p.add_argument("screen", nargs="?", default="", help="a screen/model, or ledger | license_user | contract; not needed for key and cleanup")
@@ -967,6 +976,7 @@ def build_parser():
     p.add_argument("--new-session", action="store_true", help="start a separate run instead of reusing this workbook's pending review session")
     p = add("analyze", cmd_analyze, "get the analysis template, or hand in the analysis")
     p.add_argument("--template", action="store_true")
+    p.add_argument("--no-context", action="store_true", help="omit sitemap and knowledge snippets from the template")
     p.add_argument("--submit", metavar="FILE")
     p.add_argument("--out", metavar="FILE", help="with --template: write it here instead of printing")
     add("strategy", cmd_strategy, "build the strategy the user must approve")
@@ -1075,7 +1085,7 @@ def build_parser():
     p = add("plugin", cmd_plugin, "build this skill as a Claude Code plugin (hooks included, nothing written into settings.json)")
     p.add_argument("--out", help="the folder to build into (a marketplace folder that holds the plugin)")
     p.add_argument("--apply", action="store_true", help="rebuild the installed plugin (~/.odoo-test/plugin) from this folder and update it in Claude Code")
-    p = add("publish", cmd_publish, "put this folder (the source) where the agent reads it: the skill folder and the plugin; the old skill folder is kept as a backup")
+    p = add("publish", cmd_publish, "publish the runnable skill and build its Claude Code plugin")
     p.add_argument("--skills", default="~/.agents/skills", help="the skills folder to write into (default ~/.agents/skills)")
     p = add("install", cmd_install, "copy this skill into a skills folder")
     p.add_argument("--to", required=True, help="the skills folder (e.g. ~/.claude/skills or %%USERPROFILE%%/.excel-partner/skills)")
@@ -1105,11 +1115,16 @@ def build_parser():
     p.add_argument("--fact")
     p.add_argument("--tag", default="")
     p.add_argument("--ref", default="-")
+    p.add_argument("--action", default="", help="learn: operation the fact applies to")
+    p.add_argument("--condition", default="", help="learn: business condition the fact applies to")
+    p.add_argument("--profile", default="", help="learn: role the fact applies to")
+    p.add_argument("--state", default="", help="learn: initial state the fact applies to")
+    p.add_argument("--evidence", default="", help="learn: what to observe or capture")
     return parser
 
 
 def main(argv=None):
-    for stream in (sys.stdout, sys.stderr):
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
         try:
             stream.reconfigure(encoding="utf-8")
         except (AttributeError, ValueError):

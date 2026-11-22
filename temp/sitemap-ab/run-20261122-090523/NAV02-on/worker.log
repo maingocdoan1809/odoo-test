@@ -1,0 +1,15 @@
+Testcase dừng ở checkpoint 1/6, chưa hoàn thành.
+
+**Đã xác nhận:**
+- Items (`action-91`, profile Manager): danh sách có các cột Name, **Code**, Site, **Cost**, Active. Checkpoint 1 đạt.
+
+**Bị chặn:**
+- Trên Items, tôi mở menu **Actions** (biểu tượng bánh răng) và menu có mở ra, nhưng snapshot không hiển thị mục **Import records** nào. Thử click `menuitem "Import records"` thì timeout, còn `button "Import records"` bị công cụ từ chối với thông báo chỉ cho phép menu, breadcrumb, wizard chỉ đọc hoặc bản ghi synthetic.
+- `sitemap_find`, `sitemap_buttons` và `sitemap_path` cũng không tìm thấy đường dẫn Import tới Items. Chưa xác định được nút Import nằm ở đâu hay công cụ có chặn nó không.
+- Tôi thử lại trên Requests (`action-92`) và gặp cùng hiện tượng: menu Actions mở ra nhưng không có mục Import.
+
+**Chưa thực hiện:** Import của Items (Upload Data File), Import của Requests (nút Upload Data File và breadcrumb Requests), và bước hủy wizard. Không có bản ghi nào bị lưu, sửa, xóa, upload hay duyệt; tôi chỉ mở menu và đóng lại.
+
+Để tiếp tục, cần một trong các điều sau:
+- Cho biết cách mở màn hình Import được phép (ví dụ đường dẫn trực tiếp hoặc nút cụ thể) để tôi thử.
+- Hoặc xác nhận công cụ được phép click nút "Import records" trong menu Actions; hiện tại nó bị từ chối.

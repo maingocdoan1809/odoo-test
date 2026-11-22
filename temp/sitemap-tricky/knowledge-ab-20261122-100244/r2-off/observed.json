@@ -1,0 +1,24 @@
+{
+  "queue_visits": [
+    {
+      "action": 94,
+      "headings": [
+        "",
+        "Name",
+        "Storage Site",
+        "State"
+      ]
+    }
+  ],
+  "first_screen": 94,
+  "first_screen_correct": true,
+  "screen_verified": true,
+  "form_reached": true,
+  "current_record": 11,
+  "first_record": 11,
+  "first_record_correct": true,
+  "submitted_verified": true,
+  "first_field": "x_ab_customer_reference",
+  "first_field_correct": false,
+  "verified": true
+}

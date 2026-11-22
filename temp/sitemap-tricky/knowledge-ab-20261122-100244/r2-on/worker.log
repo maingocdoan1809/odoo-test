@@ -1,0 +1,12 @@
+Đã hoàn thành case chỉ đọc. Không có thao tác nào thay đổi dữ liệu.
+
+**Kết quả**
+
+- **Đường dẫn màn hình:** OQA Harness / Finance / Billing / Reviews / Queue (menu 89, action 94, URL `/odoo/action-94`). Màn hình này có cột **Storage Site** trên danh sách, gồm các cột Name, Storage Site, State.
+- **Bản ghi:** ZZ_AUTOTEST_H10_REQ, trạng thái **Submitted** (URL `/odoo/action-94/11`, pager 2/2). Bản Draft cùng tên ở dòng đầu tiên đã được bỏ qua.
+- **Mã đơn vị vận chuyển:** **CAR-7129**
+  - Đọc theo tên kỹ thuật `x_ab_carrier_reference` (nhóm Transport): CAR-7129.
+  - Đọc theo occurrence 2 trên form: CAR-7129, khớp với field kỹ thuật.
+- **Đối chứng:** Reference của khách (Customer Reference, occurrence 1) hiển thị là CUS-8431. Đây là mã khách, không phải mã vận chuyển.
+
+Lưu ý: tôi chỉ đọc giao diện. Menu Dispatch (88) và Warehouse (90) cũng có tên Queue, nhưng không cần mở vì màn hình Billing đã có cột Storage Site.

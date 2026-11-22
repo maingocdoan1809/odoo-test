@@ -1,0 +1,18 @@
+Đã hoàn thành testcase đọc, 6/6 checkpoint. Không lưu, sửa, xóa hay duyệt bản ghi nào.
+
+**1. Manager, request ZZ_AUTOTEST_H10_REQ**
+- Mở Requests, rồi mở ZZ_AUTOTEST_H10_REQ (`/odoo/action-92/11`).
+- Trạng thái: Submitted (đang chọn).
+- Có nút **Approve** và **Reset to Draft**.
+- Total = 10. Dòng hàng: ZZ_AUTOTEST_H10_ITEM, số lượng 1, thành tiền 10.
+
+**2. Operator, cùng request**
+- Chuyển profile sang Operator, vào Requests, mở lại ZZ_AUTOTEST_H10_REQ (`/odoo/action-92/11`).
+- Vẫn Submitted, Total = 10.
+- Có **Reset to Draft**, không có **Approve**.
+
+**3. Operator, Sites**
+- Mở Sites, chọn dòng ZZ_AUTOTEST_H17_SITE (`/odoo/action-90/24`).
+- Form hiển thị Name và Code đều là ZZ_AUTOTEST_H17_SITE, Active được tích.
+
+Ghi chú: Ở danh sách Sites, tên ZZ_AUTOTEST_H17_SITE xuất hiện hai lần, nên lần click đầu bị báo lỗi strict mode. Tôi chọn dòng đầu tiên (17/80). Tôi không kiểm tra dòng còn lại có trùng tên hay không.

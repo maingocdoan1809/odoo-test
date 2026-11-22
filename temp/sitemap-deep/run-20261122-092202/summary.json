@@ -1,0 +1,54 @@
+[
+  {
+    "repeat": 1,
+    "case": "DEEP04",
+    "arm": "off",
+    "exit": 0,
+    "wall_s": 23.14,
+    "navigation": 4,
+    "sitemap_calls": 0,
+    "evidence": "r1-DEEP04-off",
+    "first_screen": 93,
+    "first_screen_correct": false,
+    "verified": true
+  },
+  {
+    "repeat": 1,
+    "case": "DEEP04",
+    "arm": "on",
+    "exit": 0,
+    "wall_s": 20.38,
+    "navigation": 2,
+    "sitemap_calls": 1,
+    "evidence": "r1-DEEP04-on",
+    "first_screen": 95,
+    "first_screen_correct": true,
+    "verified": true
+  },
+  {
+    "repeat": 2,
+    "case": "DEEP04",
+    "arm": "on",
+    "exit": 0,
+    "wall_s": 26.34,
+    "navigation": 2,
+    "sitemap_calls": 6,
+    "evidence": "r2-DEEP04-on",
+    "first_screen": 95,
+    "first_screen_correct": true,
+    "verified": true
+  },
+  {
+    "repeat": 2,
+    "case": "DEEP04",
+    "arm": "off",
+    "exit": 0,
+    "wall_s": 24.61,
+    "navigation": 5,
+    "sitemap_calls": 0,
+    "evidence": "r2-DEEP04-off",
+    "first_screen": 93,
+    "first_screen_correct": false,
+    "verified": true
+  }
+]

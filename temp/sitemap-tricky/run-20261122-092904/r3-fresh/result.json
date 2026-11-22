@@ -1,0 +1,58 @@
+{
+  "repeat": 3,
+  "arm": "fresh",
+  "exit": 0,
+  "wall_s": 37.27,
+  "sitemap_calls": 5,
+  "navigation": 5,
+  "evidence": "r3-fresh",
+  "queue_visits": [
+    {
+      "action": 93,
+      "headings": [
+        "",
+        "Name",
+        "Loading Site",
+        "State"
+      ]
+    },
+    {
+      "action": 94,
+      "headings": [
+        "",
+        "Name",
+        "Storage Site",
+        "State"
+      ]
+    },
+    {
+      "action": 95,
+      "headings": [
+        "",
+        "Name",
+        "Inventory Site"
+      ]
+    },
+    {
+      "action": 94,
+      "headings": [
+        "",
+        "Name",
+        "Storage Site",
+        "State"
+      ]
+    }
+  ],
+  "first_screen": 93,
+  "first_screen_correct": false,
+  "screen_verified": true,
+  "form_reached": true,
+  "current_record": 11,
+  "first_record": 11,
+  "first_record_correct": true,
+  "submitted_verified": true,
+  "first_field": "x_ab_customer_reference",
+  "first_field_correct": false,
+  "verified": true,
+  "complete": true
+}

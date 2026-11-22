@@ -1,0 +1,14 @@
+{
+  "case": "NAV01",
+  "sitemap": "on",
+  "exit_code": 0,
+  "verified": 6,
+  "total": 6,
+  "first_checkpoint_s": 1.86,
+  "last_checkpoint_s": 15.17,
+  "wall_s": 36.42,
+  "navigation_actions": 6,
+  "ui_inspects": 5,
+  "sitemap_calls": 1,
+  "tool_errors": 1
+}

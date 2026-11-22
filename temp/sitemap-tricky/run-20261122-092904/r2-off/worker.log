@@ -1,0 +1,15 @@
+Đã hoàn tất case chỉ đọc. Không có thay đổi dữ liệu nào.
+
+**Đường dẫn màn hình**
+- Màn hình Queue có cột Storage Site: `/odoo/action-94`, trong menu Finance > Billing Reviews > Queue. Danh sách có cột Name, Storage Site, State. Hai mục Queue dưới Operations (action-93 và action-95) có cột Loading Site và Inventory Site, nên tôi đã bỏ qua.
+- Bản ghi đã mở: `/odoo/action-94/11`, bản ghi 2/2.
+
+**Bản ghi**
+- Tên: ZZ_AUTOTEST_H10_REQ
+- Trạng thái: Submitted. Bản Draft (dòng 1) đã được bỏ qua.
+
+**Giá trị đã đọc bằng read_reference**
+- Occurrence 1 (Customer Reference): `CUS-8431`
+- Occurrence 2 (Transport Reference): `CAR-7129`
+
+Mã của đơn vị vận chuyển là **`CAR-7129`**. Ô này nằm ở occurrence 2, có nhãn "Transport Reference" khi quan sát giao diện.

@@ -111,6 +111,22 @@ New templates include `steps[].evidence`: a nonempty description of the state to
 - `needs_user` without full-sentence `questions` and `data_considered` (what was tried first: data created, a file read, the sitemap, and why only the user can answer); `blocked` without `reason` and `data_considered` (why the data cannot be created through the UI or an import).
 When a case is `needs_user` on the first submission the session stays in ANALYZE and every question is asked at once (`waiting`, case null); after the answer the template is fetched again (`_user_answers`, `_shared_files`, missing references looked up among the shared files) and the analysis handed in again.
 
+### Case retrieval
+
+`oqa analyze --template` includes up to two sitemap candidates and two workspace knowledge snippets per case in `_context`, subject to per-case and workbook character budgets. An omitted subsection has no match or exceeded the budget. If the workbook budget is reached, `_context_more` directs the agent to fetch context on demand. Pass `--no-context` for the skeleton alone. Context is refreshed on each request. The submitted analysis stores the resulting test plan.
+
+- Sitemap snippets contain a node key, menu path and model when known. Compare candidate paths by node key with `oqa sitemap path <key>` and verify the actual screen before acting.
+- Knowledge snippets contain workspace rules, data requirements and known pitfalls with their source. Matching uses the screen or model and terms from the case. Scoped entries can specify `action`, `condition`, `profile`, `state` and `evidence`. Use the workbook and cited sources to determine the expected outcome. A previous run is evidence of what was observed at that time.
+- Fetch just one section with `oqa case context ID --only sitemap|knowledge [--screen SCREEN] [--issue TEXT]`. For knowledge, add `--profile NAME` or `--state STATE` when known. The worker MCP `context` tool accepts the same fields. Use `oqa knowledge search --screen MODEL` to see full entries.
+
+Knowledge lives in `knowledge/index.md` in each workspace. Older entries can still be read. Check existing entries with `oqa knowledge search --screen MODEL --kind KIND` before saving a fact. Entries with the same screen, kind, action, condition, profile and state share a heading. Each fact keeps its evidence and source. `learn` reports `added` for a new scope, `updated` when facts or supporting details are added, and `duplicate` for an already recorded fact. For example:
+
+```sh
+oqa knowledge learn --screen oqa.harness.request --kind rule --action "lưu" \
+  --condition "item khác site" --fact "Request phải từ chối item khác site" \
+  --evidence "Thông báo lỗi hiển thị và dòng sai chưa được lưu" --ref "Request design §4.2"
+```
+
 ## refs.json (files the user points at)
 
 `{schema_version, items:[{path, name, kind: file|folder, by: user|answer|terminal, case, added}]}`. The user pastes a PATH (the dashboard's *Tệp tham chiếu* box, or a path written inside an answer, or `oqa ref add`): nothing is uploaded or copied, the assistant reads the file where it is with `oqa ref show`. Paths under a session's `auth` folder, or naming `storageState` / credentials, are refused. Scripts reach them with `o.ref(name)`.

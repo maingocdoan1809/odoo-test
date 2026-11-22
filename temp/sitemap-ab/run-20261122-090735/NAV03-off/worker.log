@@ -1,0 +1,18 @@
+Testcase đọc đã hoàn thành, 6/6 checkpoint verified. Không có thao tác lưu, sửa, xóa, duyệt hay wizard nào được thực hiện.
+
+**Manager**
+- Requests → mở `ZZ_AUTOTEST_H10_REQ` (`/odoo/action-92/11`).
+- Trạng thái: Submitted (radio Submitted được chọn).
+- Có nút **Approve** và **Reset to Draft**.
+- Total = 10.
+
+**Operator**
+- Đi lại từ Requests và mở đúng `ZZ_AUTOTEST_H10_REQ`.
+- Vẫn Submitted, Total = 10.
+- Có **Reset to Draft**, không có **Approve**.
+
+**Sites**
+- Mở `ZZ_AUTOTEST_H01_SITE` (`/odoo/action-90/27`).
+- Form hiển thị Name và Code đều là `ZZ_AUTOTEST_H01_SITE`, Active được tích.
+
+Ghi chú: ở bước mở Site, tên dòng xuất hiện ở hai ô (Name và Code) nên click bị strict-mode; tôi đã chọn ô đầu tiên (occurrence 1). Đây là lỗi locator của tool, không ảnh hưởng dữ liệu.

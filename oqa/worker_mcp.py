@@ -37,7 +37,8 @@ TOOLS = [
     schema("diagnose", "When stuck, tell the coordinator exactly what you found. category automation (selector, script, browser; list what you tried) or precondition (missing data/document/decision; say what is needed). "
                        "Do not close BLOCKED/PENDING just because a selector was not found or time passed.",
            strings("category", "detail", "tried", "need"), ("category", "detail")),
-    schema("context", "Read refreshed case context, sitemap hints and coordinator notes.", strings("screen", "issue")),
+    schema("context", "Read refreshed case context, or just sitemap navigation or validation and troubleshooting knowledge.",
+           (*strings("screen", "issue", "profile", "state"), ("only", "string", {"enum": ["sitemap", "knowledge"]}))),
     schema("fixture", "Find fixture fields (plan), ask the data agent (advise), create a prefixed record (apply), create it through the form (ui; screen may be ledger, license_user or contract), "
                       "get this run's unique key (key, with a short business label for the record), or check an existing record to use read-only (ref, with value). For apply and ui, key is the field name and values_json maps fields to values; "
                       "a many2one value is {\"$ref\": \"existing name\"} or {\"$fixture\": \"key\"}, a relative date {\"$date\": -180}.",
@@ -77,7 +78,8 @@ def _reference(session, case, name):
 
 def _call(session, case, agent, name, args):
     if name == "context":
-        packet = case_context.build(session, case, args.get("screen", ""), args.get("issue", ""))
+        packet = case_context.build(session, case, args.get("screen", ""), args.get("issue", ""),
+                                    only=args.get("only", ""), profile=args.get("profile", ""), state=args.get("state", ""))
         return json.dumps(packet, ensure_ascii=False)
     if name == "start":
         return live.start(session, case)[1]

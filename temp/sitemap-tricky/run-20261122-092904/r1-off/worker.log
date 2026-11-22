@@ -1,0 +1,11 @@
+Đã thực hiện xong case chỉ đọc, không thay đổi dữ liệu nào.
+
+**Màn hình:** Finance > Billing Reviews > Queue, đường dẫn `/odoo/action-94`. Đây là màn hình duy nhất có cột **Storage Site** (cột thứ hai, sau Name). Hai màn hình Queue khác không có cột này: Operations > Dispatch Reviews > Queue (`action-93`) có "Loading Site", và Operations > Warehouse Reviews > Queue (`action-95`) có "Inventory Site".
+
+**Bản ghi:** Trong danh sách có hai bản ZZ_AUTOTEST_H10_REQ, một Draft và một Submitted. Tôi mở bản **Submitted** tại `/odoo/action-94/11`. Trạng thái đã xác nhận là **Submitted**.
+
+**Hai ô Reference trong form:**
+- Occurrence 1, nhãn "Customer Reference": `CUS-8431`
+- Occurrence 2, nhãn "Transport Reference": `CAR-7129`
+
+**Mã của đơn vị vận chuyển:** `CAR-7129`, đọc bằng `read_reference` với occurrence 2. Tôi chọn ô này dựa trên nhãn "Transport Reference". Nhãn đầy đủ tôi thấy trong giao diện, còn `read_reference` chỉ trả về giá trị.

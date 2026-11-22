@@ -1,0 +1,7 @@
+Đã xác nhận. Queue có cột **Storage Site** là Queue thuộc menu `OQA Harness / Operations / Warehouse / Reviews / Queue` (action-95).
+
+- Cột: **Name** và **Storage Site** (tiêu đề "Storage Site" hiển thị đúng).
+- Bản ghi: **ZZ_AUTOTEST_H10_REQ**, Storage Site = **ZZ_AUTOTEST_H10_SITE**.
+- Phân trang: 1-1 / 1.
+
+Không lưu hay thay đổi dữ liệu nào.

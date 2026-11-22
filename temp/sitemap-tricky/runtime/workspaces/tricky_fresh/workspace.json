@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "name": "tricky_fresh",
+  "url": "http://127.0.0.1:8082",
+  "db": "oqa_sitemap_tricky",
+  "profiles": [
+    {
+      "name": "Manager",
+      "login": "oqa-061238-manager",
+      "note": ""
+    },
+    {
+      "name": "Operator",
+      "login": "oqa-061238-operator",
+      "note": ""
+    }
+  ],
+  "environments": [],
+  "reference_dirs": [
+    "C:\\Users\\maido\\odoo-test\\harness\\complex-suite\\fixtures"
+  ],
+  "language": "vi",
+  "evidence_language": "vi",
+  "replay_caption_language": "vi",
+  "test_prefix": "AUTO_TEST_"
+}

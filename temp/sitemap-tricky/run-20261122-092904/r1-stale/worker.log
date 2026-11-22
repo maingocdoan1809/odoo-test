@@ -1,0 +1,17 @@
+Case chỉ đọc đã hoàn tất. Mã đơn vị vận chuyển là **CAR-7129**.
+
+**Kết quả từng bước**
+
+1. **Màn hình Queue có cột Storage Site:** `/odoo/action-94` (menu OQA Harness / Operations / Warehouse / Reviews / Queue). Trên giao diện thật, cột "Storage Site" hiển thị ở action-94. Sitemap gán nhãn này cho action-95, nhưng action-95 thực tế hiển thị "Inventory Site" và chỉ có 1 bản ghi, nên sitemap đã sai ở chỗ này.
+
+2. **Bản ghi trùng tên ZZ_AUTOTEST_H10_REQ:** Danh sách có 2 bản: một bản Draft và một bản Submitted. Tôi bỏ qua bản Draft và mở bản Submitted.
+
+3. **Bản ghi đã mở:** `/odoo/action-94/11`, trạng thái **Submitted**, Storage Site là ZZ_AUTOTEST_H10_SITE.
+
+4. **Hai ô Reference trong form:**
+   - Occurrence 1 (Customer Reference): `CUS-8431`
+   - Occurrence 2 (Transport Reference): `CAR-7129`
+
+   Ô đơn vị vận chuyển là ô thứ hai, nhãn "Transport Reference", nên giá trị đã đọc là **CAR-7129**.
+
+**Lưu ý:** Sitemap có một điểm không khớp với giao diện thật (nhãn cột của action-95). Tôi chỉ đọc dữ liệu, không sửa gì.

@@ -1,0 +1,7 @@
+Đã kiểm tra, chỉ đọc, không thay đổi dữ liệu.
+
+- **Cột Service Site:** có, hiển thị trong danh sách Records.
+- **Bản ghi ZZ_AUTOTEST_H10_REQ:** có. Giá trị Service Site là `ZZ_AUTOTEST_H10_SITE`.
+- **Số bản ghi:** 1-1 / 1.
+
+Tôi mở Records bằng menu Customer Service → Records (action-96), khớp với đường dẫn Orders / Archive / Records trong sitemap. Tôi không mở Records thuộc Finance.

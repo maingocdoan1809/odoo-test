@@ -1,5 +1,6 @@
 """A small MCP server (stdio, JSON-RPC lines) that lets the assistant ask the workspace's sitemap before acting in the browser: where is a screen, which buttons it has,
 how to get from one screen to another. It only reads `knowledge/sitemap.json` (built by `oqa sitemap build`); it opens no browser and needs no package."""
+import io
 import json
 import sys
 
@@ -60,8 +61,17 @@ def handle(message, ws=None, tools=None, tool_call=None):
     return reply
 
 
+def _utf8_stdio():
+    """JSON-RPC over stdio is UTF-8. A pipe read with the Windows ANSI code page turns "à" into "Ã" plus a no-break space."""
+    stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="replace", newline="\n") if hasattr(sys.stdin, "buffer") else sys.stdin
+    stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", newline="\n", write_through=True) if hasattr(sys.stdout, "buffer") else sys.stdout
+    return stdin, stdout
+
+
 def serve(ws=None, stdin=None, stdout=None, tools=None, tool_call=None):
-    stdin, stdout = stdin or sys.stdin, stdout or sys.stdout
+    if stdin is None or stdout is None:
+        default_in, default_out = _utf8_stdio()
+        stdin, stdout = stdin or default_in, stdout or default_out
     for line in stdin:
         if not line.strip():
             continue

@@ -1,0 +1,17 @@
+Đã hoàn thành testcase đọc, đạt **Verified checkpoints: 6/6**. Không lưu, sửa, xóa hay duyệt bản ghi nào; tôi chỉ điều hướng và mở các dòng.
+
+**Kết quả từng bước (profile Manager):**
+
+1. **Sites**: mở dòng `ZZ_AUTOTEST_H01_SITE` (dòng đầu tiên, vì tên này xuất hiện hai lần trong danh sách nên tôi chọn occurrence 1).
+   - Code = `ZZ_AUTOTEST_H01_SITE`
+   - Active = đã chọn (checked)
+2. **Items**: mở dòng `[ZZ_AUTOTEST_8e0634fe_item]`.
+   - Site = `ZZ_AUTOTEST_8e0634fe_site`
+   - Cost = `7`
+3. **Requests**: mở `ZZ_AUTOTEST_H10_REQ`.
+   - Total = `10`, trạng thái Submitted
+   - Bảng có các cột Item, Quantity, Subtotal. Có một dòng: `[ZZ_AUTOTEST_H10_ITEM]`, Quantity 1, Subtotal 10.
+
+**Ghi chú:**
+- Tôi không bấm Approve, Reset to Draft hay Delete row. Không có wizard nào được mở nên không cần hủy.
+- Các form đang mở ở trạng thái chỉ đọc. Chưa có thay đổi nào cần lưu.

@@ -1,0 +1,18 @@
+Đã thực hiện xong case ở chế độ chỉ đọc. Không có dữ liệu nào bị thay đổi.
+
+**1. Màn hình Queue có cột Storage Site**
+- Đường dẫn: `/odoo/action-94` (menu OQA Harness / Operations / ... / Reviews / Queue, action "Queue" trên `oqa.harness.request`).
+- Đã xác nhận trên danh sách có cột **Storage Site** (`site_id`). Hai màn hình Queue còn lại (`action-93` và `action-95`) không có cột này: `action-93` hiển thị Loading Site, `action-95` chỉ có Inventory Site.
+
+**2. Bản ghi ZZ_AUTOTEST_H10_REQ**
+- Danh sách có 2 bản: dòng 1 là **Draft**, dòng 2 là **Submitted**. Tôi đã bỏ qua bản Draft và mở bản **Submitted** (`/odoo/action-94/11`, bản ghi 2/2).
+- Trạng thái bản ghi: **Submitted**.
+- Storage Site trên danh sách: ZZ_AUTOTEST_H10_SITE.
+
+**3. Hai ô Reference trong form**
+- Ô thứ nhất (occurrence 1): **CUS-8431**. Trên giao diện nhãn là "Customer Reference", đây là mã khách hàng.
+- Ô thứ hai (occurrence 2): **CAR-7129**. Trên giao diện nhãn là "Transport Reference", đây là mã của đơn vị vận chuyển.
+
+Mã đơn vị vận chuyển là **CAR-7129**.
+
+Ghi chú: lần đầu tôi cố click trực tiếp vào ô "Submitted" và bị từ chối, không ảnh hưởng gì. Sau đó tôi mở lại action-94 và click vào dòng có trạng thái Submitted bằng occurrence 2.

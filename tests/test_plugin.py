@@ -3,8 +3,10 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
+from types import SimpleNamespace
 
-from oqa import globalhooks, plugin
+from oqa import cli, globalhooks, plugin
 
 ROOT = plugin.ROOT
 
@@ -17,12 +19,31 @@ def test_the_built_plugin_has_manifests_hooks_and_the_skill(tmp_path):
     hooks = json.loads((built / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
     assert set(hooks) == {"PreToolUse", "UserPromptSubmit", "Stop"}
     assert all((built / "hooks" / s).exists() for s in ("guard.py", "stop.py", "prompt.py")) and (built / "skills" / "odoo-test" / "oqa.py").exists()
-    assert not (built / "skills" / "odoo-test" / "tests").exists() and not (built / "skills" / "odoo-test" / "hooks").exists()
-    text = (built / "skills" / "odoo-test" / "SKILL.md").read_text(encoding="utf-8")
+    skill = built / "skills" / "odoo-test"
+    assert {path.name for path in skill.iterdir()} == {"SKILL.md", "oqa.py", "oqa", "references"}
+    assert (skill / "oqa" / "web" / "dashboard.html").is_file()
+    text = (skill / "SKILL.md").read_text(encoding="utf-8")
     head = text.split("\n---\n")[0]
     assert head.startswith("---\nname: odoo-test\ndescription:") and "hooks:" not in head and "PreToolUse" not in head and text.count("\n---\n") >= 1
     assert "# odoo-test" in text                                                                    # the body is intact
     assert "hooks:" in (ROOT / "SKILL.md").read_text(encoding="utf-8")                                # the source still carries its own
+
+
+def test_publish_replaces_old_skill_with_only_runtime_files_without_backup(monkeypatch, tmp_path):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(cli.shutil, "which", lambda name: None)
+    skills = tmp_path / ".agents" / "skills"
+    target = skills / "odoo-test"
+    target.mkdir(parents=True)
+    (target / "oqa.py").touch()
+    (target / "old-preview.html").touch()
+
+    cli.cmd_publish(SimpleNamespace(skills=skills))
+
+    assert {path.name for path in target.iterdir()} == {"SKILL.md", "oqa.py", "oqa", "references", "hooks"}
+    assert (target / "hooks" / "guard.py").is_file()
+    assert (target / "oqa" / "web" / "dashboard.html").is_file()
+    assert not (tmp_path / ".odoo-test" / "backup").exists()
 
 
 def test_the_plugin_hooks_run_from_inside_the_plugin(tmp_path):
