@@ -1,6 +1,0 @@
-{"name": "items_list", "elapsed_s": 3.8, "url": "/odoo/action-91", "profile": "Manager"}
-{"name": "items_import", "elapsed_s": 8.89, "url": "/odoo/action-91/import", "profile": "Manager"}
-{"name": "items_list", "elapsed_s": 11.47, "url": "/odoo/action-91", "profile": "Manager"}
-{"name": "requests_list", "elapsed_s": 13.58, "url": "/odoo/action-92", "profile": "Manager"}
-{"name": "requests_import", "elapsed_s": 17.56, "url": "/odoo/action-92/import", "profile": "Manager"}
-{"name": "requests_list", "elapsed_s": 19.78, "url": "/odoo/action-92", "profile": "Manager"}

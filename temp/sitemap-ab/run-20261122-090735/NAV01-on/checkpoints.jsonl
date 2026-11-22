@@ -1,6 +1,0 @@
-{"name": "sites_list", "elapsed_s": 2.08, "url": "/odoo/action-90", "profile": "Manager"}
-{"name": "site_form", "elapsed_s": 6.44, "url": "/odoo/action-90/3", "profile": "Manager"}
-{"name": "items_list", "elapsed_s": 8.7, "url": "/odoo/action-91", "profile": "Manager"}
-{"name": "item_form", "elapsed_s": 11.36, "url": "/odoo/action-91/16", "profile": "Manager"}
-{"name": "requests_list", "elapsed_s": 13.59, "url": "/odoo/action-92", "profile": "Manager"}
-{"name": "manager_request", "elapsed_s": 16.12, "url": "/odoo/action-92/11", "profile": "Manager"}

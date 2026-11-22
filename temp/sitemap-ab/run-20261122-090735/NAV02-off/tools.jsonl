@@ -1,9 +1,0 @@
-{"tool": "inspect", "args": {}, "elapsed_s": 1.56, "result": ["Profile: Manager", "URL: /odoo/action-90", "Verified checkpoints: 0/6"], "error": ""}
-{"tool": "click", "args": {"role": "menuitem", "name": "Items"}, "elapsed_s": 3.53, "result": ["Profile: Manager", "URL: /odoo/action-91", "Verified checkpoints: 1/6"], "error": ""}
-{"tool": "click", "args": {"role": "button", "name": "Actions menu"}, "elapsed_s": 6.34, "result": ["Profile: Manager", "URL: /odoo/action-91", "Verified checkpoints: 1/6"], "error": ""}
-{"tool": "click", "args": {"role": "menuitem", "name": "Import records"}, "elapsed_s": 8.09, "result": ["Profile: Manager", "URL: /odoo/action-91/import", "Verified checkpoints: 2/6"], "error": ""}
-{"tool": "click", "args": {"role": "menuitem", "name": "Requests"}, "elapsed_s": 10.41, "result": ["Profile: Manager", "URL: /odoo/action-92", "Verified checkpoints: 2/6"], "error": ""}
-{"tool": "click", "args": {"role": "button", "name": "Actions menu"}, "elapsed_s": 12.7, "result": ["Profile: Manager", "URL: /odoo/action-92", "Verified checkpoints: 2/6"], "error": ""}
-{"tool": "inspect", "args": {}, "elapsed_s": 13.5, "result": ["Profile: Manager", "URL: /odoo/action-92", "Verified checkpoints: 2/6"], "error": ""}
-{"tool": "click", "args": {"role": "menuitem", "name": "Import records"}, "elapsed_s": 15.06, "result": ["Profile: Manager", "URL: /odoo/action-92/import", "Verified checkpoints: 2/6"], "error": ""}
-{"tool": "click", "args": {"role": "button", "name": "Cancel"}, "elapsed_s": 16.94, "result": ["Profile: Manager", "URL: /odoo/action-92", "Verified checkpoints: 2/6"], "error": ""}

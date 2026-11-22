@@ -1,7 +1,0 @@
-Đã hoàn thành testcase đọc với 6/6 checkpoint đã xác nhận. Tôi chỉ điều hướng và đọc dữ liệu, không lưu, sửa, xóa hay duyệt bản ghi nào.
-
-1. **Sites**: Mở dòng ZZ_AUTOTEST_H01_SITE (URL `/odoo/action-90/27`). Code = `ZZ_AUTOTEST_H01_SITE`, Active = đã tick.
-2. **Items**: Mở dòng ZZ_AUTOTEST_8e0634fe_item (URL `/odoo/action-91/16`). Site = `ZZ_AUTOTEST_8e0634fe_site`, Cost = `7`.
-3. **Requests**: Mở ZZ_AUTOTEST_H10_REQ (URL `/odoo/action-92/11`). Total = 10, bảng có đủ cột Item, Quantity, Subtotal. Dòng duy nhất là `[ZZ_AUTOTEST_H10_ITEM] ZZ_AUTOTEST_H10_ITEM`, Quantity 1, Subtotal 10. Trạng thái là Submitted, chưa Approved.
-
-Lần click đầu tiên vào site không thành công vì tên ô trùng ở cột Name và Code, nên tôi chọn đúng cột Name bằng occurrence. Không có thay đổi nào được thực hiện.

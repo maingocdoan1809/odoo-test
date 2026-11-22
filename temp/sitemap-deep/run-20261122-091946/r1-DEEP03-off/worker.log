@@ -1,3 +1,0 @@
-Reference của đơn vị vận chuyển trên request ZZ_AUTOTEST_H10_REQ là **CAR-7129**.
-
-Form có hai field Reference: "Customer Reference" (CUS-8431) và "Transport Reference" (CAR-7129). Tôi dùng `read_reference` với occurrence 2, và giá trị này khớp với field "Transport Reference" hiển thị trên form. Không có dữ liệu nào được lưu hay thay đổi.

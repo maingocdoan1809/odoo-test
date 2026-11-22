@@ -1,6 +1,0 @@
-Trên màn hình Records (action-96), có đúng 1 bản ghi:
-
-- **Tên:** ZZ_AUTOTEST_H10_REQ
-- **Service Site:** ZZ_AUTOTEST_H10_SITE
-
-Tôi chưa đi đúng đường dẫn Orders → Archive. Các lần click "Orders" và "Archive" đều bị timeout, nên tôi mở "Records" trực tiếp từ menu Customer Service. Giao diện không hiện breadcrumb nên tôi không xác nhận được đây có phải kho Archive không. Tôi cũng chưa mở Records của Finance để so sánh. Không có dữ liệu nào bị thay đổi.

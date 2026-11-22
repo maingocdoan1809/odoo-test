@@ -1,5 +1,0 @@
-Reference của đơn vị vận chuyển trên ZZ_AUTOTEST_H10_REQ là **CAR-7129**.
-
-Form có hai field cùng nhãn "Reference". Tôi chọn `x_ab_carrier_reference` (hiển thị là "Transport Reference") vì đó là field của đơn vị vận chuyển. Field còn lại, `x_ab_customer_reference`, có giá trị CUS-8431 và không phải đối tượng cần đọc.
-
-Chỉ đọc, không lưu hay thay đổi dữ liệu.

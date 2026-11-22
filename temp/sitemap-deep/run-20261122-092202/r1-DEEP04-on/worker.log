@@ -1,7 +1,0 @@
-Đã mở được Queue có cột Storage Site (action-95, menu Operations > Warehouse Reviews > Queue).
-
-**Kết quả:**
-- Cột hiển thị: **Name** và **Storage Site**.
-- Bản ghi duy nhất (pager 1-1 / 1): **ZZ_AUTOTEST_H10_REQ**, Storage Site = **ZZ_AUTOTEST_H10_SITE**.
-
-Tôi chỉ đọc, không sửa hay lưu gì.

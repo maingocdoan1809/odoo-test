@@ -1,9 +1,0 @@
-Đã hoàn thành testcase đọc, đạt 6/6 Verified checkpoints. Không lưu, sửa, xóa hay duyệt bản ghi nào.
-
-1. **Sites**: mở ZZ_AUTOTEST_8e0634fe_site. Code = ZZ_AUTOTEST_8e0634fe_site, Active = đã tích.
-2. **Items**: mở ZZ_AUTOTEST_8e0634fe_item. Site = ZZ_AUTOTEST_8e0634fe_site, Cost = 7.
-3. **Requests**: mở ZZ_AUTOTEST_H10_REQ (trạng thái Submitted). Total = 10. Bảng có các cột Item, Quantity, Subtotal, với một dòng [ZZ_AUTOTEST_H10_ITEM], Quantity 1, Subtotal 10.
-
-Lần bấm đầu tiên vào ô Sites bị lỗi vì trùng tên (Name và Code giống nhau). Lỗi này không làm thay đổi dữ liệu; tôi chọn lại đúng dòng đầu tiên ở lần sau.
-
-Nút Approve và Reset to Draft trên request H10 vẫn còn nguyên và tôi không bấm vào.

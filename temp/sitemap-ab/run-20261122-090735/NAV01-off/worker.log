@@ -1,9 +1,0 @@
-Testcase đọc đã hoàn thành, và bộ đếm Verified checkpoints đạt 6/6.
-
-- **Sites:** mở ZZ_AUTOTEST_H01_SITE. Code = `ZZ_AUTOTEST_H01_SITE`, Active được tích.
-- **Items:** mở ZZ_AUTOTEST_6f09ac62_item. Site = `ZZ_AUTOTEST_6f09ac62_site`, Cost = `7`.
-- **Requests:** mở ZZ_AUTOTEST_H10_REQ. Total = `10`, trạng thái Submitted. Bảng có các cột Item, Quantity, Subtotal, với một dòng `[ZZ_AUTOTEST_H10_ITEM] ZZ_AUTOTEST_H10_ITEM`, Quantity 1, Subtotal 10.
-
-Tôi chỉ điều hướng và đọc. Không nhấn Approve, Reset to Draft, Delete row hay Add a line, không sửa trường nào và không mở wizard nên không có gì để hủy. Bản ghi H10 vẫn đang mở ở trạng thái chỉ đọc.
-
-Lưu ý: lúc bắt đầu, bộ đếm đã hiện 1/6 trước khi tôi mở bản ghi nào, nên có thể nó tính cả bước điều hướng ban đầu. Tôi không kiểm chứng được cách tính này.

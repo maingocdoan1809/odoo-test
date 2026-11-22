@@ -1,8 +1,0 @@
-Đã hoàn tất, chỉ đọc, không thay đổi dữ liệu.
-
-- **Màn hình Queue đúng:** `/odoo/action-94`. Có 3 action tên "Queue" (action 93, 94, 95), nhưng chỉ action 94 có cột **Storage Site**. Tôi đã mở và xác nhận cột này trên danh sách (Name | Storage Site | State).
-- **Bản ghi:** Trong danh sách có hai bản ghi `ZZ_AUTOTEST_H10_REQ`, một Draft và một Submitted. Tôi mở bản **Submitted**, tức dòng thứ 2 (bỏ qua Draft). Đường dẫn form là `/odoo/action-94/11`.
-- **Trạng thái:** Submitted.
-- **Mã đơn vị vận chuyển:** Transport Reference = **CAR-7129**. Đây là ô Reference thứ hai trong form, đứng sau nhãn "Transport Reference".
-
-Ô Reference còn lại là Customer Reference = CUS-8431. Tôi đọc cả hai để đối chiếu, nhưng chỉ CAR-7129 là mã của đơn vị vận chuyển.

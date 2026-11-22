@@ -1,6 +1,0 @@
-Đã tìm thấy Queue có cột **Storage Site** trong menu **Operations > Warehouse Reviews > Queue** (URL `/odoo/action-95`).
-
-- **Cột:** Name, Storage Site. Không có cột State.
-- **Bản ghi:** `ZZ_AUTOTEST_H10_REQ` có Storage Site là `ZZ_AUTOTEST_H10_SITE`. Danh sách chỉ có 1 bản ghi (1-1 / 1).
-
-Queue đầu tiên (Dispatch Reviews > Queue, `action-93`) có cột Loading Site và State, nên không phải màn hình cần tìm. Tôi chỉ đọc, không lưu hay sửa dữ liệu.

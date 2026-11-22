@@ -25,3 +25,6 @@ Thumbs.db
 .playwright-cli/
 test_skill/
 .playwright-cli/
+
+# Local experiments, POCs and previews
+/temp/

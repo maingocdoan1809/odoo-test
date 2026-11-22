@@ -1,7 +1,0 @@
-Đã mở **Operations → Dispatch Reviews → Queue** (action-93), chỉ đọc, không chỉnh sửa gì.
-
-- Danh sách có cột **Loading Site**: có (các cột là Name, Loading Site, State).
-- Có đúng bản ghi **ZZ_AUTOTEST_H10_REQ**: có, Loading Site là ZZ_AUTOTEST_H10_SITE, State là Submitted.
-- Tổng số bản ghi: 1 (1-1 / 1).
-
-Lưu ý: menu "Queue" có hai mục trùng tên. Tôi chọn mục đầu tiên nằm dưới "Dispatch Reviews", nhưng giao diện không hiển thị tiêu đề nhóm nên chưa xác nhận hoàn toàn bằng số action.

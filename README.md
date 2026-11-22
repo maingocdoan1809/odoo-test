@@ -2,7 +2,7 @@
 
 Test an Odoo system from a testcase workbook: plan, run every case in a browser with red-framed screenshots, repair, and write the Excel evidence. Needs Python 3.9+; the first run sets up its own environment (`oqa doctor --fix`).
 
-This repository is both a Claude Code plugin marketplace and a plain skill. The repository is private: sign in to GitHub (`gh auth login`) before installing.
+This repository is both a Claude Code plugin marketplace and a plain skill.
 
 ## Install as a plugin (recommended: its hooks are active from the first message)
 

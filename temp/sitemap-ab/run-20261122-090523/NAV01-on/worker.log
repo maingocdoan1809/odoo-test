@@ -1,7 +1,0 @@
-Đã hoàn thành testcase đọc, đạt 6/6 Verified checkpoints. Chỉ điều hướng và mở bản ghi, không lưu, sửa, xóa hay duyệt gì, và không mở wizard nào.
-
-1. **Sites**: mở bản ghi `ZZ_AUTOTEST_8e0634fe_site` (đường dẫn `/odoo/action-90/3`). Code = `ZZ_AUTOTEST_8e0634fe_site`, Active = đã tick.
-2. **Items**: mở bản ghi `ZZ_AUTOTEST_8e0634fe_item` (`/odoo/action-91/16`). Site = `ZZ_AUTOTEST_8e0634fe_site`, Cost = `7`.
-3. **Requests**: mở `ZZ_AUTOTEST_H10_REQ` (`/odoo/action-92/11`). Trạng thái Submitted, Total = 10, và có bảng với các cột Item, Quantity, Subtotal. Bảng có một dòng `[ZZ_AUTOTEST_H10_ITEM] ZZ_AUTOTEST_H10_ITEM`, Quantity 1, Subtotal 10.
-
-Ghi chú: lần bấm đầu vào ô Sites bị lỗi "strict mode" vì tên có hai ô trùng nhau, nên tôi chọn ô đầu tiên (occurrence 1) và thao tác thành công.
