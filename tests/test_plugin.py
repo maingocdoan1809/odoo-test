@@ -72,8 +72,5 @@ def test_the_plugin_committed_in_the_repo_is_current_and_installable_from_github
     built = (tmp_path / "plugins" / "odoo-test")
     names = lambda base: sorted(str(p.relative_to(base)) for p in base.rglob("*") if p.is_file() and "__pycache__" not in p.parts)
     assert names(committed) == names(built)
-    assert all((committed / n).read_bytes().replace(b"
-", b"
-") == (built / n).read_bytes().replace(b"
-", b"
-") for n in names(built)), "plugins/odoo-test is stale: run `python oqa.py repo`"
+    lf = lambda path: path.read_bytes().replace(b"\r\n", b"\n")                                  # git on Windows may check files out with CRLF
+    assert all(lf(committed / n) == lf(built / n) for n in names(built)), "plugins/odoo-test is stale: run `python oqa.py repo`"
