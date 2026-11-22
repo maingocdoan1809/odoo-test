@@ -55,6 +55,9 @@ TOOLS = [
     schema("upload_csv", "Upload an approved CSV reference (or, with source=download, a file saved by save_download) with run-specific placeholder values. For a later round of the same import (fix a cell, upload again) pass overrides: "
                          "[{row: data row number from 1, column: header name, value}] applied on top of the reference. Returns the replay action.",
            (*strings("name", "button", "source"), ("values", "object", {}), ("overrides", "array", {"items": {"type": "object"}})), ("name",)),
+    schema("capture_id", "Right after a record is saved or opened (its id is in the address), store that id in the run variable `name`. Later fragments refer to it as $OQA_ID(name), "
+                         "for example await page.waitForURL(new RegExp('action-90/' + $OQA_ID(rec))). Never write a record id yourself: every replay creates new records and captures their ids again.",
+           strings("name"), ("name",)),
     schema("save_download", "Run one action that starts a file download (for example clicking Export) and save the file under `name`. Returns the file's rows as text (CSV as is, XLSX cell by cell) "
                             "so you can compare it with the screen. To edit it and import it again, call upload_csv with source=download and the same name. trigger = one await page action.",
            strings("name", "trigger"), ("name", "trigger")),
@@ -198,6 +201,8 @@ def _call(session, case, agent, name, args):
             "await page.locator('.o_import_menu').click();",
         ])
         return live.act(session, case, "run-code", [], code, record=True)[1]
+    if name == "capture_id":
+        return live.act(session, case, "run-code", [], live.capture_id_code(args["name"]), record=True)[1]
     if name == "save_download":
         target = download_path(session, case, args["name"])
         action = re.fullmatch(r"\s*await\s+(page\..+?);?\s*", args["trigger"], re.S)

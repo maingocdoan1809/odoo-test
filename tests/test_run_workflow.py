@@ -224,3 +224,13 @@ def test_a_download_name_cannot_leave_the_case_folder(session):
         worker_mcp.download_path(session, "ORD-001", "../x.csv")
     assert worker_mcp.download_path(session, "ORD-001", "export.csv").parent.name == "ORD-001"
     assert {"save_download", "upload_csv"} <= {tool["name"] for tool in worker_mcp.TOOLS}
+
+
+def test_a_pass_whose_script_does_not_replay_is_reported_with_what_failed(session, monkeypatch):
+    from oqa import dispatch, live
+
+    monkeypatch.setattr(live, "replay", lambda *a, **k: (_ for _ in ()).throw(GateError("Step 3 in T-1.spec.js: locator.click: Timeout 30000ms exceeded.")))
+    assert "Step 3" in dispatch.replay_check(session, "ORD-001")
+    monkeypatch.setattr(live, "replay", lambda *a, **k: {"replay": "PASS"})
+    assert dispatch.replay_check(session, "ORD-001") is None
+    assert "record id in a URL" in dispatch.REPLAY_HINT

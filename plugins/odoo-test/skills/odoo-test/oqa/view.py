@@ -3,7 +3,7 @@ they can never disagree about a case, a step or a picture."""
 import time
 
 from . import analysis as analysis_mod
-from . import captions, claims, dispatch_requests, events, knowledge, live, paths, record_names, refs, replays, workspace
+from . import captions, claims, dispatch_requests, events, generalize, knowledge, live, paths, record_names, refs, replays, workspace
 from .state import MAX_REPAIRS, PHASES, Session
 from .store import read_json
 
@@ -184,11 +184,12 @@ def case_records(session: Session):
         else:
             status = "NEW"
         repairs = [{k: e[k] for k in ("ts", "attempt", "cause", "evidence", "change", "reanalysis", "probed", "timeout_s", "unchanged_reason") if k in e} for e in mine if e["kind"] == "repair"]
+        generalized = next((generalize.effective({k: e.get(k) for k in ("status", "attempt", "note", "ts")}) for e in reversed(mine) if e["kind"] == "script_generalized"), None)
         saved = (saved_replays.get(ident) or {}).get("latest")
         reason = (result or {}).get("reason") or held.get(ident, {}).get("reason", "")
         if reason and reason == translated.get("reason_source"):
             reason = translated.get("reason", reason)
-        out.append({"id": ident, "live_status": status, "replay_status": (saved or {}).get("status", replays.NOT_RUN), "replay": saved, "replay_video": _latest_video(saved_replays.get(ident)), "script_at": _mtime(live.script_file(session, ident)), "history": (state.get("history") or {}).get(ident, []), "category": (result or {}).get("category", ""), "can_replay": live.script_file(session, ident).is_file(), "title": record_names.title(case, item, translated), "row": case["row"], "reuse": item.get("reuse", ""), "repairs": repairs, "timeout_s": state.get("timeouts", {}).get(ident) or item.get("timeout_s"),
+        out.append({"id": ident, "live_status": status, "replay_status": (saved or {}).get("status", replays.NOT_RUN), "replay": saved, "replay_video": _latest_video(saved_replays.get(ident)), "script_at": _mtime(live.script_file(session, ident)), "history": (state.get("history") or {}).get(ident, []), "category": (result or {}).get("category", ""), "can_replay": live.script_file(session, ident).is_file(), "generalized": generalized, "title": record_names.title(case, item, translated), "row": case["row"], "reuse": item.get("reuse", ""), "repairs": repairs, "timeout_s": state.get("timeouts", {}).get(ident) or item.get("timeout_s"),
                     "source": {"sheet": case.get("sheet", ""), "original_id": case.get("original_id", case["id"]), "category": case.get("category", ""), "type": case.get("type", ""), "pre": case.get("pre", ""), "steps": case.get("steps", []),
                               "expected": case.get("expected", ""), "note": case.get("note", ""), "role": case.get("role", "")}, "profile": item.get("profile", ""), "verdict": item.get("verdict", held.get(ident, {}).get("verdict", "")),
                     "request": dispatch_requests.of_case(session, ident, asked), "can_request": dispatch_requests.kind_for(session, ident, state), "last_ts": mine[-1]["ts"] if mine else "", "last_kind": mine[-1]["kind"] if mine else "", "explore": explore, "owner": (owners.get(ident) or {}).get("agent", ""), "owner_fresh": bool((owners.get(ident) or {}).get("fresh")), "status": status, "reason": reason, "attempts": attempts,

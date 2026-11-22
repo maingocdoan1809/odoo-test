@@ -351,3 +351,21 @@ def test_an_action_that_types_a_fixed_record_name_is_refused(live, pw):
 
     own = record_names.fixture_prefix(session, "T-1", ws["test_prefix"]) + "site"
     assert record_names.foreign(session, "T-1", f"await page.getByRole('textbox').fill('{own}');", ws["test_prefix"]) == []
+
+
+def test_a_record_id_lives_in_a_run_variable_not_in_the_script(live, pw):
+    session, ws, store = live
+    approve(session, ws, store)
+    livemod.start(session, "T-1")
+    for bad in (r"await page.waitForURL(/action-90\/308/);", "await page.goto('http://x/odoo/action-91/564');", "await page.goto('http://x/odoo/oqa.harness.request/12');",
+                "await page.goto('http://x/web#id=12&action=3');"):
+        with pytest.raises(GateError, match="capture_id"):
+            livemod.act(session, "T-1", "run-code", [], bad, record=True)
+    assert not livemod.RECORD_ID_URL.search("await page.goto('http://x/odoo/action-91');")
+    assert not livemod.RECORD_ID_URL.search("await page.getByRole('cell', {name: 'REQ 308'}).click();")
+    capture = livemod.capture_id_code("rec")
+    assert "sessionStorage.setItem('oqa:var:' + name" in capture and capture.endswith('"rec");') and "308" not in capture
+    used = livemod.expand_vars("await page.waitForURL(new RegExp('action-90/' + $OQA_ID(rec)));")
+    assert "$OQA_ID" not in used and "sessionStorage.getItem('oqa:var:' + k)" in used and not livemod.RECORD_ID_URL.search(used)
+    with pytest.raises(GateError, match="variable name"):
+        livemod.capture_id_code("bad name")

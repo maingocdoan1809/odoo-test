@@ -43,6 +43,7 @@ KINDS = {
     "ref_added": ("path", "by"),
     "confirmed": ("by", "strategy_sha"),
     "conflict_decided": ("case", "step", "choice", "by"),
+    "script_generalized": ("case", "status"),
     "stopped": ("by",),
     "resumed": ("by",),
     "hint": ("case", "text"),

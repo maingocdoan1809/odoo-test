@@ -534,6 +534,19 @@ def cmd_live(args):
         return live.step(session, args.case, args.n, args.status, args.actual or "", args.target, code, args.shows)
     if args.action == "script":
         return live.keep_script(session, args.case, args.script)
+    if args.action == "regenerate":
+        from . import generalize
+
+        cases = [c for c in read_json(session.dir / "strategy.json")["order"] if live.script_file(session, c).is_file() and (session.state()["results"].get(c) or {}).get("status") == "PASS"] if args.case == "all" else [args.case]
+        rows = []
+        for case in cases:
+            try:
+                rows.append(generalize.regenerate(session, case, model=args.model, attempts=args.attempts, replays=0 if args.no_verify else 2))
+            except GateError as error:
+                rows.append({"case": case, "status": "FAIL", "reason": str(error)})
+        bad = [r for r in rows if r["status"] not in ("PASS", "UNVERIFIED")]
+        lines = [f"{r['case']}: generic script {r['status']}" + (f" after {r['attempts']} attempt(s)" if r["status"] in ("PASS", "UNVERIFIED") else f" - {r['reason']}") for r in rows]
+        return {"regenerated": rows, "failed": len(bad)}, "\n".join(lines)
     if args.action == "replay":
         if args.case == "all":
             rows = live.replay_all(session, headed=not args.headless, action_delay_ms=args.action_delay_ms,
@@ -1036,7 +1049,7 @@ def build_parser():
     p.add_argument("what", choices=["import"])
     p.add_argument("path", help="a result.json written by replay.mjs, or a folder holding several")
     p = add("live", cmd_live, "run a case live in its own playwright-cli browser: start | shot | step | end")
-    p.add_argument("action", choices=["start", "act", "profile", "shot", "step", "end", "replay", "script", "recover", "diagnose", "handover"])
+    p.add_argument("action", choices=["start", "act", "profile", "shot", "step", "end", "replay", "script", "recover", "diagnose", "handover", "regenerate"])
     p.add_argument("case", help="the case id; `replay all` replays every saved script of the session")
     p.add_argument("--n", type=int, help="the step number (shot, step)")
     p.add_argument("--status", help="step: PASS or FAIL; end: PASS, FAIL, BLOCKED or PENDING")
@@ -1057,6 +1070,9 @@ def build_parser():
     p.add_argument("--to", help="handover: the worker that takes the running case")
     p.add_argument("--env", help="replay: the environment to run on (default main); see `oqa ws show`")
     p.add_argument("--video", choices=list(live.VIDEO_MODES), help="replay: video with a note of each step: off (default) | on | fail (keep it only if the replay fails)")
+    p.add_argument("--model", default="sonnet", help="regenerate: the model that rewrites the script (default sonnet)")
+    p.add_argument("--no-verify", action="store_true", help="regenerate: do not replay the new script (only the static checks)")
+    p.add_argument("--attempts", type=int, default=3, help="regenerate: how many rewrites to try before restoring the original script")
     p.add_argument("--fast", action="store_true", help="replay: fast mode, both viewing pauses 0 (application waits are unchanged)")
     p.add_argument("--caption", help="shot: describe the checkpoint shown in this evidence picture")
     p.add_argument("--caption-language", choices=["vi", "en", "ja"], help="replay: override the workspace caption language")

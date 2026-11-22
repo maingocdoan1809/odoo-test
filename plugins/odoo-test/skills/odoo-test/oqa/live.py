@@ -375,12 +375,41 @@ def recover(session, case, reason):
     return {"case": case, "attempt": attempt}, f"Closed attempt {attempt} for {case}. Reassign using oqa claim."
 
 
+RECORD_ID_URL = re.compile(r"(?:waitForURL|goto)\s*\([^)]*?(?:action-\d+|/odoo/[\w.-]+)\\?/\d+|(?:waitForURL|goto)\s*\([^)]*?[#&?]id=\d+")
+VAR_REF = re.compile(r"\$OQA_ID\((\w+)\)")
+VAR_STORE = "oqa:var:"            # a run variable lives in the page's sessionStorage: it survives navigation within the tab and is created again by every replay
+
+CAPTURE_ID_CODE = (
+    "await page.evaluate(name => { "
+    r"const m = location.href.match(/\/(\d+)(?:[?#]|$)/) || location.href.match(/[#&?]id=(\d+)/); "
+    "if (!m) throw new Error('No record id in the address: open or save the record first'); "
+    "sessionStorage.setItem('" + VAR_STORE + "' + name, m[1]); }, %s);")
+
+
+def capture_id_code(name):
+    """Playwright code that stores the id of the record open on screen in the run variable `name`. Recorded in the script, so every replay captures the id of ITS record."""
+    if not re.fullmatch(r"\w+", name or ""):
+        raise GateError("A variable name is letters, digits and underscore.")
+    return CAPTURE_ID_CODE % json.dumps(name)
+
+
+def expand_vars(code):
+    """`$OQA_ID(name)` in a fragment becomes the lookup of that run variable, so the script never holds the id of a record a run created."""
+    return VAR_REF.sub(lambda m: "(await page.evaluate(k => sessionStorage.getItem('" + VAR_STORE + "' + k), " + json.dumps(m.group(1)) + "))", code or "")
+
+
 def act(session, case, command, arguments, code=None, record=False):
     session.require("EXECUTE")
     _strategy_case(session, case)
     attempt = _attempt(session, case)
     if record and command != "run-code":
         raise GateError("Record a stable Playwright fragment with command=run-code.")
+    if command == "run-code":
+        code = expand_vars(code)
+    if record and command == "run-code" and RECORD_ID_URL.search(code or ""):
+        raise GateError("Do not put a record id in a recorded URL: the id belongs to the record this run created, and every replay creates a different one. Store the id in a run variable "
+                        "right after the record is saved (capture_id) and refer to it as $OQA_ID(name), for example new RegExp('action-90/' + $OQA_ID(rec)); or wait for something visible "
+                        "(the record's key in the title, a field value, the statusbar).")
     fixed = record_names.foreign(session, case, code or " ".join(str(a) for a in arguments), workspace.load(session.ws)["test_prefix"])
     if fixed:
         raise GateError(f"This action types a fixed record name ({', '.join(fixed[:3])}). A name that is the same on every run meets what an earlier run left (a unique constraint, a record that cannot "

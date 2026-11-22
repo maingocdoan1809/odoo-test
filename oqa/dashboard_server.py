@@ -10,7 +10,7 @@ import unicodedata
 from pathlib import Path
 from urllib.parse import quote
 
-from . import captions, conflicts, dispatch_requests, live, paths, refs, regression, report, script_bundle, sitemap, view, workspace
+from . import captions, conflicts, dispatch_requests, generalize, live, paths, refs, regression, report, script_bundle, sitemap, view, workspace
 from .localserver import LocalApp, font_faces
 from .state import GateError, Session
 from .store import SchemaError, read_json
@@ -222,6 +222,22 @@ class Dashboard(LocalApp):
                 session = self._session(body)
                 built = report.build(session, workspace.load(session.ws))
                 return 200, {"ok": True, "main": built["download"]}
+            if method == "POST" and path == "/api/regenerate":
+                session = self._session(body)
+                case = str(body.get("case", ""))
+                state = session.state()
+                if state["phase"] not in ("REPORT", "DONE", "EXECUTE") or (case != "all" and (not live.script_file(session, case).is_file() or (state["results"].get(case) or {}).get("status") != "PASS")):
+                    return 200, {"error": "Case này chưa có script đã lưu để tạo lại (chỉ case PASS mới lưu script)."}
+                if case != "all" and generalize.running(session, case):
+                    return 200, {"error": "Script của case này đang được viết lại, đợi lượt hiện tại xong."}
+                log = session.dir / "logs" / f"regenerate-{re.sub(r'[^A-Za-z0-9._-]+', '_', case)}.log"
+                log.parent.mkdir(exist_ok=True)
+                entry = Path(__file__).resolve().parent.parent / "oqa.py"
+                with log.open("ab") as out:
+                    subprocess.Popen([sys.executable, str(entry), "live", "regenerate", case, "--ws", session.ws, "--session", session.id],
+                                     stdout=out, stderr=out, stdin=subprocess.DEVNULL, start_new_session=True,
+                                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+                return 200, {"ok": True, "message": "Đang nhờ AI viết lại script cho " + ("tất cả case có script" if case == "all" else "case này") + ", rồi chạy lại 2 lần để kiểm. Mất vài phút."}
             if method == "POST" and path == "/api/replay":
                 video = body.get("video", "off")
                 if video not in live.VIDEO_MODES:

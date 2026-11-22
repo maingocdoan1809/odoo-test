@@ -24,6 +24,7 @@ analysis.json = {schema_version, cases: [ {
 `ready` needs clarity >= 3, sufficiency >= 3 and no ref left `missing`, and may depend only on other `ready` cases."""
 import hashlib
 import json
+import re
 from pathlib import Path
 
 from . import SCHEMA_VERSION, events, intake, memory, record_names, refs
@@ -31,6 +32,7 @@ from .store import SchemaError
 
 VERDICTS = ("ready", "needs_user", "blocked")
 REF_STATUSES = ("ok", "missing", "asked", "waived")
+REPLAY_HOW = ("run_key", "captured", "existing_ref")       # how a record a case creates or uses is found again on the next run
 ORACLE_SOURCES = ("bd", "testcase")       # the truth a step is judged against: the design document first, the testcase when no design covers the point
 MIN_TIMEOUT, MAX_TIMEOUT = 5, 120
 MIN_WORDS = 12          # characters a written justification must have to say anything
@@ -59,7 +61,7 @@ def template(cases_doc, workspace, session=None, *, include_context=True):
             "vague": case.get("vague", []),
             "vague_resolved": [{"phrase": v["phrase"], "concrete": "", "source": ""} for v in case.get("vague", [])],
             "data_needs": [], "data_considered": "", "edge_cases": [], "depends_on": list(case["case_refs"]), "reuse": "",
-            "bd_searched": "", "testcase_conflicts": [],
+            "bd_searched": "", "testcase_conflicts": [], "replay_records": [], "replay_records_none_reason": "",
             "steps": [{"n": i, "action": line, "expected": "", "oracle": {"source": "", "ref": "", "quote": ""}, "evidence": "", "captions": {"en": "", "ja": ""}}
                       for i, line in enumerate(case["steps"], 1)],
             "_title": case["title"], "_expected": case["expected"],
@@ -81,7 +83,7 @@ def template(cases_doc, workspace, session=None, *, include_context=True):
                 if assessed:
                     for field in ("title", "fixture_name", "profile", "verdict", "clarity", "sufficiency", "vague_resolved",
                                   "data_needs", "data_considered", "edge_cases", "edge_cases_none_reason",
-                                  "depends_on", "reuse", "steps", "reason", "questions", "timeout_s", "bd_searched", "testcase_conflicts"):
+                                  "depends_on", "reuse", "steps", "reason", "questions", "timeout_s", "bd_searched", "testcase_conflicts", "replay_records", "replay_records_none_reason"):
                         if field in assessed:
                             item[field] = assessed[field]
                     refreshed = {ref["text"]: ref for ref in item["refs"] if ref["status"] == "ok"}
@@ -173,6 +175,8 @@ def validate(analysis, cases_doc, workspace, choices=None):
                     if not isinstance(labels, dict) or any(k not in ("vi", "en", "ja") or not isinstance(v, str) for k, v in labels.items()):
                         problems.append(f"{at}: step {position} captions must map vi, en or ja to text")
         problems += _conflict_problems(at, c, steps if isinstance(steps, list) else [], choices)
+        if verdict == "ready" and ("replay_records" in c or "replay_records_none_reason" in c):
+            problems += _replay_problems(at, c)
         if verdict == "ready" and isinstance(steps, list) and not _says(c.get("bd_searched")) and any(
                 isinstance(s, dict) and isinstance(s.get("oracle"), dict) and s["oracle"].get("source") == "testcase" and not s["oracle"].get("chosen_over") for s in steps):
             problems.append(f"{at}: a step takes its expected result from the testcase alone: say in bd_searched which design document was looked for and why it does not cover that point")
@@ -230,6 +234,32 @@ def _oracle_problems(at, n, step, refs):
         problems.append(f"{at}: step {n} oracle.ref '{oracle.get('ref', '')}' is not one of this case's references marked ok. Name the design document and its section")
     if not _says(oracle.get("quote"), 15):
         problems.append(f"{at}: step {n} oracle.quote must quote what the design says (at least 15 characters)")
+    return problems
+
+
+def _replay_problems(at, case):
+    """The saved script runs again on other days against other records. The analysis therefore declares, as data, how every record the case creates or uses is found again:
+    `run_key` (this run's own name from fixture key), `captured` (its id stored in a run variable with capture_id; `detail` is the variable name) or `existing_ref` (a reference
+    the case declares; `detail` is that reference's text). Nothing here reads the wording of the steps: whether the script really survives a rerun is shown by replaying it."""
+    records = case.get("replay_records")
+    if not records:
+        return [] if _says(case.get("replay_records_none_reason"), 15) else [
+            f"{at}: list replay_records (how each record the case creates or uses is found again: how = run_key | captured | existing_ref), or say in replay_records_none_reason why the case uses none"]
+    if not isinstance(records, list):
+        return [f"{at}: replay_records must be a list"]
+    known = {str(ref.get("text", "")) for ref in case.get("refs") or [] if isinstance(ref, dict)}
+    problems = []
+    for position, item in enumerate(records, 1):
+        if not isinstance(item, dict) or not str(item.get("record", "")).strip():
+            problems.append(f"{at}: replay_records {position} needs a record (what it is)")
+            continue
+        how, detail = item.get("how"), str(item.get("detail", "")).strip()
+        if how not in REPLAY_HOW:
+            problems.append(f"{at}: replay_records {position} how must be one of {', '.join(REPLAY_HOW)}")
+        elif how == "captured" and not re.fullmatch(r"\w+", detail):
+            problems.append(f"{at}: replay_records {position} captured needs the run variable name in detail (letters, digits, underscore)")
+        elif how == "existing_ref" and detail not in known:
+            problems.append(f"{at}: replay_records {position} existing_ref needs the text of one of the case's refs in detail")
     return problems
 
 

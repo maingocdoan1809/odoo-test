@@ -799,6 +799,8 @@ function replayBar(k) {
   return `<div class="dtools replaybar">
     <button class="btn sm" data-replay="${esc(k.id)}" ${k.can_replay ? "" : "disabled"} title="${esc(note)}">Chạy lại testcase</button>
     <button class="btn sm primary" data-replay="${esc(k.id)}" data-record="1" ${k.can_replay ? "" : "disabled"} title="${k.can_replay ? "Chạy lại testcase và quay video có chú thích từng bước" : "Chưa có script đã lưu."}">Quay video</button>
+    <button class="btn sm" data-regenerate="${esc(k.id)}" ${k.can_replay && !(k.generalized && k.generalized.status === "RUNNING") ? "" : "disabled"} title="AI viết lại script để không phụ thuộc id, dữ liệu hay trạng thái của lần chạy này, rồi tự chạy lại 2 lần để kiểm">Tạo lại script (generic)</button>
+    ${k.generalized ? `<span class="muted" style="font-size:12px">Script generic: ${esc(k.generalized.status === "RUNNING" ? "đang viết lại và kiểm tra…" : k.generalized.status === "PASS" ? "đã tạo, replay 2 lần đạt" : k.generalized.status === "STALE" ? "lần viết lại trước bị gián đoạn, có thể tạo lại" : k.generalized.status === "UNVERIFIED" ? "đã viết lại, chưa replay kiểm" : "không đạt, đã giữ script cũ")}</span>` : ""}
     ${videos.map((file, i) => `<a class="btn sm" href="${videoUrl(S.sel.ws, file)}" target="_blank" rel="noopener">Xem video${videos.length > 1 ? ` ${i + 1}` : ""}</a>`).join("")}
     <span class="muted" id="replayMsg" style="font-size:12px">${k.can_replay ? "Kết quả chạy lại hiển thị riêng (Replay), không đổi kết quả Live." : "Chưa có script đã lưu."}</span>
     <details class="opts" data-key="replayopts" ${isOpen("replayopts", false)}><summary>Tuỳ chọn chạy lại</summary><div class="opts-body">
@@ -988,6 +990,16 @@ document.addEventListener("click", async e => {
     const r = await post("/api/dispatch-request", { ws: S.sel.ws, id: S.sel.id, case: ask.dataset.requestCase });
     S.requestError = r.error ? { case: ask.dataset.requestCase, text: r.error } : null;
     await refreshView(); renderDetail();
+    return;
+  }
+  const regen = e.target.closest("[data-regenerate]");
+  if (regen && S.sel) {
+    regen.disabled = true;
+    const r = await post("/api/regenerate", { ws: S.sel.ws, id: S.sel.id, case: regen.dataset.regenerate }).catch(() => ({ error: "Không gửi được yêu cầu." }));
+    const msg = $("replayMsg");
+    if (msg) msg.textContent = r.error || r.message || "Đã bắt đầu.";
+    else if (r.error) alert(r.error);
+    setTimeout(refreshView, 1500);
     return;
   }
   const rep = e.target.closest("[data-replay], [data-replay-all]");
