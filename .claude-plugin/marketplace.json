@@ -1,0 +1,14 @@
+{
+  "name": "odoo-test",
+  "owner": {
+    "name": "odoo-test"
+  },
+  "description": "Test an Odoo system from a testcase workbook: plan, run every case in a browser with red-framed screenshots, repair, and write the Excel evidence.",
+  "plugins": [
+    {
+      "name": "odoo-test",
+      "source": "./plugins/odoo-test",
+      "description": "Test an Odoo system from a testcase workbook: plan, run every case in a browser with red-framed screenshots, repair, and write the Excel evidence."
+    }
+  ]
+}

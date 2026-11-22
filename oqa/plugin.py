@@ -47,9 +47,10 @@ def skill_text():
     return re.sub(r"\nhooks:\n(?:[ \t]+.*\n?|\n)*", "\n", head + "\n", count=1).rstrip("\n") + sep + body
 
 
-def build(out):
+def build(out, *, plugins_dir="", market=f"{NAME}-local"):
+    """Build the plugin under `out/<plugins_dir>/odoo-test` and its marketplace file at `out/.claude-plugin`. `market` names the marketplace."""
     out = Path(out).expanduser().resolve()
-    plugin = out / NAME
+    plugin = out / plugins_dir / NAME if plugins_dir else out / NAME
     if plugin.resolve() != plugin or plugin == ROOT or plugin in ROOT.parents:
         raise ValueError(f"Cannot replace {plugin} with a plugin build.")
     if plugin.exists():
@@ -66,6 +67,15 @@ def build(out):
     (plugin / "README.md").write_text(f"# {NAME}\n\n{DESCRIPTION}\n\nInstall: `/plugin marketplace add <folder that holds this plugin>` then `/plugin install {NAME}@{NAME}-local`, or try it once with `claude --plugin-dir <this folder>`.\n"
                                       "Needs Python 3.9+. The first run sets up its own environment (`oqa doctor --fix`). Hooks start with the plugin: nothing is written into settings.json.\n", encoding="utf-8")
     (out / ".claude-plugin").mkdir(exist_ok=True)
-    (out / ".claude-plugin" / "marketplace.json").write_text(json.dumps({"name": f"{NAME}-local", "owner": {"name": "odoo-test"}, "description": DESCRIPTION,
-                                                                         "plugins": [{"name": NAME, "source": f"./{NAME}", "description": DESCRIPTION}]}, indent=2) + "\n", encoding="utf-8")
+    (out / ".claude-plugin" / "marketplace.json").write_text(json.dumps({"name": market, "owner": {"name": "odoo-test"}, "description": DESCRIPTION,
+                                                                         "plugins": [{"name": NAME, "source": f"./{plugins_dir}/{NAME}" if plugins_dir else f"./{NAME}", "description": DESCRIPTION}]}, indent=2) + "\n", encoding="utf-8")
     return plugin
+
+
+REPO_PLUGINS = "plugins"
+REPO_MARKET = NAME
+
+
+def build_repo():
+    """Refresh the plugin committed in this repository, so `/plugin marketplace add <owner>/<repo>` installs it: <repo>/.claude-plugin/marketplace.json + <repo>/plugins/odoo-test."""
+    return build(ROOT, plugins_dir=REPO_PLUGINS, market=REPO_MARKET)

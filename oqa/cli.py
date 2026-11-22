@@ -787,6 +787,13 @@ def cmd_publish(args):
     return {"skill": str(target), "plugin": str(built)}, "\n".join(lines)
 
 
+def cmd_repo(args):
+    """Refresh the installable plugin committed in this repository (plugins/odoo-test and .claude-plugin/marketplace.json)."""
+    from . import plugin
+    target = plugin.build_repo()
+    return {"plugin": str(target)}, f"Refreshed {target}. Commit and push it; then anyone can run:\n  /plugin marketplace add <owner>/<repo>\n  /plugin install {plugin.NAME}@{plugin.REPO_MARKET}"
+
+
 def cmd_install(args):
     """Copy the runnable skill into a skills folder."""
     from . import plugin
@@ -1087,6 +1094,7 @@ def build_parser():
     p.add_argument("--apply", action="store_true", help="rebuild the installed plugin (~/.odoo-test/plugin) from this folder and update it in Claude Code")
     p = add("publish", cmd_publish, "publish the runnable skill and build its Claude Code plugin")
     p.add_argument("--skills", default="~/.agents/skills", help="the skills folder to write into (default ~/.agents/skills)")
+    add("repo", cmd_repo, "refresh the plugin committed in this repo so it installs from GitHub (/plugin marketplace add <owner>/<repo>)")
     p = add("install", cmd_install, "copy this skill into a skills folder")
     p.add_argument("--to", required=True, help="the skills folder (e.g. ~/.claude/skills or %%USERPROFILE%%/.excel-partner/skills)")
     p.add_argument("--force", action="store_true", help="replace an existing copy")

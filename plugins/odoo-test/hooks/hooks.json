@@ -1,0 +1,35 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|MultiEdit|Read|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'P=$(command -v python3 || command -v python); exec \"$P\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\"'"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'P=$(command -v python3 || command -v python); exec \"$P\" \"${CLAUDE_PLUGIN_ROOT}/hooks/prompt.py\"'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'P=$(command -v python3 || command -v python); exec \"$P\" \"${CLAUDE_PLUGIN_ROOT}/hooks/stop.py\"'"
+          }
+        ]
+      }
+    ]
+  }
+}

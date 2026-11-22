@@ -61,3 +61,15 @@ def test_settings_json_is_left_alone_when_the_code_runs_from_a_plugin(monkeypatc
     (tmp_path / "plugin" / ".claude-plugin").mkdir(parents=True)
     (tmp_path / "plugin" / ".claude-plugin" / "plugin.json").write_text("{}", encoding="utf-8")
     assert globalhooks.in_plugin() is True and globalhooks.missing(tmp_path / "none.json") == []
+
+
+def test_the_plugin_committed_in_the_repo_is_current_and_installable_from_github(tmp_path):
+    """`/plugin marketplace add <owner>/<repo>` reads .claude-plugin/marketplace.json at the repo root: it must point at a plugin that matches this source (refresh with `python oqa.py repo`)."""
+    market = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
+    assert market["name"] == plugin.REPO_MARKET and market["plugins"][0]["source"] == "./plugins/odoo-test"
+    fresh = plugin.build(tmp_path, plugins_dir=plugin.REPO_PLUGINS, market=plugin.REPO_MARKET) / ".."
+    committed = ROOT / "plugins" / "odoo-test"
+    built = (tmp_path / "plugins" / "odoo-test")
+    names = lambda base: sorted(str(p.relative_to(base)) for p in base.rglob("*") if p.is_file() and "__pycache__" not in p.parts)
+    assert names(committed) == names(built)
+    assert all((committed / n).read_bytes() == (built / n).read_bytes() for n in names(built)), "plugins/odoo-test is stale: run `python oqa.py repo`"

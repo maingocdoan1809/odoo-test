@@ -4,4 +4,4 @@ Edit the skill at its source in this repository. The shipped files live in `SKIL
 
 Put POC code, plans, audit prompts, dashboard previews, and other experimental artifacts in `temp/`. Keep regression tests in `tests/` and the Odoo acceptance suite in `harness/`.
 
-Run `python -m pytest` to test changes. Use `python oqa.py publish` to deploy the skill and rebuild the Claude Code plugin using the packaging rules in `oqa/plugin.py`. Use Git history to recover earlier versions.
+Run `python -m pytest` to test changes. Use `python oqa.py publish` to deploy the skill and rebuild the Claude Code plugin using the packaging rules in `oqa/plugin.py`. Run `python oqa.py repo` to refresh `plugins/odoo-test/` and `.claude-plugin/marketplace.json`, which users install from GitHub; commit them with the change. Use Git history to recover earlier versions.
