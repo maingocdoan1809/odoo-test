@@ -2,6 +2,7 @@
 import json
 import csv
 import io
+import re
 from functools import partial
 from pathlib import Path
 
@@ -51,11 +52,63 @@ TOOLS = [
     schema("open_import", "Open the native Odoo list import wizard on the given action URL and record the navigation.",
            strings("action_url"), ("action_url",)),
     schema("reference", "Read a reference registered for this case by name.", strings("name"), ("name",)),
-    schema("upload_csv", "Upload an approved CSV reference with run-specific placeholder values. Returns the replay action.",
-           (*strings("name", "button"), ("values", "object", {})), ("name", "values")),
+    schema("upload_csv", "Upload an approved CSV reference (or, with source=download, a file saved by save_download) with run-specific placeholder values. For a later round of the same import (fix a cell, upload again) pass overrides: "
+                         "[{row: data row number from 1, column: header name, value}] applied on top of the reference. Returns the replay action.",
+           (*strings("name", "button", "source"), ("values", "object", {}), ("overrides", "array", {"items": {"type": "object"}})), ("name",)),
+    schema("save_download", "Run one action that starts a file download (for example clicking Export) and save the file under `name`. Returns the file's rows as text (CSV as is, XLSX cell by cell) "
+                            "so you can compare it with the screen. To edit it and import it again, call upload_csv with source=download and the same name. trigger = one await page action.",
+           strings("name", "trigger"), ("name", "trigger")),
     schema("note", "Send the coordinator new facts or explain what is blocking the case.", strings("text"), ("text",)),
     *mcp_server.TOOLS,
 ]
+
+
+def render_csv(path, substitutions, overrides=None):
+    """The rows of an approved CSV with its {placeholders} filled, then the cell edits of a later round of the same import (fix one cell and upload again):
+    `overrides` = [{row: data row number from 1, column: header name, value}]. A value may use placeholders too. The result is what the saved script uploads, so a replay repeats every round."""
+    def fill(cell):
+        for key, value in substitutions.items():
+            cell = cell.replace("{" + key + "}", value)
+        return cell
+
+    with path.open(encoding="utf-8-sig", newline="") as handle:
+        rows = [[fill(cell) for cell in row] for row in csv.reader(handle)]
+    for edit in overrides or []:
+        if not isinstance(edit, dict) or not {"row", "column", "value"} <= set(edit):
+            raise ValueError("Each override needs row (data row number from 1), column (header name) and value.")
+        header, row = rows[0], int(edit["row"])
+        if edit["column"] not in header:
+            raise ValueError(f"Column '{edit['column']}' is not in the CSV header ({', '.join(header)}).")
+        if not 1 <= row < len(rows):
+            raise ValueError(f"The CSV has {len(rows) - 1} data row(s); there is no row {row}.")
+        rows[row][header.index(edit["column"])] = fill(str(edit["value"]))
+    output = io.StringIO()
+    csv.writer(output).writerows(rows)
+    return output.getvalue()
+
+
+def download_path(session, case, name):
+    """Where a file saved by save_download lives: under the session, per case. A simple file name only."""
+    if not name or Path(name).name != name:
+        raise GateError("Give a simple file name for the download, without folders.")
+    return session.dir / "downloads" / re.sub(r"[^\w.-]+", "_", case) / name
+
+
+def download_text(path, limit=12000):
+    """A downloaded file as the worker reads it: its rows as CSV text. CSV as it is; XLSX cell by cell (an empty cell is empty text)."""
+    if path.suffix.lower() == ".xlsx":
+        from openpyxl import load_workbook
+
+        book = load_workbook(path, read_only=True, data_only=True)
+        rows = [["" if cell is None else str(cell) for cell in row] for row in book.worksheets[0].iter_rows(values_only=True)]
+        book.close()
+    else:
+        with path.open(encoding="utf-8-sig", newline="") as handle:
+            rows = [list(row) for row in csv.reader(handle)]
+    output = io.StringIO()
+    csv.writer(output).writerows(rows)
+    text = output.getvalue()
+    return {"file": path.name, "data_rows": max(len(rows) - 1, 0), "header": rows[0] if rows else [], "text": text[:limit], "truncated": len(text) > limit}
 
 
 def call(session, case, agent, name, args):
@@ -145,25 +198,34 @@ def _call(session, case, agent, name, args):
             "await page.locator('.o_import_menu').click();",
         ])
         return live.act(session, case, "run-code", [], code, record=True)[1]
+    if name == "save_download":
+        target = download_path(session, case, args["name"])
+        action = re.fullmatch(r"\s*await\s+(page\..+?);?\s*", args["trigger"], re.S)
+        if not action:
+            raise GateError("trigger is one await page action that starts the download, for example: await page.getByRole('button', {name: 'Export', exact: true}).click();")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.unlink(missing_ok=True)
+        code = f"await Promise.all([page.waitForEvent('download'), {action.group(1)}]).then(([download]) => download.saveAs({json.dumps(str(target))}));"
+        live.act(session, case, "run-code", [], code, record=True)
+        if not target.is_file():
+            raise GateError("The action did not start a download: check the Export dialog (format, columns) and that the control was clicked.")
+        return json.dumps(download_text(target), ensure_ascii=False)
     if name == "upload_csv":
-        path = _reference(session, case, args["name"])
+        if args.get("source") == "download":
+            path = download_path(session, case, args["name"])
+            if not path.is_file():
+                raise GateError(f"No download named {args['name']} for this case: save it first with save_download.")
+        else:
+            path = _reference(session, case, args["name"])
         if path.suffix.lower() != ".csv":
-            raise GateError("Choose a CSV reference for this case.")
-        substitutions = {key: str(value) for key, value in args["values"].items()}
-        output = io.StringIO()
-        def substitute(cell):
-            for key, value in substitutions.items():
-                cell = cell.replace("{" + key + "}", value)
-            return cell
-
-        with path.open(encoding="utf-8-sig", newline="") as handle:
-            csv.writer(output).writerows([substitute(cell) for cell in row] for row in csv.reader(handle))
+            raise GateError("Choose a CSV file for this case (in the Export dialog choose the CSV format).")
+        output = render_csv(path, {key: str(value) for key, value in (args.get("values") or {}).items()}, args.get("overrides"))
         button = json.dumps(args.get("button") or "Upload Data File")
         code = (
             "await Promise.all([page.waitForEvent('filechooser'), "
             f"page.getByRole('button', {{name: {button}, exact: true}}).click()]).then(([chooser]) => "
             f"chooser.setFiles({{name: {json.dumps(path.name)}, mimeType: 'text/csv', "
-            f"buffer: Buffer.from({json.dumps(output.getvalue())})}}));"
+            f"buffer: Buffer.from({json.dumps(output)})}}));"
         )
         observed = live.act(session, case, "run-code", [], code, record=True)[1]
         return json.dumps({"code": code, "output": observed}, ensure_ascii=False)

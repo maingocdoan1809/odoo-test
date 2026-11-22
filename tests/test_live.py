@@ -147,6 +147,36 @@ def test_a_failed_step_closes_the_case_and_marks_the_rest_as_not_run(live, pw):
     assert session.state()["results"]["T-1"]["status"] == "FAIL"
 
 
+def test_a_worker_that_stopped_after_passing_steps_is_replaced_by_a_handover_that_keeps_them(live, pw):
+    session, ws, store = live
+    approve(session, ws, store)
+    livemod.start(session, "T-1")
+    assert livemod.passed_steps(session, "T-1") == []
+    livemod.step(session, "T-1", 1, "PASS", "the order list showed three rows", target=".o_list_view")
+    assert livemod.passed_steps(session, "T-1") == [1]
+    livemod.handover(session, "T-1", "the worker timed out after step 1, continue from step 2")
+    resumed = livemod.start(session, "T-1")[0]
+    assert resumed["resumed"] and resumed["next_step"] == 2
+    with pytest.raises(GateError, match=r"Steps recorded in this attempt: \[1\]"):
+        livemod.step(session, "T-1", 4, "PASS", "skipped ahead", target=".o_form_view")
+
+
+def test_a_fail_names_what_it_was_judged_against(live, pw):
+    from oqa.store import read_json, write_json
+
+    session, ws, store = live
+    approve(session, ws, store)
+    document = read_json(session.dir / "analysis.json")
+    document["cases"][0]["steps"][1]["oracle"] = {"source": "bd", "ref": "BD-orders.txt 4.2", "quote": "The New button is on the order list"}
+    write_json(session.dir / "analysis.json", document)
+    livemod.start(session, "T-1")
+    livemod.step(session, "T-1", 1, "PASS", "the order list showed three rows", target=".o_list_view")
+    livemod.step(session, "T-1", 2, "FAIL", "the New button was not on the page", target="#missing")
+    livemod.end(session, "T-1", "FAIL", "Không có nút New trên màn hình đơn hàng", control="getByRole button New, checked in the snapshot of the order list toolbar")
+    result = session.state()["results"]["T-1"]
+    assert result["basis"] == "BD: BD-orders.txt 4.2" and "[BD: BD-orders.txt 4.2]" in result["reason"]
+
+
 def test_a_passed_case_is_replayed_in_a_new_session_and_stops_at_the_first_step_that_does_not_show(live, pw, tmp_path):
     session, ws, store = live
     approve(session, ws, store)
@@ -306,3 +336,18 @@ def test_evidence_caption_uses_its_language_without_changing_the_observation(liv
     step = next(e for e in events.read(session.dir) if e["kind"] == "step")
     assert labels == ["手順 1/4 · 合格"]
     assert step["actual"] == observation and step["images"][0]["caption"] == labels[0]
+
+
+def test_an_action_that_types_a_fixed_record_name_is_refused(live, pw):
+    session, ws, store = live
+    approve(session, ws, store)
+    livemod.start(session, "T-1")
+    for fixed in ("await page.getByRole('textbox').fill('ZZ_AUTOTEST_T09_S');", "await page.getByRole('textbox').fill('AUTO_TEST_site');"):
+        with pytest.raises(GateError, match="fixed record name"):
+            livemod.act(session, "T-1", "run-code", [], fixed, record=True)
+    with pytest.raises(GateError, match="fixed record name"):
+        livemod.act(session, "T-1", "fill", ["e5", "ZZ_AUTOTEST_site"])
+    from oqa import record_names
+
+    own = record_names.fixture_prefix(session, "T-1", ws["test_prefix"]) + "site"
+    assert record_names.foreign(session, "T-1", f"await page.getByRole('textbox').fill('{own}');", ws["test_prefix"]) == []

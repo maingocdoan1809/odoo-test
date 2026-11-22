@@ -167,7 +167,9 @@ def cmd_analyze(args):
             reason = skipped[case["id"]]
             case.update(verdict="blocked", reason=reason,
                         data_considered=f"The user excluded the case from this run: {reason}", questions=[])
-    analysis.validate(submitted, cases, config)
+    choices = state.get("conflict_choices")
+    analysis.validate(submitted, cases, config, choices)
+    analysis.apply_choices(submitted, choices)                # what the user decided about testcase/design conflicts survives a new submission
     counts = {}
     for case in submitted["cases"]:
         counts[case["verdict"]] = counts.get(case["verdict"], 0) + 1
@@ -180,12 +182,19 @@ def cmd_analyze(args):
         if not marker.exists() and autostart.ensure_dashboard(session.ws, session.id, select_existing=True):
             marker.touch()
     summary = ", ".join(f"{n} {v}" for v, n in counts.items())
+    warned = analysis.warnings(submitted)
+    if warned:
+        notice = "\nWARNING: the testcase differs from the design in " + "; ".join(f"{w['case']} step {w['step']} ({w['ref']})" for w in warned) + \
+                 ". The user must choose on the dashboard, for each one, whether the test follows the BD or the testcase (the BD may be the one that is wrong); " \
+                 "the strategy cannot be confirmed before. Until they choose the step follows the BD."
+        summary += notice
     if question and session.state()["waiting"] and session.state()["phase"] == "ANALYZE":
         return {"accepted": True, "verdicts": counts, "waiting": True}, (
             f"Analysis accepted ({summary}) but {len(asking)} case(s) need the user, so nothing moves on yet. Their questions are now on the dashboard:\n{question}\n"
             "Tell the user (they can answer there or in the chat, and paste a file path instead of uploading anything), then `oqa wait` in the background and stop. "
             "After the answer: `oqa analyze --template` again (it carries their answers and the files they shared), fix those cases and `--submit` again.")
-    return {"accepted": True, "verdicts": counts}, f"Analysis accepted ({summary}). Next: {session.summary()['next']}"
+    return ({"accepted": True, "verdicts": counts, **({"warnings": warned} if warned else {})},
+            f"Analysis accepted ({summary}). Next: {session.summary()['next']}")
 
 
 def cmd_ref(args):

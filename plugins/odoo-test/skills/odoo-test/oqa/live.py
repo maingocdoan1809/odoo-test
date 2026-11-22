@@ -223,6 +223,16 @@ def _recorded(session, case, attempt):
     return {e["n"]: e for e in events.read(session.dir) if e["kind"] == "step" and e.get("case") == case and e.get("attempt") == attempt}
 
 
+def passed_steps(session, case):
+    """The steps the open attempt of `case` already recorded as PASS (none when there is no open attempt or a step failed): a worker that stopped after
+    them is replaced by a handover, which keeps them, instead of a recovery, which throws the attempt away and makes the next worker start from step 1."""
+    found = _open_attempt(session, case)
+    if not found:
+        return []
+    done = _recorded(session, case, found[0])
+    return [] if any(e["status"] != "PASS" for e in done.values()) else sorted(done)
+
+
 def _attempt(session, case):
     mine = [e for e in events.read(session.dir) if e["kind"] == "case_started" and e.get("case") == case]
     if not mine:
@@ -371,6 +381,11 @@ def act(session, case, command, arguments, code=None, record=False):
     attempt = _attempt(session, case)
     if record and command != "run-code":
         raise GateError("Record a stable Playwright fragment with command=run-code.")
+    fixed = record_names.foreign(session, case, code or " ".join(str(a) for a in arguments), workspace.load(session.ws)["test_prefix"])
+    if fixed:
+        raise GateError(f"This action types a fixed record name ({', '.join(fixed[:3])}). A name that is the same on every run meets what an earlier run left (a unique constraint, a record that cannot "
+                        "be deleted), and the case then judges leftover data, not the application. Prepare this run's own data: get a key with fixture(action=key, label=...) (oqa fixture key) "
+                        "and use it as the record's name and code, then create the record through the screen.")
     if command == "run-code":
         if not code:
             raise GateError("Use --code or --verified-code with an action fragment.")
@@ -527,7 +542,8 @@ def step(session, case, n, status, actual, target=None, verified_code=None, show
     if n in done:
         raise GateError(f"Step {n} is already recorded ({done[n]['status']}). Fix things in the browser BEFORE recording; a step is recorded once.")
     if n != len(done) + 1:
-        raise GateError(f"Record the steps in order: next is step {len(done) + 1}.")
+        raise GateError(f"Record the steps in order: next is step {len(done) + 1}. Steps recorded in this attempt: {sorted(done) or 'none'}. "
+                        "Do not skip ahead; if you checked later steps in the browser, redo them as steps in order (the page is still there), recording each.")
     if any(e["status"] == "FAIL" for e in done.values()):
         raise GateError("A step already failed: close the case with `oqa live end` (the steps after it are marked as not run).")
     if status not in ("PASS", "FAIL"):
@@ -1149,9 +1165,14 @@ def end(session, case, status, reason, script=None, category=None, control=None)
         if s["n"] not in done:
             events.append(session.dir, "step", case=case, attempt=attempt, n=s["n"], status="SKIPPED", caption=s["action"], expected=s["expected"], actual="not run", checks=0, images=[])
     failed = next((n for n, e in sorted(done.items()) if e["status"] == "FAIL"), None)
+    basis = ""
+    if status == "FAIL" and failed:                                              # what the failed step was judged against: the design first, else the testcase
+        basis = analysis_mod._basis(next((s for s in steps if s["n"] == failed), {}))
+        if basis and basis not in (reason or ""):
+            reason = f"{reason} [{basis}]"
     events.append(session.dir, "attempt_finished", case=case, attempt=attempt, status=status, reason=reason or "", script_sha="live", **({"failed_step": failed} if failed else {}),
-                  **({"category": category} if category else {}), **({"control": control.strip()} if control else {}))
-    session.finish_case(case, status, reason or "", category)
+                  **({"category": category} if category else {}), **({"control": control.strip()} if control else {}), **({"basis": basis} if basis else {}))
+    session.finish_case(case, status, reason or "", category, basis)
     try:
         _run(browser_case(session, case), "close")
     except GateError:

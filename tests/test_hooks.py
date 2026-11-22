@@ -57,8 +57,9 @@ def executing(session, tmp_path):
     session.confirm_current("t")
 
 
-def stop(session, home):
-    return run("stop.py", {"hook_event_name": "Stop"}, home, OQA_WS=session.ws, OQA_SESSION=session.id)
+def stop(session, home, transcript=None):
+    payload = {"hook_event_name": "Stop", "session_id": "chat-1", **({"transcript_path": str(transcript)} if transcript else {})}
+    return run("stop.py", payload, home, OQA_WS=session.ws, OQA_SESSION=session.id)
 
 
 def test_stop_pushes_back_twice_then_lets_go(session, home, tmp_path):
@@ -75,10 +76,14 @@ def test_stop_pushes_back_twice_then_lets_go(session, home, tmp_path):
 
 def test_the_same_stop_reaching_two_hooks_counts_once(session, home, tmp_path):
     executing(session, tmp_path)
-    one, two = stop(session, home), stop(session, home)          # no pause: as when the skill's hook and the plugin's both fire
+    transcript = tmp_path / "chat.jsonl"
+    transcript.write_text("one\n", encoding="utf-8")
+    one = stop(session, home, transcript)
+    time.sleep(0.8)                                                # however slow the second hook starts, it is the same event: the transcript has not grown
+    two = stop(session, home, transcript)
     assert (one.returncode, two.returncode) == (2, 2) and "1/2" in one.stderr and "1/2" in two.stderr
-    time.sleep(0.4)
-    assert "2/2" in stop(session, home).stderr
+    transcript.write_text("one\ntwo\n", encoding="utf-8")          # the assistant went on and stopped again: a new event
+    assert "2/2" in stop(session, home, transcript).stderr
 
 
 def test_stop_resets_when_there_is_progress_and_is_fine_when_the_user_is_asked(session, home, tmp_path):

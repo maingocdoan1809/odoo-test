@@ -57,6 +57,13 @@ def owns(session, value, prefix, case=None):
     return any(value.startswith(f"{previous}{session.id}_") for previous in prefixes(prefix))
 
 
+def foreign(session, case, text, prefix):
+    """Test-record names in `text` (an action about to be run) that are not this run's own: a name typed literally ("ZZ_AUTOTEST_site", "AUTO_TEST_site") is the same on every run,
+    so it meets whatever an earlier run left (a unique constraint, a record that cannot be deleted) and the case judges the leftover instead of the application."""
+    pattern = re.compile("|".join([r"[A-Za-z0-9_]*AUTO_?TEST[A-Za-z0-9_-]*"] + [re.escape(p) + r"[A-Za-z0-9_-]*" for p in prefixes(prefix)]), re.I)
+    return sorted({token for token in pattern.findall(text or "") if not owns(session, token, prefix, case)})
+
+
 def replay_sources(session, case, prefix, *, name=None):
     return (fixture_prefix(session, case, prefix, name=name), *prefixes(prefix))
 

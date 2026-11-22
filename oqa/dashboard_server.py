@@ -10,7 +10,7 @@ import unicodedata
 from pathlib import Path
 from urllib.parse import quote
 
-from . import captions, dispatch_requests, live, paths, refs, regression, report, script_bundle, sitemap, view, workspace
+from . import captions, conflicts, dispatch_requests, live, paths, refs, regression, report, script_bundle, sitemap, view, workspace
 from .localserver import LocalApp, font_faces
 from .state import GateError, Session
 from .store import SchemaError, read_json
@@ -298,6 +298,12 @@ class Dashboard(LocalApp):
                 if not str(body.get("text", "")).strip():
                     return 200, {"error": "Write the answer first."}
                 self._session(body).answer(str(body["text"]).strip())
+                return 200, {"ok": True}
+            if method == "POST" and path == "/api/conflict":
+                step = body.get("step")
+                if not isinstance(step, int) or isinstance(step, bool):
+                    return 200, {"error": "Thiếu số bước."}
+                conflicts.decide(self._session(body), str(body.get("case", "")), step, str(body.get("choice", "")), "dashboard")
                 return 200, {"ok": True}
             if method == "POST" and path == "/api/review":
                 self._session(body).review_case(str(body.get("case", "")), str(body.get("text", "")),

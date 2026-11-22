@@ -6,6 +6,7 @@ param(
     [string]$OutputDirectory = '',
     [switch]$AgentPilot,
     [switch]$Matrix,
+    [switch]$Complex,
     [switch]$Replay,
     [string]$Cases = ''
 )
@@ -40,6 +41,8 @@ for role in ("manager", "mapper", "operator"):
     groups = [env.ref("base.group_user").id, env.ref(f"oqa_harness.group_{group}").id]
     if role == "mapper":
         groups.append(env.ref("base.group_system").id)
+    if role == "manager":
+        groups.append(env.ref("base.group_allow_export").id)       # Odoo grants Export only to this group (not to internal users): T01 and T04 export as Manager
     values = {
         "name": f"OQA Smoke {role.title()}", "login": login,
         "password": os.environ["OQA_SMOKE_PASSWORD"], "group_ids": [Command.set(groups)],
@@ -53,7 +56,7 @@ print(env.ref("oqa_harness.item_action").id)
     $env:OQA_SMOKE_ITEM_ACTION = $result | Where-Object { $_ -match '^\d+$' } | Select-Object -Last 1
     if (-not $env:OQA_SMOKE_ITEM_ACTION) { throw 'Install oqa_harness before running the browser smoke.' }
     if ($AgentPilot) { Remove-Item Env:OQA_SMOKE_MAPPER }
-    $runner = if ($Matrix) { 'run_matrix.py' } else { 'smoke_browser.py' }
+    $runner = if ($Complex) { 'run_complex.py' } else { if ($Matrix) { 'run_matrix.py' } else { 'smoke_browser.py' } }
     & python (Join-Path $PSScriptRoot $runner)
     if ($LASTEXITCODE) { throw 'Odoo browser smoke failed.' }
 } finally {

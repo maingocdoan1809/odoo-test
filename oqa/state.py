@@ -150,6 +150,10 @@ class Session:
                 raise GateError(f"Nothing to confirm in phase {state['phase']}. Next: {NEXT[state['phase']]}")
             if not state["strategy_sha"] or state["strategy_sha"] != sha:
                 raise GateError("The strategy changed or was never built; run `oqa strategy` and ask the user to review it again.")
+            undecided = analysis.pending_conflicts(read_json(self.dir / "analysis.json"), state.get("conflict_choices"))
+            if undecided:
+                raise GateError(f"Còn {len(undecided)} chỗ testcase lệch BD chưa chọn theo BD hay theo testcase ("
+                                + ", ".join(f"{c['case']} bước {c['step']}" for c in undecided[:5]) + "). Chọn trên dashboard trước khi duyệt.")
             state["confirmation"] = {"by": by, "at": time.strftime("%Y-%m-%d %H:%M:%S"), "strategy_sha": sha}
             events.append(self.dir, "confirmed", by=by, strategy_sha=sha)
             self._enter(state, "EXECUTE" if has_cases else "REPORT",
@@ -415,7 +419,7 @@ class Session:
         if old:
             state.setdefault("history", {}).setdefault(case, []).append({**old, "at": time.strftime("%Y-%m-%d %H:%M:%S"), "superseded_by": (why or "")[:300]})
 
-    def finish_case(self, case, status, reason="", category=""):
+    def finish_case(self, case, status, reason="", category="", basis=""):
         """Record the end of a case. When every case of the strategy has a result, the session moves to REPORT.
         `category` says what kind of conclusion it is (see events.CATEGORIES): an application defect, an automation issue, or a missing test precondition."""
         if category and category not in events.CATEGORIES:
@@ -432,7 +436,8 @@ class Session:
             if not attempts and status in ("PASS", "FAIL"):
                 raise GateError(f"{case} was never run; there is nothing to record.")
             self.archive_result(state, case, f"new conclusion {status}")
-            state["results"][case] = {"status": status, "attempts": attempts, **({"reason": reason} if reason else {}), **({"category": category} if category else {})}
+            state["results"][case] = {"status": status, "attempts": attempts, **({"reason": reason} if reason else {}), **({"category": category} if category else {}),
+                                      **({"basis": basis} if basis else {})}
             if state.get("channel"):
                 from . import claims
 

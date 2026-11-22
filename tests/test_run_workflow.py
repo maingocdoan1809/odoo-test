@@ -185,3 +185,42 @@ def test_a_bad_conclusion_reached_on_leftover_data_is_reopened_instead_of_accept
     assert "ZZ_AUTOTEST_ORD_ITEM" in dispatch.audit(session, "claude", "haiku", "ORD-001", fail)      # a fixed key: it may have found an earlier run's record
     blocked = {"status": "BLOCKED", "category": "precondition", "reason": "A stale pre-existing record shows a second row"}
     assert "left in the environment" in dispatch.audit(session, "claude", "haiku", "ORD-002", blocked)
+
+
+def test_a_csv_round_edits_single_cells_of_the_approved_file_and_keeps_the_placeholders(tmp_path):
+    from oqa import worker_mcp
+
+    path = tmp_path / "items.csv"
+    path.write_text("Name,Code,Cost\n{run}-A,{run}-1,0\n{run}-B,{run}-2,-4\n", encoding="utf-8")
+    first = worker_mcp.render_csv(path, {"run": "r1"})
+    assert first.splitlines() == ["Name,Code,Cost", "r1-A,r1-1,0", "r1-B,r1-2,-4"]
+    second = worker_mcp.render_csv(path, {"run": "r1"}, [{"row": 1, "column": "Cost", "value": "2"}, {"row": 2, "column": "Code", "value": "{run}-9"}])
+    assert second.splitlines() == ["Name,Code,Cost", "r1-A,r1-1,2", "r1-B,r1-9,-4"]
+    with pytest.raises(ValueError, match="not in the CSV header"):
+        worker_mcp.render_csv(path, {}, [{"row": 1, "column": "Price", "value": "1"}])
+    with pytest.raises(ValueError, match="no row 5"):
+        worker_mcp.render_csv(path, {}, [{"row": 5, "column": "Cost", "value": "1"}])
+
+
+def test_a_downloaded_file_is_read_as_rows_and_can_be_edited_for_the_next_import(tmp_path):
+    from openpyxl import Workbook
+
+    csv_file = tmp_path / "export.csv"
+    csv_file.write_text("External ID,Name,Cost\nx.1,Item 1,5\nx.2,Item 2,8\n", encoding="utf-8")
+    read = worker_mcp.download_text(csv_file)
+    assert read["data_rows"] == 2 and read["header"] == ["External ID", "Name", "Cost"] and "x.2,Item 2,8" in read["text"]
+    edited = worker_mcp.render_csv(csv_file, {}, [{"row": 1, "column": "Cost", "value": "6"}, {"row": 2, "column": "Cost", "value": "0"}])
+    assert edited.splitlines() == ["External ID,Name,Cost", "x.1,Item 1,6", "x.2,Item 2,0"]
+    book = Workbook()
+    book.active.append(["Name", "Total"])
+    book.active.append(["R2", 12])
+    xlsx = tmp_path / "export.xlsx"
+    book.save(xlsx)
+    assert worker_mcp.download_text(xlsx)["text"].splitlines() == ["Name,Total", "R2,12"]
+
+
+def test_a_download_name_cannot_leave_the_case_folder(session):
+    with pytest.raises(GateError, match="simple file name"):
+        worker_mcp.download_path(session, "ORD-001", "../x.csv")
+    assert worker_mcp.download_path(session, "ORD-001", "export.csv").parent.name == "ORD-001"
+    assert {"save_download", "upload_csv"} <= {tool["name"] for tool in worker_mcp.TOOLS}

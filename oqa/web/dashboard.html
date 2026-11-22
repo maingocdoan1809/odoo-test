@@ -181,6 +181,12 @@
   .ask p { margin:4px 0 0; } .ask .q { white-space:pre-wrap; overflow-wrap:anywhere; margin-top:4px; }
   .ask textarea { margin:8px 0 0; font-size:13px; }
   .ask-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .conflict { margin-top:10px; padding:10px 12px; border:1px solid var(--line); border-radius:6px; }
+  .conflict.undecided { border-left:3px solid var(--accent); }
+  .conflict-h { font:600 13px/1.4 var(--sans); }
+  .conflict-cmp { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:6px; }
+  .conflict-cmp p { margin:2px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; }
+  @media (max-width:700px) { .conflict-cmp { grid-template-columns:1fr; } }
   .ask.quiet { border-left-color:var(--blocked); }
   .ask details { margin-top:6px; } .ask summary { cursor:pointer; color:var(--muted); font-size:12.5px; }
   .jump { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
@@ -452,9 +458,9 @@ function toggleCases(force) {
 toggleCases(S.casesCollapsed);
 
 /* ================= screen 1: the session list ================= */
-const needsYou = s => !!(s.waiting || s.reviews > 0 || s.can_confirm || s.stopped);
+const needsYou = s => !!(s.waiting || s.reviews > 0 || s.can_confirm || s.conflicts_pending > 0 || s.stopped);
 const sessionGroup = s => needsYou(s) ? "need" : (s.phase === "EXECUTE" && !s.idle) ? "run" : "rest";
-const whyNeeds = s => s.waiting ? "AI đang hỏi bạn" : s.can_confirm ? "Chiến lược chờ duyệt" : s.reviews > 0 ? `${s.reviews} case cần xác nhận` : s.stopped ? "Đã dừng" : "";
+const whyNeeds = s => s.waiting ? "AI đang hỏi bạn" : s.conflicts_pending > 0 ? `${s.conflicts_pending} chỗ testcase lệch BD cần bạn chọn` : s.can_confirm ? "Chiến lược chờ duyệt" : s.reviews > 0 ? `${s.reviews} case cần xác nhận` : s.stopped ? "Đã dừng" : "";
 
 function sessionRow(s) {
   const cur = S.sel && S.sel.ws === s.workspace && S.sel.id === s.session;
@@ -542,6 +548,19 @@ const needsHint = k => !!(k.can_hint && k.exhausted);
 const workerFailed = k => !!(k.request && k.request.failure && k.status !== "PASS");
 const caseJump = list => `<div class="jump">${list.slice(0, 12).map(k => `<button type="button" data-case-jump="${esc(k.id)}" title="${esc(k.title || "")}">${esc(k.id)}</button>`).join("")}${list.length > 12 ? `<span class="muted">+${list.length - 12}</span>` : ""}</div>`;
 
+/** Where a testcase differs from its BD. The BD is the default but may itself be wrong, so the user chooses for each one: follow the BD or follow the testcase. Nothing can be confirmed before. */
+function conflictPanel(v) {
+  const rows = v.conflicts.map(c => {
+    const pick = (choice, label) => `<button type="button" class="btn ${c.choice === choice ? "primary" : ""}" data-conflict-case="${esc(c.case)}" data-conflict-step="${c.step}" data-conflict-choice="${choice}" aria-pressed="${c.choice === choice}" ${S.busy ? "disabled" : ""}>${label}</button>`;
+    return `<div class="conflict ${c.choice ? "decided" : "undecided"}">
+      <div class="conflict-h"><button type="button" class="link" data-case-jump="${esc(c.case)}">${esc(c.case)}</button> · bước ${c.step} <span class="muted">· ${esc(c.ref)}</span></div>
+      <div class="conflict-cmp"><div><b>BD nói</b><p>${esc(c.bd)}</p></div><div><b>Testcase nói</b><p>${esc(c.testcase)}</p></div></div>
+      <div class="ask-actions">${pick("bd", "Theo BD")}${pick("testcase", "Theo testcase")}<span class="muted">${c.choice ? "Đã chọn, bấm lại để đổi." : "Chưa chọn."}</span></div></div>`;
+  }).join("");
+  return `<section class="ask attn-panel"><h3>Testcase lệch BD: ${v.conflicts_pending > 0 ? `${v.conflicts_pending}/${v.conflicts.length} chỗ cần bạn chọn` : "đã chọn hết"}</h3>
+    <p class="muted">Mặc định BD thắng, nhưng BD cũng có thể sai hoặc đã cũ. Chọn test theo BD hay theo testcase cho từng chỗ. Chưa chọn hết thì không duyệt được chiến lược.</p>${rows}<div class="err">${esc(S.error)}</div></section>`;
+}
+
 /** Everything the AI is waiting on, in one place that is always in view. Each item says what is asked and carries its own answer button. */
 function inboxItems(v) {
   const items = [];
@@ -553,7 +572,10 @@ function inboxItems(v) {
   } else if (v.waiting) items.push(`<section class="ask attn-panel"><h3>AI đang chờ bạn trả lời${v.waiting.case ? ` <span class="muted" style="font-weight:400">· case ${esc(v.waiting.case)}</span>` : ""}</h3><div class="q">${esc(v.waiting.question)}</div>
       <textarea id="answer" aria-label="Câu trả lời" placeholder="Dán thẳng đường dẫn tệp vào đây nếu cần thiết kế, file import… AI tự đọc."></textarea><div class="ask-actions"><button class="btn primary" id="sendAnswer" ${S.busy ? "disabled" : ""}>Gửi trả lời</button></div>${err}</section>`);
   else if (v.can_confirm) items.push(`<section class="ask attn-panel"><h3>Chiến lược chờ duyệt</h3><p class="muted">Xem thứ tự chạy và dữ liệu dự phòng trước khi cho AI chạy.</p>
-      <details data-key="strategy" ${isOpen("strategy", true)}><summary>Nội dung chiến lược</summary><pre class="strategy">${esc(v.strategy)}</pre></details><div class="ask-actions"><button class="btn primary" id="confirm" ${S.busy ? "disabled" : ""}>Xác nhận và bắt đầu test</button></div>${err}</section>`);
+      <details data-key="strategy" ${isOpen("strategy", true)}><summary>Nội dung chiến lược</summary><pre class="strategy">${esc(v.strategy)}</pre></details>
+      ${v.conflicts_pending > 0 ? `<p class="err">Còn ${v.conflicts_pending} chỗ testcase lệch BD chưa chọn. Chọn xong mới duyệt được.</p>` : ""}
+      <div class="ask-actions"><button class="btn primary" id="confirm" ${S.busy || v.conflicts_pending > 0 ? "disabled" : ""}>Xác nhận và bắt đầu test</button></div>${err}</section>`);
+  if (["ANALYZE", "CONNECT", "CONFIRM"].includes(v.phase) && (v.conflicts || []).length) items.unshift(conflictPanel(v));
   const hint = v.cases.filter(needsHint);
   if (hint.length) items.push(`<section class="ask"><h3>AI cần gợi ý của bạn (${hint.length} case)</h3><p class="muted">Các case này đã hết số lần tự sửa.</p>${caseJump(hint)}</section>`);
   const broken = v.cases.filter(workerFailed);
@@ -979,6 +1001,15 @@ document.addEventListener("click", async e => {
     if (msg) msg.textContent = r.error || r.message || "Đã bắt đầu.";
     else if (r.error) alert(r.error);
     setTimeout(() => { rep.disabled = false; refreshList(); }, 4000);
+    return;
+  }
+  const pickConflict = e.target.closest("[data-conflict-choice]");
+  if (pickConflict) {
+    S.busy = true; S.error = ""; renderMain();
+    const r = await post("/api/conflict", { ws: S.sel && S.sel.ws, id: S.sel && S.sel.id, case: pickConflict.dataset.conflictCase,
+      step: +pickConflict.dataset.conflictStep, choice: pickConflict.dataset.conflictChoice });
+    S.busy = false; S.error = r.error || "";
+    await refreshView(); renderMain();
     return;
   }
   const jump = e.target.closest("[data-case-jump]");

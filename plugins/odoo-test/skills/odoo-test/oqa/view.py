@@ -2,6 +2,7 @@
 they can never disagree about a case, a step or a picture."""
 import time
 
+from . import analysis as analysis_mod
 from . import captions, claims, dispatch_requests, events, knowledge, live, paths, record_names, refs, replays, workspace
 from .state import MAX_REPAIRS, PHASES, Session
 from .store import read_json
@@ -257,7 +258,8 @@ def session_view(session: Session):
     phases = [{"phase": p, "at": reached.get(p, ""), "state": "current" if p == current else ("done" if i < here else "todo")} for i, p in enumerate(PHASES)]
     latest = next((e for e in reversed(log) if e["kind"] == "phase"), None)
     strategy_md = session.dir / "strategy.md"
-    return {"workspace": session.ws, "session": session.id, "replay_caption_language": replay_language, "file": state["file"], "phase": current, "phases": phases, "waiting": state["waiting"], "stopped": state.get("stopped"), "can_stop": current != "DONE" and not state.get("stopped"),
+    conflict_list = analysis_mod.conflicts(read_json(session.dir / "analysis.json"), state.get("conflict_choices"))
+    return {"conflicts": conflict_list, "conflicts_pending": sum(1 for c in conflict_list if not c["choice"]), "workspace": session.ws, "session": session.id, "replay_caption_language": replay_language, "file": state["file"], "phase": current, "phases": phases, "waiting": state["waiting"], "stopped": state.get("stopped"), "can_stop": current != "DONE" and not state.get("stopped"),
             "confirmed": bool(state["confirmation"]), "created": state["created"], "updated": log[-1]["ts"] if log else state["created"], "idle_hours": round(hours, 1), "idle": hours >= IDLE_HOURS, "now": latest["text"] if latest else "",
             "counts": counts(records), "workers": worker_load(records), "replay_counts": replay_counts(records), "total": len(records), "cases": records, "activity": activity(log), "free_cases": claims.free_cases(session) if current == "EXECUTE" else [], "notes": claims.notes(session, 12), "connect": state.get("connect"),
             "reports": reports(session), "strategy": strategy_md.read_text(encoding="utf-8") if strategy_md.exists() else "", "can_confirm": current == "CONFIRM" and bool(state.get("strategy_sha")) and (session.dir / "strategy.json").exists()
@@ -276,7 +278,7 @@ def list_sessions():
                 hours = idle_hours(state, events.read(session.dir))
                 records = interrupted(case_records(session), hours, quiet_seconds(state, events.read(session.dir)))
                 out.append({"workspace": ws, "session": sid, "file": state["file"], "created": state["created"], "phase": state["phase"], "waiting": bool(state["waiting"]),
-                            "idle": hours >= IDLE_HOURS, "idle_hours": round(hours, 1), "stopped": bool(state.get("stopped")), "reviews": len(state.get("reviews") or {}), "can_confirm": state["phase"] == "CONFIRM" and bool(state.get("strategy_sha")), "counts": counts(records), "total": len(records),
+                            "idle": hours >= IDLE_HOURS, "idle_hours": round(hours, 1), "stopped": bool(state.get("stopped")), "reviews": len(state.get("reviews") or {}), "can_confirm": state["phase"] == "CONFIRM" and bool(state.get("strategy_sha")), "conflicts_pending": len(analysis_mod.pending_conflicts(read_json(session.dir / "analysis.json"), state.get("conflict_choices"))), "counts": counts(records), "total": len(records),
                             "workers": worker_load(records)["active"]})
             except Exception:
                 continue                    # a session folder that is being written or damaged must not hide the others

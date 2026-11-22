@@ -12,7 +12,11 @@ analysis.json = {schema_version, cases: [ {
     edge_cases     [text]                                what can differ between environments; or `edge_cases_none_reason`
     depends_on     [case id]                             cases whose end state this one starts from
     reuse          text                                  what it takes over from them (optional)
-    steps          [{n, action, expected}]               the strategy for the case, not the one-line description in the workbook
+    steps          [{n, action, expected, oracle}]       the strategy for the case, not the one-line description in the workbook.
+                                                         oracle = {source: bd | testcase, ref, quote}: where `expected` comes from. The design (BD) outranks the testcase,
+                                                         the testcase outranks what the app does today
+    bd_searched    text                                  which design document was looked for and why it does not cover a step taken from the testcase alone
+    testcase_conflicts [{step, testcase, bd, ref}]       where the testcase says something different from the design: the design wins and the user is warned
     timeout_s      int 5-120 (optional)                  how long one wait may last on this case's pages; default 8. A slow screen, a heavy report
     questions / reason                                   needs_user: what to ask; blocked: why
 } ]}
@@ -27,6 +31,7 @@ from .store import SchemaError
 
 VERDICTS = ("ready", "needs_user", "blocked")
 REF_STATUSES = ("ok", "missing", "asked", "waived")
+ORACLE_SOURCES = ("bd", "testcase")       # the truth a step is judged against: the design document first, the testcase when no design covers the point
 MIN_TIMEOUT, MAX_TIMEOUT = 5, 120
 MIN_WORDS = 12          # characters a written justification must have to say anything
 
@@ -54,7 +59,8 @@ def template(cases_doc, workspace, session=None, *, include_context=True):
             "vague": case.get("vague", []),
             "vague_resolved": [{"phrase": v["phrase"], "concrete": "", "source": ""} for v in case.get("vague", [])],
             "data_needs": [], "data_considered": "", "edge_cases": [], "depends_on": list(case["case_refs"]), "reuse": "",
-            "steps": [{"n": i, "action": line, "expected": "", "evidence": "", "captions": {"en": "", "ja": ""}}
+            "bd_searched": "", "testcase_conflicts": [],
+            "steps": [{"n": i, "action": line, "expected": "", "oracle": {"source": "", "ref": "", "quote": ""}, "evidence": "", "captions": {"en": "", "ja": ""}}
                       for i, line in enumerate(case["steps"], 1)],
             "_title": case["title"], "_expected": case["expected"],
         })
@@ -75,7 +81,7 @@ def template(cases_doc, workspace, session=None, *, include_context=True):
                 if assessed:
                     for field in ("title", "fixture_name", "profile", "verdict", "clarity", "sufficiency", "vague_resolved",
                                   "data_needs", "data_considered", "edge_cases", "edge_cases_none_reason",
-                                  "depends_on", "reuse", "steps", "reason", "questions", "timeout_s"):
+                                  "depends_on", "reuse", "steps", "reason", "questions", "timeout_s", "bd_searched", "testcase_conflicts"):
                         if field in assessed:
                             item[field] = assessed[field]
                     refreshed = {ref["text"]: ref for ref in item["refs"] if ref["status"] == "ok"}
@@ -105,8 +111,8 @@ def _score(value):
     return isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= 5
 
 
-def validate(analysis, cases_doc, workspace):
-    """Raises SchemaError listing every defect."""
+def validate(analysis, cases_doc, workspace, choices=None):
+    """Raises SchemaError listing every defect. `choices` = what the user decided about testcase/design conflicts (the session's `conflict_choices`)."""
     problems = []
     wanted = [c["id"] for c in cases_doc["cases"]]
     given = [c.get("id") for c in analysis.get("cases", []) if isinstance(c, dict)]
@@ -160,10 +166,16 @@ def validate(analysis, cases_doc, workspace):
                 if isinstance(step, dict) and "evidence" in step and verdict == "ready":
                     if not isinstance(step["evidence"], str) or not step["evidence"].strip():
                         problems.append(f"{at}: step {position} needs evidence: describe the visible state and exact region to frame; split combined UI actions into separate steps")
+                if isinstance(step, dict) and "oracle" in step and verdict == "ready":
+                    problems += _oracle_problems(at, position, step, refs or [])
                 if isinstance(step, dict) and "captions" in step:
                     labels = step["captions"]
                     if not isinstance(labels, dict) or any(k not in ("vi", "en", "ja") or not isinstance(v, str) for k, v in labels.items()):
                         problems.append(f"{at}: step {position} captions must map vi, en or ja to text")
+        problems += _conflict_problems(at, c, steps if isinstance(steps, list) else [], choices)
+        if verdict == "ready" and isinstance(steps, list) and not _says(c.get("bd_searched")) and any(
+                isinstance(s, dict) and isinstance(s.get("oracle"), dict) and s["oracle"].get("source") == "testcase" and not s["oracle"].get("chosen_over") for s in steps):
+            problems.append(f"{at}: a step takes its expected result from the testcase alone: say in bd_searched which design document was looked for and why it does not cover that point")
         if "timeout_s" in c and not (isinstance(c["timeout_s"], int) and not isinstance(c["timeout_s"], bool) and MIN_TIMEOUT <= c["timeout_s"] <= MAX_TIMEOUT):
             problems.append(f"{at}: timeout_s must be a whole number of seconds from {MIN_TIMEOUT} to {MAX_TIMEOUT}")
         for dep in c.get("depends_on") or []:
@@ -201,6 +213,90 @@ def validate(analysis, cases_doc, workspace):
     if problems:
         raise SchemaError(problems, "analysis")
     return analysis
+
+
+def _oracle_problems(at, n, step, refs):
+    """What a step is judged against. Order of authority: the design (BD), then the testcase, then nothing else: what the app does today is never the expectation.
+    A step taken from the design cites the design reference of the case (marked ok) and quotes it; a step taken from the testcase is allowed only for what no design covers."""
+    oracle = step["oracle"]
+    if not isinstance(oracle, dict) or oracle.get("source") not in ORACLE_SOURCES:
+        return [f"{at}: step {n} needs oracle.source: bd (the expected result comes from the design document) or testcase (no design document covers this point)"]
+    if oracle["source"] != "bd":
+        return []
+    problems = []
+    named = str(oracle.get("ref", "")).strip().lower()
+    ok_refs = [str(r.get("text", "")).strip().lower() for r in refs if isinstance(r, dict) and r.get("status") == "ok"]
+    if not named or not any(named in text or text in named for text in ok_refs if text):
+        problems.append(f"{at}: step {n} oracle.ref '{oracle.get('ref', '')}' is not one of this case's references marked ok. Name the design document and its section")
+    if not _says(oracle.get("quote"), 15):
+        problems.append(f"{at}: step {n} oracle.quote must quote what the design says (at least 15 characters)")
+    return problems
+
+
+def conflict_key(case, step):
+    return f"{case}:{step}"
+
+
+def conflict_digest(item):
+    """Identifies what the user judged: a choice holds only while the testcase text, the design text and the section stay the same."""
+    return digest({k: item.get(k) for k in ("testcase", "bd", "ref")})
+
+
+def chosen(choices, case, item):
+    """'bd', 'testcase' or None (not decided, or decided about wording that has since changed)."""
+    made = (choices or {}).get(conflict_key(case, item.get("step"))) or {}
+    return made.get("choice") if made.get("digest") == conflict_digest(item) else None
+
+
+def _conflict_problems(at, case, steps, choices=None):
+    """A testcase that contradicts the design is reported, never silently followed. The design is the default, so the step is judged against it, until the user
+    decides otherwise (they may know the design is the one that is wrong): that decision lives in the session, not in anything the assistant writes."""
+    problems = []
+    numbered = {s.get("n"): s for s in steps if isinstance(s, dict)}
+    for item in case.get("testcase_conflicts") or []:
+        if not isinstance(item, dict) or item.get("step") not in numbered or not all(_says(item.get(k), 5) for k in ("testcase", "bd", "ref")):
+            problems.append(f"{at}: each testcase_conflicts entry needs the step number, what the testcase says (testcase), what the design says (bd) and the design section (ref)")
+            continue
+        oracle = numbered[item["step"]].get("oracle")
+        user_chose_testcase = chosen(choices, case.get("id"), item) == "testcase" and isinstance(oracle, dict) and oracle.get("source") == "testcase" and oracle.get("chosen_over")
+        if not user_chose_testcase and (not isinstance(oracle, dict) or oracle.get("source") != "bd"):
+            problems.append(f"{at}: step {item['step']} contradicts the design: its oracle.source must be bd and its expected must state the design's result (the user decides, not you, if the testcase should win)")
+    return problems
+
+
+def apply_choices(document, choices):
+    """What the user decided about each conflict, written into the analysis so that everything that reads it (workers, replay, reports) sees one expectation. A step
+    the user put on the testcase is judged against the testcase and says so; the design's wording stays in the conflict. Undecided conflicts keep the design."""
+    for case in document.get("cases", []):
+        for item in case.get("testcase_conflicts") or []:
+            step = next((s for s in case.get("steps", []) if isinstance(s, dict) and s.get("n") == item.get("step")), None)
+            if step is None:
+                continue
+            decision = chosen(choices, case.get("id"), item)
+            if decision == "testcase":
+                if isinstance(step.get("oracle"), dict) and step["oracle"].get("source") == "bd":
+                    item["bd_step"] = {"expected": step["expected"], "oracle": step["oracle"]}          # kept so the user can change their mind
+                step["oracle"] = {"source": "testcase", "ref": "", "quote": "", "chosen_over": item["ref"]}
+                step["expected"] = item["testcase"]
+            elif decision == "bd" and isinstance(item.get("bd_step"), dict):
+                step["expected"], step["oracle"] = item["bd_step"]["expected"], item["bd_step"]["oracle"]
+    return document
+
+
+def conflicts(document, choices=None):
+    """Every place a testcase differs from its design, each with the user's decision ('bd', 'testcase' or None)."""
+    return [{"case": c["id"], "step": item.get("step"), "testcase": item.get("testcase"), "bd": item.get("bd"), "ref": item.get("ref"), "choice": chosen(choices, c["id"], item)}
+            for c in (document or {}).get("cases", []) if c.get("verdict") == "ready" for item in c.get("testcase_conflicts") or [] if isinstance(item, dict)]
+
+
+def pending_conflicts(document, choices=None):
+    return [c for c in conflicts(document, choices) if not c["choice"]]
+
+
+def warnings(analysis):
+    """Where a testcase differs from its design: shown to the user at review and in the strategy, since the test will follow the design."""
+    return [{"case": c["id"], **{k: item.get(k) for k in ("step", "testcase", "bd", "ref")}}
+            for c in analysis.get("cases", []) for item in c.get("testcase_conflicts") or [] if isinstance(item, dict)]
 
 
 def _vague_problems(at, c, case, refs):
@@ -278,6 +374,16 @@ def order(analysis, cases_doc):
     return out, excluded
 
 
+def _basis(step):
+    """'BD: <ref>' or 'testcase' for a step with a recorded oracle, else ''. What a FAIL on that step is judged against."""
+    oracle = step.get("oracle") if isinstance(step, dict) else None
+    if not isinstance(oracle, dict) or oracle.get("source") not in ORACLE_SOURCES:
+        return ""
+    if oracle["source"] == "bd":
+        return f"BD: {oracle.get('ref', '').strip()}"
+    return f"testcase (user chose it over BD: {oracle['chosen_over']})" if oracle.get("chosen_over") else "testcase"
+
+
 def digest(obj):
     return hashlib.sha256(json.dumps(obj, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
 
@@ -291,10 +397,10 @@ def verify_strategy(strategy_doc, analysis):
 LABELS = {
     "vi": {"title": "Chiến lược test", "run": "Sẽ chạy theo thứ tự", "skip": "Chưa chạy (cần xử lý trước)", "profile": "Profile", "deps": "Phụ thuộc", "reuse": "Tận dụng",
            "data": "Dữ liệu có thể thiếu → cách bù", "edge": "Tình huống biên", "steps": "Các bước", "clarity": "Rõ ràng", "suff": "Đủ dữ kiện", "none": "không",
-           "concrete": "Điều mơ hồ đã được cụ thể hoá thành"},
+           "concrete": "Điều mơ hồ đã được cụ thể hoá thành", "warn": "Cảnh báo: testcase lệch BD (sẽ chạy theo BD)", "tc": "Testcase", "bd": "BD", "basis": "Căn cứ"},
     "en": {"title": "Test strategy", "run": "Will run in this order", "skip": "Not run yet (needs attention)", "profile": "Profile", "deps": "Depends on", "reuse": "Reuses",
            "data": "Data that may be missing → fallback", "edge": "Edge cases", "steps": "Steps", "clarity": "Clarity", "suff": "Sufficiency", "none": "none",
-           "concrete": "Vague wording made concrete"},
+           "concrete": "Vague wording made concrete", "warn": "Warning: testcase differs from the design (the test follows the design)", "tc": "Testcase", "bd": "Design", "basis": "Basis"},
 }
 
 
@@ -303,6 +409,9 @@ def strategy(analysis, cases_doc, workspace):
     ordered, excluded = order(analysis, cases_doc)
     by_id, info = {c["id"]: c for c in analysis["cases"]}, {c["id"]: c for c in cases_doc["cases"]}
     data = {"schema_version": SCHEMA_VERSION, "order": ordered, "excluded": excluded, "analysis_sha": digest(analysis)}
+    warned = [w for w in warnings(analysis) if w["case"] in ordered]
+    if warned:
+        data["warnings"] = warned
     data["sha"] = digest(data)
     t = LABELS.get(workspace.get("language"), LABELS["en"])
     lines = [f"# {t['title']}: {cases_doc['source']['name']}", "", f"## {t['run']} ({len(ordered)})", ""]
@@ -318,7 +427,11 @@ def strategy(analysis, cases_doc, workspace):
             lines.append(f"- {t['concrete']}: " + "; ".join(f"\"{v['phrase']}\" → {v['concrete']} [{v['source']}]" for v in resolved))
         lines.append(f"- {t['edge']}: " + ("; ".join(c.get("edge_cases") or []) or c.get("edge_cases_none_reason", "")))
         lines += [f"- {t['steps']}:"] + [f"  {s['n']}. {s['action']} → {s['expected']}"
+                  + (f" [{t['basis']}: {_basis(s)}]" if _basis(s) else "")
                   + (f" [Evidence: {s['evidence']}]" if s.get("evidence") else "") for s in c["steps"]] + [""]
+    if warned:
+        lines += [f"## {t['warn']} ({len(warned)})", ""] + [
+            f"- {w['case']} bước {w['step']} ({w['ref']}): {t['tc']}: {w['testcase']} ≠ {t['bd']}: {w['bd']}" for w in warned] + [""]
     if excluded:
         lines += [f"## {t['skip']} ({len(excluded)})", ""] + [f"- {e['id']} [{e['verdict']}]: {e['reason']}" for e in excluded] + [""]
     return data, "\n".join(lines)

@@ -2,9 +2,30 @@
 import re
 from pathlib import Path
 
+from . import analysis as analysis_mod
 from . import captions, claims, events, memory, record_names, refs, retrieval, workspace
 from .state import GateError
 from .store import read_json
+
+AUTHORITY = ("Order of authority: the design (BD) first, then the testcase; what the application does today is never an expectation. Judge each step ONLY against its planned "
+             "`expected` and the source named in `steps`. Never replace a step's expected with another source (the workbook's original wording, a reference file, what the page shows): "
+             "if the page differs from the step's expected, that step FAILS, and a difference between sources is reported with `note`, not resolved by you. "
+             "`user_decisions` are the user's own rulings and are final.")
+
+
+def authority(assessed):
+    """What each step is judged against, and the rulings the user made where the testcase and the BD disagree (they chose, so the worker must not reconcile them again)."""
+    steps = [{"n": s["n"], "judged_against": analysis_mod._basis(s)} for s in (assessed or {}).get("steps", []) if analysis_mod._basis(s)]
+    conflicts = {i.get("step"): i for i in (assessed or {}).get("testcase_conflicts") or [] if isinstance(i, dict)}
+    decisions = []
+    for s in (assessed or {}).get("steps", []):
+        oracle, item = s.get("oracle"), conflicts.get(s.get("n"))
+        if isinstance(oracle, dict) and oracle.get("chosen_over") and item:
+            decisions.append(f"Step {s['n']}: the user decided this step follows the TESTCASE: expected = \"{s['expected']}\". The BD ({item['ref']}) says \"{item['bd']}\" "
+                             "but is NOT the authority for this step; if the page shows what the BD says, this step FAILS.")
+    if not steps and not conflicts:
+        return None
+    return {"rule": AUTHORITY, "steps": steps, "user_decisions": decisions}
 
 
 CODE = re.compile(r"\b(?:ERR|MSG|WARN)[_-]?\d+\b", re.I)
@@ -78,6 +99,7 @@ def build(session, case_id, screen="", issue="", *, only="", profile="", state="
         "fixture_prefix": record_names.fixture_prefix(session, case_id, prefix),
         "original": original,
         "analysis": assessed,
+        **({"authority": authority(assessed)} if authority(assessed) else {}),
         "feedback": [e for e in history if e.get("kind") == "answered"
                      and e.get("case") in (None, case_id)][-8:],
         "references": references,

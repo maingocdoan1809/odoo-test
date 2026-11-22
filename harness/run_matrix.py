@@ -15,12 +15,24 @@ from oqa.browser import launch
 from oqa.odoo_ui import Odoo
 from oqa.secrets import MemoryStore
 from oqa.state import Session
-from oqa.store import write_json
+from oqa.store import read_json, write_json
 
 HERE = Path(__file__).resolve().parent
 
 
-def model_plans(cases, data, base):
+HARNESS_NOTES = """Plan every Odoo testcase below for real browser execution. Use concise English.
+Preserve each testcase's complete intent. Consolidate into four to six meaningful evidence steps.
+The expected text must describe a specific observable state, value or error. Testcases run independently.
+Create fixture records for mutations with the keys fixture(action=key) returns; never write a literal record name or code in a step, say "a site with this run's own key". fixture apply can prepare related records
+using {"$fixture":"<key>"}; verify the application under test through the UI. Do not skip steps.
+For import cases use the native wizard and provided CSV templates. Include any failure/recovery specified.
+H12 uses Operator and Manager, and must re-find the case's own record after switching accounts.
+H18's BD says Submitted Manager sees Approve and Reset to Draft; Submit is absent before and after reload in Submitted.
+H19's test persona grants permission to create the test data. H20 will be skipped by the test persona.
+"""
+
+
+def model_plans(cases, data, base, notes=None):
     screens = {
         node["model"]: f"{base}/odoo/action-{key.split(':')[-1]}"
         for key, node in data["nodes"].items()
@@ -41,16 +53,7 @@ def model_plans(cases, data, base):
         }}},
         "required": ["cases"],
     }
-    prompt = """Plan every Odoo testcase below for real browser execution. Use concise English.
-Preserve each testcase's complete intent. Consolidate into four to six meaningful evidence steps.
-The expected text must describe a specific observable state, value or error. Testcases run independently.
-Create fixture records for mutations with unique ZZ_AUTOTEST_ keys. fixture apply can prepare related records
-using {"$fixture":"ZZ_AUTOTEST_..."}; verify the application under test through the UI. Do not skip steps.
-For import cases use the native wizard and provided CSV templates. Include any failure/recovery specified.
-H12 uses Operator and Manager, and must re-find the case's own record after switching accounts.
-H18's BD says Submitted Manager sees Approve and Reset to Draft; Submit is absent before and after reload in Submitted.
-H19's test persona grants permission to create the test data. H20 will be skipped by the test persona.
-
+    prompt = (notes if notes is not None else HARNESS_NOTES) + """
 Harness screen routes:
 """ + json.dumps(screens) + "\n\nCases:\n" + json.dumps(cases, ensure_ascii=False)
     result = subprocess.run(
@@ -125,7 +128,28 @@ def review(session, document, ws, cases):
     session.analysis_submitted(document=document)
 
 
-def run():
+def seed_conflict(session, document, cases, ws, choice):
+    """OQA_MATRIX_CONFLICT=bd|testcase: H18's testcase says the opposite of its BD on step 3. The harness persona (standing in for the user) chooses which one the test follows."""
+    item = next((c for c in document["cases"] if c["id"] == "H18"), None)
+    if not item or item["verdict"] != "ready":
+        raise SystemExit("OQA_MATRIX_CONFLICT needs H18 selected and ready")
+    step = next(s for s in item["steps"] if s["n"] == 3)
+    step["expected"] = "Approve and Reset to Draft are visible and Submit is absent."
+    step["oracle"] = {"source": "bd", "ref": "BD-H18.txt", "quote": "a Manager sees Approve and Reset to Draft. Submit is hidden."}
+    item["testcase_conflicts"] = [{"step": 3, "testcase": "Submit is still visible and Approve is absent after submission",
+                                   "bd": "Approve and Reset to Draft visible, Submit hidden", "ref": "BD-H18.txt"}]
+    analysis.validate(document, cases, ws)
+    session.analysis_submitted(document=document)
+    code, answer = dashboard_server.Dashboard((session.ws, session.id)).handle(
+        "POST", "/api/conflict", {}, {"ws": session.ws, "id": session.id, "case": "H18", "step": 3, "choice": choice})
+    assert code == 200 and answer.get("ok"), answer
+    print(f"Harness persona chose to follow the {choice} for H18 step 3", flush=True)
+
+
+def run(suite=None):
+    """`suite` (harness/run_complex.py) swaps the workbook, reference folder, workspace name and planner notes, and makes a non-PASS a reported result instead of an assertion."""
+    suite = suite or {}
+    sys.stdout.reconfigure(encoding="utf-8")         # case reasons are Vietnamese; a Windows console code page must not abort the run after the workers finished
     root = Path(mkdtemp(prefix="oqa-real-matrix-"))
     os.environ["ODOO_TEST_HOME"] = str(root)
     print("Matrix log folder:", root, flush=True)
@@ -134,8 +158,8 @@ def run():
     accounts = [{"name": name, "login": "oqa-smoke-" + name.lower()} for name in ("Manager", "Operator")]
     password = os.environ["OQA_SMOKE_PASSWORD"]
     store = MemoryStore()
-    ws = workspace.save({"name": "harness-matrix", "url": base, "db": "oqa_harness",
-                         "profiles": accounts, "reference_dirs": [str(HERE / "fixtures")]},
+    ws = workspace.save({"name": suite.get("workspace", "harness-matrix"), "url": base, "db": "oqa_harness",
+                         "profiles": accounts, "reference_dirs": [str(suite.get("fixtures", HERE / "fixtures"))]},
                         store, {account["name"]: password for account in accounts})
     store.set(workspace.secret_ref(ws["name"], "Mapper"), password)
     with launch() as new_page:
@@ -143,24 +167,32 @@ def run():
         connect.login(page, ws, {"name": "Mapper", "login": os.environ["OQA_SMOKE_MAPPER"]}, store)
         data = sitemap.build(Odoo(page, base).rpc, profile="Mapper")
         sitemap.save(ws["name"], data)
-    workbook = root / "odoo-harness-20.xlsx"
-    shutil.copy2(HERE / workbook.name, workbook)
-    cases = intake.select(intake.build(workbook, [HERE / "fixtures"]), os.environ.get("OQA_MATRIX_CASES"))
+    workbook = root / suite.get("workbook", "odoo-harness-20.xlsx")
+    shutil.copy2(HERE / suite.get("source", workbook.name), workbook)
+    cases = intake.select(intake.build(workbook, [suite.get("fixtures", HERE / "fixtures")]), os.environ.get("OQA_MATRIX_CASES"))
     session = Session.create(ws["name"], workbook, cases, channel="path")
     print("Matrix session:", session.id, "cases:", len(cases["cases"]), flush=True)
-    plans = model_plans(cases["cases"], data, base)
+    plans = model_plans(cases["cases"], data, base, suite.get("notes"))
     document = analysis.template(cases, ws, session)
     for item, original in zip(document["cases"], cases["cases"]):
         plan = plans[item["id"]]
         drafted = plan["steps"]
         if item["id"] == "H20" and not drafted:
             drafted = [{"action": step, "expected": "Await the referenced specification."} for step in original["steps"]]
-        item.update(profile=original["role"], verdict="ready", clarity={"score": 4, "notes": "Harness specification"},
+        item.update(profile=original["role"].split(",")[0].strip(),   # a case that uses two roles starts as the first
+                     verdict="ready", clarity={"score": 4, "notes": "Harness specification"},
                     sufficiency={"score": 4, "missing": []}, edge_cases=plan["edges"] or ["Data from previous runs"],
                     steps=[dict(step, n=index) for index, step in enumerate(drafted, 1)])
-    review(session, document, ws, cases)
+    if suite:
+        analysis.validate(document, cases, ws)
+        session.analysis_submitted(document=document)
+    else:
+        review(session, document, ws, cases)
+    conflict_choice = os.environ.get("OQA_MATRIX_CONFLICT")
+    if conflict_choice:
+        seed_conflict(session, document, cases, ws, conflict_choice)
     connect.connect(session, ws, store)
-    strategy, markdown = analysis.strategy(document, cases, ws)
+    strategy, markdown = analysis.strategy(read_json(session.dir / "analysis.json"), cases, ws)      # the saved analysis (retrieval context stripped), as `oqa strategy` reads it
     write_json(session.dir / "strategy.json", strategy)
     (session.dir / "strategy.md").write_text(markdown, encoding="utf-8")
     session.strategy_ready(strategy["sha"])
@@ -168,7 +200,7 @@ def run():
     result = dashboard.handle("POST", "/api/confirm", {}, {"ws": session.ws, "id": session.id})
     assert result == (200, {"ok": True}), result
     print("Harness persona approved:", ", ".join(strategy["order"]), flush=True)
-    outcome = dispatch.run(session, "haiku", "sonnet", 420) if strategy["order"] else {"results": {}}
+    outcome = dispatch.run(session, "haiku", "sonnet", suite.get("timeout", 420)) if strategy["order"] else {"results": {}}
     print(json.dumps(outcome, ensure_ascii=False, indent=2), flush=True)
     result = report.finish(session, ws) if session.state()["phase"] == "REPORT" else report.build(session, ws)
     output = Path(os.environ.get("OQA_SMOKE_OUT") or root).resolve()
@@ -195,7 +227,13 @@ def run():
             replays = dict(pool.map(replay_twice, passed))
         write_json(output / "matrix-replay.json", replays)
         assert all(attempt["status"] == "PASS" for attempts in replays.values() for attempt in attempts), "Some scripts did not pass both replays."
-    assert all(outcome["results"].get(case, {}).get("status") == "PASS" for case in strategy["order"]), "Matrix contains unresolved cases."
+    wanted = {case: "PASS" for case in strategy["order"]}
+    if conflict_choice == "testcase":
+        wanted["H18"] = "FAIL"          # the user put the test on a testcase the application contradicts: a FAIL, judged against the testcase
+    if suite and not suite.get("strict", True):
+        print("Results:", {case: outcome["results"].get(case, {}).get("status", "NO RESULT") for case in strategy["order"]}, flush=True)
+        return outcome
+    assert all(outcome["results"].get(case, {}).get("status") == status for case, status in wanted.items()), f"Matrix results differ from {wanted}."
     print(f"Passed {len(strategy['order'])} runnable cases.", flush=True)
 
 
