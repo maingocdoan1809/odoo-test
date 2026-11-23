@@ -32,7 +32,7 @@ def copy_skill(target, *, include_hooks=True):
 
 
 def hooks_json():
-    run = lambda script: 'sh -c \'P=$(command -v python3 || command -v python); exec "$P" "${CLAUDE_PLUGIN_ROOT}/hooks/%s"\'' % script
+    run = lambda script: 'sh -c \'for P in python3 python py; do "$P" -c "" >/dev/null 2>&1 && exec "$P" "${CLAUDE_PLUGIN_ROOT}/hooks/%s"; done; echo "odoo-test hook: no working python" >&2; exit 1\'' % script
     return {"hooks": {"PreToolUse": [{"matcher": "Bash|Write|Edit|MultiEdit|Read|Grep", "hooks": [{"type": "command", "command": run("guard.py")}]}],
                       "UserPromptSubmit": [{"hooks": [{"type": "command", "command": run("prompt.py")}]}],
                       "Stop": [{"hooks": [{"type": "command", "command": run("stop.py")}]}]}}

@@ -6,11 +6,11 @@ hooks:
     - matcher: "Bash|Write|Edit|MultiEdit|Read|Grep"
       hooks:
         - type: command
-          command: "sh -c 'P=$(command -v python3 || command -v python); exec \"$P\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\"'"
+          command: "sh -c 'for P in python3 python py; do \"$P\" -c \"\" >/dev/null 2>&1 && exec \"$P\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\"; done; echo \"odoo-test hook: no working python\" >&2; exit 1'"
   Stop:
     - hooks:
         - type: command
-          command: "sh -c 'P=$(command -v python3 || command -v python); exec \"$P\" \"${CLAUDE_PLUGIN_ROOT}/hooks/stop.py\"'"
+          command: "sh -c 'for P in python3 python py; do \"$P\" -c \"\" >/dev/null 2>&1 && exec \"$P\" \"${CLAUDE_PLUGIN_ROOT}/hooks/stop.py\"; done; echo \"odoo-test hook: no working python\" >&2; exit 1'"
 ---
 
 # odoo-test
