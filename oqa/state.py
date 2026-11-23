@@ -346,7 +346,8 @@ class Session:
 
     # --- what only the user does: stop, resume, hint ------------------------------------
     def stop(self, by):
-        """The user stops the test. The runner finishes the step it is on and does not start another; every working command is refused until `resume`."""
+        """The user stops the test: every working command is refused until `resume`, the session's workers, Playwright daemons and browsers are ended, every claim
+        is given back and each run left open is recorded as STOPPED (see halt.py). Returns what was cleaned up."""
         with self.update() as state:
             if state["phase"] == "DONE":
                 raise GateError("The session is finished.")
@@ -354,8 +355,15 @@ class Session:
                 raise GateError("Already stopped.")
             state["stopped"] = {"by": by, "at": time.strftime("%Y-%m-%d %H:%M:%S")}
             events.append(self.dir, "stopped", by=by)
+        from . import halt
+
+        return halt.stop_work(self)                      # outside the lock: the flag is already on, so nothing new starts while the old work is ended
 
     def resume(self, by):
+        from . import halt
+
+        if self.state().get("stopped"):
+            halt.close_open_attempts(self, "Stopped by the user")       # a session stopped by an older version left its runs open
         with self.update() as state:
             if not state.get("stopped"):
                 raise GateError("The test is not stopped.")

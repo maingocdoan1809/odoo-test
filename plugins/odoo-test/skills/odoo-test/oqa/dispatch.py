@@ -183,7 +183,7 @@ def run(session, worker_model, coordinator_model, timeout):
                     message, problem = task.result()
                 except Exception as error:
                     message, problem = f"Worker could not continue: {str(error).splitlines()[0]}", None
-                if message and case not in session.state()["results"]:
+                if message and case not in session.state()["results"] and not session.state().get("stopped"):       # a worker the user's Stop ended did not fail
                     dispatch_requests.note_failure(session, case, message)              # shown beside the case, apart from its result
                 state = session.state()
                 verdict = state["results"].get(case)

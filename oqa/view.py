@@ -165,7 +165,7 @@ def case_records(session: Session):
                 for recorded in ran:
                     if recorded["n"] == supplement["n"]:
                         recorded["images"].extend(supplement["images"])
-            attempts.append({"n": n, "status": ended["status"] if ended else "RUNNING", "reason": ended["reason"] if ended else "", "failed_step": ended.get("failed_step") if ended else None,
+            attempts.append({"n": n, "status": ended["status"] if ended else ("STOPPED" if state.get("stopped") else "RUNNING"), "reason": ended["reason"] if ended else "", "failed_step": ended.get("failed_step") if ended else None,
                              "from_step": from_step,
                              "steps": _steps(planned or [{"n": i, "action": s, "expected": ""} for i, s in enumerate(case["steps"], 1)],
                                              ran, carried, running=not ended and not state.get("stopped"))})
@@ -183,6 +183,8 @@ def case_records(session: Session):
             status = "HELD"
         else:
             status = "NEW"
+        if state.get("stopped") and status in LIVE:
+            status = "STOPPED"                                 # the user stopped the test: no case is shown as running, repairing or exploring
         repairs = [{k: e[k] for k in ("ts", "attempt", "cause", "evidence", "change", "reanalysis", "probed", "timeout_s", "unchanged_reason") if k in e} for e in mine if e["kind"] == "repair"]
         generalized = next((generalize.effective({k: e.get(k) for k in ("status", "attempt", "note", "ts")}) for e in reversed(mine) if e["kind"] == "script_generalized"), None)
         saved = (saved_replays.get(ident) or {}).get("latest")

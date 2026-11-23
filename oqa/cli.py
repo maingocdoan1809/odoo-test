@@ -902,8 +902,16 @@ def cmd_wait(args):
 
 def cmd_stop(args):
     session = Session.open(args.ws, args.session)
-    session.stop("terminal")
-    return {"stopped": True}, "Stopped. The step in progress finishes; nothing else starts until `oqa resume`."
+    done = session.stop("terminal")
+    return {"stopped": True, **done}, (f"Stopped. Ended {done['killed']} process(es) of this session, gave back {len(done['released'])} claim(s) and marked "
+                                       f"{len(done['closed'])} open run(s) STOPPED. Nothing starts until the user resumes.")
+
+
+def cmd_repair(args):
+    session = Session.open(args.ws, args.session)
+    note = session.repair(args.case, args.cause, args.evidence, args.change, reanalysis=args.reanalysis or "", timeout_s=args.timeout,
+                          unchanged_reason=args.unchanged or "")
+    return note, f"Repair note for {args.case} (run {note['attempt']}) recorded. Next: oqa run {args.case}"
 
 
 def cmd_resume(args, is_tty=None):
@@ -1088,6 +1096,14 @@ def build_parser():
     p.add_argument("--status", required=True, choices=["FAIL", "BLOCKED", "PENDING"])
     p.add_argument("--reason", required=True)
     p.add_argument("--category", choices=["automation", "precondition"], help="BLOCKED/PENDING: automation issue or missing test precondition")
+    p = add("repair", cmd_repair, "after a failed run: record the cause, the evidence and the change; the next run of the case needs it")
+    p.add_argument("case")
+    p.add_argument("--cause", required=True)
+    p.add_argument("--evidence", required=True)
+    p.add_argument("--change", required=True)
+    p.add_argument("--reanalysis", help="when the same failure came twice: how you now read the case")
+    p.add_argument("--timeout", type=int, help="seconds for this case's steps")
+    p.add_argument("--unchanged", help="why the script is unchanged (for example: data created through the UI)")
     p = add("sitemap", cmd_sitemap, "the map of this Odoo's screens: build it once, then find a screen, its buttons or the way between two screens")
     p.add_argument("what", choices=["build", "show", "find", "buttons", "fields", "path", "codegen"])
     p.add_argument("target", nargs="?", help="find: words; buttons / fields: a screen (key or words); path: the screen to reach")

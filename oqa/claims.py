@@ -120,6 +120,14 @@ def release(session, case, missing_ok=False):
         write_json(_file(session), data)
 
 
+def release_all(session):
+    """Give back every claim (the cases that were held, sorted). Used when the user stops the test: nobody works on anything any more."""
+    with locked(_file(session)):
+        held = sorted(read_json(_file(session), {}) or {})
+        write_json(_file(session), {})
+    return held
+
+
 def assign(session, case, agent):
     """Give a case straight to a named agent (a handover): the lease starts now."""
     if not agent:
