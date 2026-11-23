@@ -15,33 +15,51 @@ hooks:
 
 # odoo-test
 
-Use `python "<folder containing this SKILL.md>/oqa.py" <command>`, abbreviated as `oqa`. Keep the workspace and session ID from intake and pass them explicitly to worker commands. Write AI-authored testcase steps, expected results, analysis, questions and observations in Vietnamese. Quote exact Odoo text in its original language. For each replayable step, fill `captions.en` and `captions.ja` with a short equivalent of the Vietnamese action. Use the workspace's Evidence caption language for supplemental `--caption` text on screenshots.
+Use `python "<folder containing this SKILL.md>/oqa.py" <command>`, abbreviated as `oqa`. Keep the workspace and session ID from intake and pass them explicitly to worker commands.
 
-Give every analysed case a concise Vietnamese title that describes the behavior being checked, for example “Chặn số lượng âm khi lưu phiếu”. Keep the workbook ID for traceability. Use a short business term for `fixture_name` and a descriptive `--label` for each generated record, for example “phiếu hai dòng” and “mặt hàng đối chứng”. The tool supplies the `AUTO_TEST_` prefix and run suffix automatically.
+## Ngôn ngữ
+
+- Bước testcase, kết quả mong đợi, phân tích, câu hỏi và quan sát do AI viết: tiếng Việt.
+- Text hiển thị trong Odoo: trích nguyên văn, đúng ngôn ngữ gốc của giao diện.
+- Mỗi bước replay được: điền `captions.en` và `captions.ja`, ngắn gọn, tương đương hành động tiếng Việt.
+- `--caption` bổ sung trên ảnh chụp: dùng Evidence caption language của workspace.
+- Mỗi case phân tích có tiêu đề tiếng Việt ngắn nêu hành vi được kiểm tra, ví dụ "Chặn số lượng âm khi lưu phiếu". Giữ ID của workbook để truy vết.
+
+## Căn cứ: BD (thiết kế) > testcase > app
+
+- Mỗi bước phân tích ghi `oracle` = `{source: bd|testcase, ref, quote}`.
+- `bd`: trích đúng đoạn BD (ref là tài liệu đã đánh dấu ok kèm mục).
+- `testcase`: chỉ khi không BD nào bao phủ điểm đó; case điền `bd_searched` (đã tìm BD nào, vì sao không bao phủ).
+- App sai so với BD, hoặc sai so với testcase khi không có BD, là FAIL. `oqa live end` ghi căn cứ vào lý do.
+- Testcase mâu thuẫn BD: ghi `testcase_conflicts` `[{step, testcase, bd, ref}]`, bước đó chạy theo BD, người dùng được cảnh báo khi nộp phân tích và trong strategy.
+- Hành vi hiện tại của app không bao giờ là căn cứ.
 
 ## Workbook run
 
-1. Run `oqa run start --file <workbook> [--cases <selection>]` as a background task. The command opens the workspace picker and returns once the user saves. Use `--channel addin` when invoked from Excel. If a specific dependency is missing, check `oqa doctor`. Install Claude hooks only as platform setup.
-2. Get `oqa analyze --template`. Read each case’s `_context.sitemap` for possible routes and `_context.knowledge` for applicable validations, conditions, evidence and known pitfalls. Check the workbook and cited references before adopting a rule. Expand steps into observable UI actions and checks, each with an `evidence` description and the control or region to frame. Read [evidence requirements](references/evidence.md). Plan case-owned records and comparison data when needed. Visual-only checks use existing UI unless the assertion needs a particular state. Use [case retrieval](references/contract.md#case-retrieval) to fetch a missing or ambiguous route or rule on demand.
-3. Submit with `oqa analyze --submit <file>`. The dashboard shows the original and assessed cases. Each case needing input has its own question and skip button. Monitor with `oqa wait --until reviews`. When reviews finish, fetch the template again, read feedback/references and resubmit **in the same workspace/session**: overwrite the analysis and rebuild the strategy there. The first review and final confirmation belong to one run; do not call `session new` between them. Connect with `oqa connect`, build the final scope with `oqa strategy`, and monitor user approval with `oqa wait`. The user approves on the dashboard.
-4. Run `oqa dispatch` in the background when using the Claude worker backend. It leases up to five cases to Haiku and consults Sonnet for recovery. For host-managed workers, assign ready cases with `oqa claim --agent WORKER --case ID --packet`. Run dependent cases after their prerequisites pass. Use [worker instructions](references/agents.md). If a host worker stopped, use `oqa live recover ID --reason <diagnosis>` and reassign once. Use `oqa fixture plan <screen>` for fields, route and example commands. Exchange requests and results with `oqa note` and `oqa notes`.
-5. A worker opens its signed-in browser with `oqa live start ID`, reads the live UI, acts, and records the outcome of each planned step with `oqa live step`. Capture each action and intermediate state: form opened, fields filled, action button before clicking, and result after clicking. Use `oqa live shot --caption TEXT` for supporting checkpoints; repeated shots are retained with the step's result picture. Frame a unique visible target relevant to that image; inspect screenshots and fix incorrect frames. For an absent element, frame the smallest relevant parent view. To assemble a replay script automatically, include `--verified-code <file> --shows <expected visible text>` per step. Include only actions chosen for the final path. Use observable waits. Finish with `oqa live end ID --status <status>`.
-6. Run `oqa report` and return the result path. Path runs save a copy beside the source. Add-in runs write into the matching workbook open in desktop Excel on Windows. The dashboard can download reports and a ZIP with runnable scripts and replay saved cases. Before saving a reusable rule or verified workaround, read `oqa knowledge search --screen MODEL --kind KIND`. Reuse the existing scope if the business condition is the same. `oqa knowledge learn` adds missing facts, evidence or sources to that entry. Save the rule with a design reference or user confirmation and keep the current case's verdict in its result.
+1. `oqa run start --file <workbook> [--cases <selection>]` chạy nền. Lệnh mở workspace picker và trả về khi người dùng lưu. Dùng `--channel addin` khi gọi từ Excel. Thiếu phụ thuộc thì xem `oqa doctor`.
+2. `oqa analyze --template`. Đọc `_context.sitemap` (route khả dĩ) và `_context.knowledge` (validation, điều kiện, evidence, lỗi đã biết) của từng case; kiểm tra workbook và tài liệu trích dẫn trước khi nhận một quy tắc. Mở rộng bước thành hành động và kiểm tra quan sát được trên UI, mỗi bước có mô tả `evidence` và control/vùng cần khoanh. Đọc [evidence](references/evidence.md). Thiếu hoặc mơ hồ route/quy tắc: [case retrieval](references/contract.md#case-retrieval).
+3. `oqa analyze --submit <file>`. Dashboard hiện case gốc và case đã phân tích; case cần input có câu hỏi và nút bỏ qua riêng. Theo dõi bằng `oqa wait --until reviews`. Xong review thì lấy lại template, đọc feedback/references và nộp lại **trong cùng workspace/session** (không gọi `session new` giữa chừng). Sau đó `oqa connect`, `oqa strategy`, và `oqa wait` chờ người dùng duyệt trên dashboard.
+4. Chạy `oqa dispatch` nền (backend worker Claude: tối đa 5 case cho Haiku, Sonnet hỗ trợ khi cần phục hồi), hoặc với worker do host quản lý: `oqa claim --agent WORKER --case ID --packet`. Case phụ thuộc chạy sau case tiền đề. Xem [worker](references/agents.md). Worker dừng: `oqa live recover ID --reason <chẩn đoán>` rồi giao lại một lần. Trao đổi bằng `oqa note` / `oqa notes`.
+5. Worker: `oqa live start ID`, đọc UI thật, thao tác, ghi từng bước bằng `oqa live step`. Chụp mọi hành động và trạng thái trung gian (mở form, điền trường, nút trước khi bấm, kết quả sau khi bấm) bằng `oqa live shot --caption TEXT`. Khoanh một đích nhìn thấy, duy nhất, liên quan ảnh; kiểm tra ảnh và sửa khung sai. Phần tử vắng mặt thì khoanh view cha nhỏ nhất. Kết thúc `oqa live end ID --status <status>`.
+6. `oqa report` và trả đường dẫn kết quả. Chạy bằng path: lưu bản sao cạnh file nguồn. Chạy add-in: ghi vào workbook đang mở trong Excel desktop (Windows).
 
-Kế hoạch phải sống được qua lần chạy lại: script lưu sẽ chạy lại vào ngày khác trên bản ghi khác. Mỗi case khai báo `replay_records`: danh sách `{record, how, detail}` cho mọi bản ghi case tạo hoặc dùng, với `how` là `run_key` (khóa riêng của lần chạy từ `oqa fixture key`), `captured` (id lưu vào biến bằng `capture_id`, `detail` là tên biến, dùng `$OQA_ID(tên)`) hoặc `existing_ref` (`detail` là text của một tham chiếu đã khai báo). Case không dùng bản ghi nào thì ghi lý do vào `replay_records_none_reason`. Trình kiểm tra chỉ xét khai báo này, không đọc câu chữ của bước; script có sống qua lần chạy sau hay không do lần replay kiểm chứng.
+## Kết luận
 
-Thứ tự căn cứ: **BD (thiết kế) > testcase > app**. Mỗi bước phân tích ghi `oracle` = `{source: bd|testcase, ref, quote}`: `bd` trích đúng đoạn BD (ref là tài liệu đã đánh dấu ok kèm mục), `testcase` chỉ khi không có BD nào bao phủ điểm đó (và case điền `bd_searched`: đã tìm BD nào, vì sao không bao phủ). App sai so với BD, hoặc sai so với testcase khi không có BD, là FAIL (`oqa live end` ghi căn cứ vào lý do). Testcase mâu thuẫn BD thì ghi vào `testcase_conflicts` `[{step, testcase, bd, ref}]`, bước đó chạy theo BD và người dùng được cảnh báo khi nộp phân tích và trong strategy; không tự coi là lỗi của app. Hành vi hiện tại của app không bao giờ là căn cứ.
+- FAIL: app khác kỳ vọng; cần `--control` (phần tử đã thao tác và cách xác minh đó là đúng phần tử).
+- Lỗi script, selector, trình duyệt hay thiếu điều kiện tiên quyết là BLOCKED/PENDING, cần `oqa live diagnose CASE --category automation|precondition ...` trước. Không đóng case chỉ vì không thấy selector hay hết thời gian.
+- Mã thông báo (ERR_xxx) nằm trong tài liệu thiết kế: so text thông báo theo ngôn ngữ UI (`oqa case context` liệt kê), không đòi mã hiện trên màn hình.
+- PASS phải hiện giá trị mà kỳ vọng nêu (số lượng, ngày, nội dung), không phải nhãn lúc nào cũng có.
+- Chuyển case đang chạy cho worker khác mà không mất bước hay ngân sách phục hồi: `oqa live handover CASE --reason ... [--to WORKER]`, worker mới chạy `oqa live start CASE`.
+
+## Dữ liệu và replay (quy tắc không được bỏ)
+
+- Mọi tên/mã bản ghi do case tạo lấy từ `oqa fixture key`. Gõ tên cố định kiểu `AUTO_TEST_x` bị từ chối; bước kế hoạch không ghi tên hay mã cố định.
+- Fixture tạo qua màn hình, không bằng ORM write hay sửa DOM. Chi tiết và lệnh: [fixtures](references/fixtures.md). `fixture_name` dùng thuật ngữ nghiệp vụ ngắn; công cụ tự thêm `AUTO_TEST_` và hậu tố.
+- Kế hoạch phải sống được qua lần chạy lại. Mỗi case khai báo `replay_records` (hoặc `replay_records_none_reason`). Chi tiết, tốc độ, kết quả Live/Replay: [replay](references/replay.md).
+- Chạy lại script trên môi trường khác: [regression](references/regression.md).
+
+## Knowledge
+
+Trước khi lưu quy tắc hay cách xử lý đã xác minh, đọc `oqa knowledge search --screen MODEL --kind KIND`. Cùng điều kiện nghiệp vụ thì dùng lại entry cũ; `oqa knowledge learn` bổ sung fact, evidence hoặc nguồn còn thiếu. Lưu quy tắc kèm tham chiếu thiết kế hoặc xác nhận của người dùng; verdict của case hiện tại vẫn ghi trong kết quả của nó.
 
 Public formats: [contract](references/contract.md). Odoo conventions: [Odoo reference](references/odoo.md).
-
-Conclusions have a kind. FAIL means the application differs from the expectation and needs `--control` (the element operated and how it was verified to be the intended one). A script, selector or browser problem, or a missing precondition, is BLOCKED/PENDING and needs `oqa live diagnose CASE --category automation|precondition ...` first; never close because a selector was not found or time ran out. Message codes (ERR_xxx) live in the design document: compare the message text in the UI language (`oqa case context` lists each code's text), never require the literal code on screen. A PASS must show the value the expectation names (a count, date or content), not a label that is always there. To pass a running case to another worker without losing steps or spending recovery budget: `oqa live handover CASE --reason ... [--to WORKER]`, then the new worker runs `oqa live start CASE`.
-
-Live and Replay are separate results. Live PASS/FAIL is the run that produced the evidence. Replay PASS/FAIL/CANCELLED/NOT RUN (`oqa live replay CASE|all`) is shown separately on the dashboard and in Excel. The visible replay shows the current step and closes its window when finished. Closing that window cancels the replay and stops any remaining cases in the batch. Fast mode (`--fast`, or the dashboard's "Chạy nhanh" switch) sets both viewing pauses to 0.
-
-Mỗi lần chạy tự chuẩn bị dữ liệu của lần đó: tên và mã của mọi bản ghi do case tạo (kể cả gõ tay vào form) lấy từ `oqa fixture key`; một thao tác gõ tên cố định kiểu `AUTO_TEST_x` bị từ chối, vì tên cố định va vào dữ liệu lần trước để lại (ràng buộc duy nhất, bản ghi không xóa được) và case sẽ đánh giá dữ liệu sót thay vì ứng dụng. Bước kế hoạch không ghi tên hay mã cố định, chỉ nói "bản ghi có khóa riêng của lần chạy".
-
-Fixtures are created through the screen, never by ORM write or DOM edits: `oqa fixture key --case ID --label NAME` (a key unique to this run), `oqa fixture ui ledger|license_user|contract --case ID --key FIELD --values-json ...` (relations as `{"$ref": "existing record"}` read only or `{"$fixture": "key"}`; relative dates as `{"$date": -180}`), `oqa fixture ref MODEL --case ID --value NAME`, and `oqa fixture cleanup --case ID [--run rXXXX] [--apply]` for the data this run created.
-
-Replay speed is adjustable on the dashboard or with `oqa live replay ID --action-delay-ms 1000 --step-delay-ms 2000`. Defaults are 700 ms after each action and 1500 ms after each checked step; 0 disables that pause. Keep these viewing pauses out of saved action code. `timeout_s` remains the maximum wait for an application condition and does not control viewing speed. Repeated `run start` calls reuse a matching pending review session; use `--new-session` only for a separate run.
-
-Regression: a workspace lists its environments (`main` plus staging, production... with their own logins and passwords) in `oqa init`. `oqa regress --env NAME` replays every saved script there and records PASS/FAIL per script and environment (exit code 1 on a failure); `oqa regress --matrix` and the dashboard's Scripts tab show them, each script linked to its testcase. A script run by hand (`node replay.mjs`, `OQA_ENV=NAME`) writes `result.json` and exits 0/1; `oqa results import <folder>` puts it on the dashboard. `--video on|fail` records a video with a note of each step (`fail` keeps only failed ones; off with `--fast`).
