@@ -20,8 +20,13 @@ def secret_ref(ws, profile, env=None):
     return f"oqa:{ws}:{profile}" if not env or env == MAIN_ENV else f"oqa:{ws}:{profile}:{env}"
 
 
+def pgadmin_secret_ref(ws, kind="login"):
+    """Where the PgAdmin sign-in password (kind login) or the database password PgAdmin asks for (kind db) is kept."""
+    return f"oqa:{ws}:pgadmin" if kind == "login" else f"oqa:{ws}:pgadmin-db"
+
+
 def blank(name=""):
-    return {"schema_version": SCHEMA_VERSION, "name": name, "url": "", "db": "", "profiles": [], "environments": [], "reference_dirs": [], "language": "vi", "test_prefix": DEFAULT_TEST_PREFIX}
+    return {"schema_version": SCHEMA_VERSION, "name": name, "url": "", "db": "", "pgadmin_url": "", "pgadmin_server": "", "pgadmin_login": "", "pgadmin_db": "", "profiles": [], "environments": [], "reference_dirs": [], "language": "vi", "test_prefix": DEFAULT_TEST_PREFIX}
 
 
 def test_prefix(value):
@@ -51,7 +56,11 @@ def normalize(raw):
             accounts = [{"profile": str(a.get("profile", "")).strip(), "login": str(a.get("login", "")).strip()}
                         for a in e.get("accounts") or [] if isinstance(a, dict) and (str(a.get("profile", "")).strip() or str(a.get("login", "")).strip())]
             environments.append({"name": str(e.get("name", "")).strip(), "url": env_url.rstrip("/"), "db": str(e.get("db", "")).strip(), "accounts": accounts})
+    pgadmin_url = text("pgadmin_url")
+    if pgadmin_url and not re.match(r"^[a-z][a-z0-9+.-]*://", pgadmin_url, re.I):
+        pgadmin_url = "http://" + pgadmin_url
     return {"schema_version": SCHEMA_VERSION, "name": text("name"), "url": url.rstrip("/"), "db": text("db"), "profiles": profiles, "environments": environments,
+            "pgadmin_url": pgadmin_url.rstrip("/"), "pgadmin_server": text("pgadmin_server"), "pgadmin_login": text("pgadmin_login"), "pgadmin_db": text("pgadmin_db"),
             "reference_dirs": [str(d).strip() for d in raw.get("reference_dirs") or [] if str(d).strip()],
             "language": text("language", "vi") or "vi",
             "evidence_language": text("evidence_language", "vi") or "vi",
@@ -68,6 +77,14 @@ def validate(ws):
     parsed = urlparse(ws.get("url", ""))
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         problems.append("URL: enter the address you open in the browser, for example http://localhost:8069")
+    if ws.get("pgadmin_url"):
+        pg = urlparse(ws["pgadmin_url"])
+        if pg.scheme not in ("http", "https") or not pg.netloc:
+            problems.append("PgAdmin: enter the address you open in the browser, for example http://localhost:5050")
+        if not ws.get("pgadmin_login"):
+            problems.append("PgAdmin: enter the login (email) used to sign in.")
+        if not (ws.get("pgadmin_db") or ws.get("db")):
+            problems.append("PgAdmin: enter the database name (or fill Database above).")
     if not ws.get("profiles"):
         problems.append("Profiles: add at least one (for example Admin).")
     seen = set()
@@ -145,6 +162,8 @@ def public_view(ws, store: SecretStore):
     """Safe to show anywhere (the form, `oqa ws show`, the assistant): each profile says only whether a password is saved."""
     view = dict(ws)
     view["profiles"] = [dict(p, has_secret=store.has(secret_ref(ws["name"], p["name"]))) for p in ws.get("profiles", [])]
+    view["has_pgadmin_secret"] = store.has(pgadmin_secret_ref(ws["name"]))
+    view["has_pgadmin_db_secret"] = store.has(pgadmin_secret_ref(ws["name"], "db"))
     view["environments"] = [dict(e, accounts=[dict(a, has_secret=store.has(secret_ref(ws["name"], a["profile"], e["name"]))) for a in e.get("accounts", [])])
                             for e in ws.get("environments", [])]
     return view
@@ -180,5 +199,14 @@ def save(raw, store: SecretStore, passwords=None):
         for account in old_env.get("accounts", []):
             if (account.get("profile"), old_env.get("name")) not in keep:
                 store.delete(secret_ref(ws["name"], account["profile"], old_env["name"]))
+    if ws["pgadmin_url"]:
+        if not passwords.get("@pgadmin") and not store.has(pgadmin_secret_ref(ws["name"])):
+            raise SchemaError("PgAdmin needs a password.", "workspace")
+        for key, kind in (("@pgadmin", "login"), ("@pgadmin-db", "db")):
+            if passwords.get(key):
+                store.set(pgadmin_secret_ref(ws["name"], kind), passwords[key])
+    else:                                                      # PgAdmin switched off: its passwords go too
+        store.delete(pgadmin_secret_ref(ws["name"]))
+        store.delete(pgadmin_secret_ref(ws["name"], "db"))
     write_json(workspace_dir(ws["name"]) / "workspace.json", ws)
     return ws

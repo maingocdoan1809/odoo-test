@@ -80,6 +80,23 @@
   </section>
 
   <section>
+    <h2>PgAdmin <small style="text-transform:none">(tùy chọn, để chụp bằng chứng database)</small></h2>
+    <p style="color:var(--muted);margin:0 0 10px">Để trống nếu testcase không cần ảnh database. AI chỉ truyền câu SQL (chỉ đọc), phần đăng nhập và chọn đúng database do công cụ làm.</p>
+    <label for="pgUrl">Địa chỉ PgAdmin web</label>
+    <input id="pgUrl" autocomplete="off" placeholder="vd: http://192.0.2.10:5050">
+    <label for="pgLogin">Tài khoản PgAdmin (email)</label>
+    <input id="pgLogin" autocomplete="off">
+    <label for="pgPassword">Mật khẩu PgAdmin</label>
+    <input id="pgPassword" type="password" autocomplete="new-password">
+    <label for="pgServer">Tên server trong cây PgAdmin <small>(để trống nếu chỉ có một)</small></label>
+    <input id="pgServer" autocomplete="off">
+    <label for="pgDb">Tên database <small>(để trống = dùng Database ở trên)</small></label>
+    <input id="pgDb" autocomplete="off">
+    <label for="pgDbPassword">Mật khẩu database <small>(chỉ khi PgAdmin hỏi lúc mở server)</small></label>
+    <input id="pgDbPassword" type="password" autocomplete="new-password">
+  </section>
+
+  <section>
     <h2>Thư mục tham chiếu <small style="text-transform:none">(tùy chọn)</small></h2>
     <p style="color:var(--muted);margin:0 0 10px">Thư mục chứa các file mà testcase nhắc tới (file import, file đính kèm). AI chỉ đọc những thư mục bạn khai báo ở đây.</p>
     <div id="dirs"></div>
@@ -161,6 +178,10 @@ function fill(ws) {
   $("name").value = ws.name || "";
   $("url").value = ws.url || "";
   $("db").value = ws.db || "";
+  $("pgUrl").value = ws.pgadmin_url || ""; $("pgLogin").value = ws.pgadmin_login || ""; $("pgServer").value = ws.pgadmin_server || ""; $("pgDb").value = ws.pgadmin_db || "";
+  $("pgPassword").value = ""; $("pgDbPassword").value = "";
+  $("pgPassword").placeholder = ws.has_pgadmin_secret ? "•••••• đã lưu (để trống = giữ)" : "";
+  $("pgDbPassword").placeholder = ws.has_pgadmin_db_secret ? "•••••• đã lưu (để trống = giữ)" : "";
   $("language").value = ws.language || "vi";
   $("evidenceLanguage").value = ws.evidence_language || "vi";
   $("replayCaptionLanguage").value = ws.replay_caption_language || "vi";
@@ -189,8 +210,11 @@ function collect() {
     });
     return { name: env, url: val(head, "url"), db: val(head, "db"), accounts };
   });
+  if ($("pgPassword").value) passwords["@pgadmin"] = $("pgPassword").value;
+  if ($("pgDbPassword").value) passwords["@pgadmin-db"] = $("pgDbPassword").value;
   return {
-    workspace: { name: $("name").value.trim(), url: $("url").value.trim(), db: $("db").value.trim(), profiles, environments, language: $("language").value, test_prefix: $("prefix").value.trim(),
+    workspace: { name: $("name").value.trim(), url: $("url").value.trim(), db: $("db").value.trim(), profiles, environments,
+                 pgadmin_url: $("pgUrl").value.trim(), pgadmin_login: $("pgLogin").value.trim(), pgadmin_server: $("pgServer").value.trim(), pgadmin_db: $("pgDb").value.trim(), language: $("language").value, test_prefix: $("prefix").value.trim(),
                  evidence_language: $("evidenceLanguage").value, replay_caption_language: $("replayCaptionLanguage").value,
                  reference_dirs: [...$("dirs").querySelectorAll("input")].map(i => i.value.trim()).filter(Boolean) },
     passwords, home: $("home").value.trim(),

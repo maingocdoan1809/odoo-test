@@ -507,6 +507,32 @@ def cmd_results(args):
     return {"imported": rows}, "\n".join(f"{r['script']} on {r['env']}: {r['status']}" for r in rows) + f"\nImported {len(rows)} result(s)."
 
 
+def cmd_pgadmin(args):
+    """Database evidence: run one read-only SQL on the team's PgAdmin and take the picture. The AI passes the SQL only; address and passwords come from oqa init."""
+    from . import pgadmin
+
+    ws = workspace.load(paths.resolve_workspace(args.ws))
+    store = default_store()
+    if args.action == "check":
+        with pgadmin.session(ws, store, headless=True):
+            return {"ok": True}, "PgAdmin signed in and the database is selected."
+    if not args.sql:
+        raise GateError("Give the query: --sql \"SELECT ...\"")
+    if args.case:
+        session = Session.open(args.ws, args.session)
+        result, picture = pgadmin.shot(session, ws, store, args.case, args.n, args.sql, args.caption, headless=not args.headed)
+        where = f"attached to step {args.n} of {args.case}: {picture}"
+    else:
+        out = Path(args.out or "pgadmin.png").resolve()
+        with pgadmin.session(ws, store, headless=not args.headed) as pg:
+            result = pg.query(pgadmin.check_sql(args.sql), out)
+        where = str(out)
+    header = result["rows"][0] if result["rows"] else []
+    lines = [("PgAdmin ERROR: " + result["error"]) if result["error"] else f"PgAdmin returned {result['total']} row(s). Picture {where}"]
+    lines += [" | ".join(c.split(chr(10))[0] for c in row[1:]) for row in result["rows"][:20]] if not result["error"] and header else []
+    return {"result": result, "picture": where}, "\n".join(lines)
+
+
 def cmd_live(args):
     """EXECUTE with playwright-cli: the case's own browser, the outcome of each step with a picture framed by oqa (see oqa/live.py)."""
     session = Session.open(args.ws, args.session)
@@ -1056,6 +1082,14 @@ def build_parser():
     p = add("results", cmd_results, "import results of scripts run by hand: results import <result.json or the evidence folder>")
     p.add_argument("what", choices=["import"])
     p.add_argument("path", help="a result.json written by replay.mjs, or a folder holding several")
+    p = add("pgadmin", cmd_pgadmin, "database evidence: pgadmin shot --sql \"SELECT ...\" [CASE --n N] | pgadmin check")
+    p.add_argument("action", choices=["shot", "check"])
+    p.add_argument("case", nargs="?", help="shot: the case whose recorded step gets the picture (without it the picture is only saved to --out)")
+    p.add_argument("--n", type=int, help="the recorded step number the picture belongs to")
+    p.add_argument("--sql", help="one reading query (SELECT, WITH, SHOW, EXPLAIN)")
+    p.add_argument("--out", help="without a case: where to save the picture (default pgadmin.png)")
+    p.add_argument("--caption", help="the text under the picture")
+    p.add_argument("--headed", action="store_true", help="show the browser")
     p = add("live", cmd_live, "run a case live in its own playwright-cli browser: start | shot | step | end")
     p.add_argument("action", choices=["start", "act", "profile", "shot", "step", "end", "replay", "script", "recover", "diagnose", "handover", "regenerate"])
     p.add_argument("case", help="the case id; `replay all` replays every saved script of the session")

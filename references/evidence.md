@@ -31,6 +31,18 @@ Do not satisfy this by taking two copies of the final screen or adding a fixed n
 
 The dashboard gallery and Excel evidence sheet retain all pictures. Supplemental pictures attached after a recorded step are appended and do not replace the original evidence. Older sessions without an `evidence` field remain readable; new analyses must fill the field and split actions before approval. For a step with an evidence plan, PASS requires a visible post-action target; the tool refuses to substitute a before picture for its result. Extra captures within an old compound step are live evidence; automatic replay verification follows the saved step boundaries. Plan separate steps when those intermediate states must also be reproduced on replay.
 
+## Database evidence (PgAdmin)
+
+When a step says to confirm on the database, check a record in PostgreSQL or capture a query result, keep it as one planned step and do not open PgAdmin yourself. Write the SQL from the step's wording (table and columns it names, the case's own `AUTO_TEST_` values). Record the step first (`oqa live step`, framing the saved record still on screen), then pass only the SQL:
+
+`oqa pgadmin shot CASE --n N --sql "SELECT id, name FROM res_partner WHERE name = 'AUTO_TEST_x'"`
+
+- It signs in to the PgAdmin of the workspace (address, login, server and database come from `oqa init`), opens a fresh Query Tool on the right database, runs the SQL and adds the real PgAdmin screen to step N as supplemental evidence, result panel framed. The output lists the rows it read, so you can judge PASS or FAIL from them.
+- Only one reading statement is accepted (SELECT, WITH, SHOW, EXPLAIN). Anything that writes is refused.
+- Query the rows the case itself created or changed (its `AUTO_TEST_` names), and select the columns the expectation names.
+- `oqa pgadmin check` only signs in and selects the database (use it to see whether the setup works). Without CASE, `--out FILE.png` saves the picture on its own.
+- If it says PgAdmin is not set up or a password is missing, tell the user to run `oqa init` and fill the PgAdmin section; never ask for the password in the chat.
+
 ## What a PASS must prove
 
 - Wait for the state, then judge it: after Save, Discard or any onchange the form is still re-rendering. Wait for an observable condition (the Save button hidden, the value shown) before the assertion. Replay does this too, with a bounded settle before each check.
