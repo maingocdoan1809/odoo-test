@@ -28,3 +28,6 @@ test_skill/
 
 # Local experiments, POCs and previews
 /temp/
+
+# archify tool output
+/.archify/
