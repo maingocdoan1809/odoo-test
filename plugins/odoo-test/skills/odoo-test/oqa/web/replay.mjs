@@ -84,6 +84,7 @@ try {
       storageState: process.env.OQA_STORAGE_STATE,
     } : {});
     const context = await browser.newContext({ baseURL: base.href, storageState: account.storageState || undefined,
+      viewport: { width: 1920, height: 1080 },          // the same full HD as the evidence pictures (oqa/browser.py VIEWPORT)
       ...(videoMode !== "off" ? { recordVideo: { dir: `${runDir}/video`, size: { width: 1280, height: 720 } } } : {}) });
     if (videoMode !== "off") await context.addInitScript(noteScript);
     const page = await context.newPage();

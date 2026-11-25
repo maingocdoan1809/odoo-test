@@ -178,13 +178,13 @@ def open_browser(session, case, headed=False, refresh=True, profile_override=Non
     chromium = sorted(Path.home().glob(".cache/ms-playwright/chromium-*/chrome-linux64/chrome"))      # the Chromium oqa itself uses: no Chrome has to be installed
     browser_id = browser_id or browser_case(session, case)
     config = work / f"config-{sname(browser_id)}.json"
-    from .browser import headless_channel
+    from .browser import VIEWPORT, headless_channel
 
     channel = headless_channel()
     binary_options = ({"executablePath": str(chromium[-1])} if chromium else
                       {"channel": channel} if channel else {})
     write_json(config, {"browser": {"browserName": "chromium", "launchOptions": {"headless": not headed, **binary_options},
-                                    "contextOptions": {"viewport": {"width": 1440, "height": 900}}}})
+                                    "contextOptions": {"viewport": dict(VIEWPORT)}}})
     private = work / ".playwright-cli" / f"state-{sname(browser_id)}-{os.getpid()}.json"
     shutil.copyfile(state, private)
     os.chmod(private, 0o600)
@@ -267,7 +267,7 @@ def start(session, case):
              f"After each planned step: oqa live step {case} --n N --status PASS|FAIL --actual \"what the page showed\" --target \"<locator of the element the step is about>\"."
              f" If the click leaves the page, take the picture first: oqa live shot {case} --n N --target \"<locator>\"."]
     if workspace.load(session.ws).get("pgadmin_url"):
-        lines.append(f"A step that confirms on the database: record it with step first, then oqa pgadmin shot {case} --n N --sql \"SELECT ...\" (MCP: pgadmin_shot) with this run's fixture key. Do not open PgAdmin yourself.")
+        lines.append(f"A step that confirms on the database: take the picture FIRST with oqa pgadmin shot {case} --n N --sql \"SELECT ...\" (MCP: pgadmin_shot; N is the next step), then record the step with live step (--actual = what the rows showed). Use this run's fixture key in the SQL. Do not open PgAdmin yourself.")
     for step in item["steps"]:
         lines.append(f"  {step['n']}. {step['action']}   ->   {step['expected']}")
         if step.get("evidence"):
@@ -345,7 +345,7 @@ def recover(session, case, reason):
     """Close a worker's unfinished attempt after the coordinator diagnosed it."""
     from . import claims
 
-    session.require("EXECUTE")
+    session.require("EXECUTE", "REPORT")           # the last case to finish moves the session to REPORT; reopening it moves the session back
     _strategy_case(session, case)
     if len(reason.strip()) < 12:
         raise GateError("Describe the worker failure and what should change before recovery.")
@@ -360,12 +360,16 @@ def recover(session, case, reason):
         with session.update() as current:
             session.archive_result(current, case, f"coordinator diagnosis: {reason}")
             current["results"].pop(case, None)
+            if current["phase"] == "REPORT":
+                session._enter(current, "EXECUTE", f"{case} reopened after the coordinator's diagnosis")
         events.append(session.dir, "repair", case=case, attempt=attempt,
                       cause="Coordinator diagnosed an incorrect worker conclusion",
                       evidence=reason, change="Reassign and rerun with corrected interpretation/setup",
                       previous_status=result["status"])
         claims.release(session, case, missing_ok=True)
         return {"case": case, "attempt": attempt}, f"Reopened {case} after worker diagnosis. Prior evidence is retained; reassign using oqa claim."
+    if state["phase"] == "REPORT":
+        raise GateError(f"{case} has no result to reopen.")
     attempt = _attempt(session, case)
     try:
         _run(browser_case(session, case), "close")
@@ -616,7 +620,7 @@ def step(session, case, n, status, actual, target=None, verified_code=None, show
             raise GateError("\n".join(problems))
         if status == "PASS":
             check_specific(spec, shows, actual, "\n".join(code))
-        if status == "PASS" and session.state().get("channel"):
+        if status == "PASS":                                  # every mode: a `shows` the page does not carry (a placeholder, an attribute) would only fail later, in the replay
             try:
                 run_actions(browser_case(session, case), [SETTLE, literal_check(shows, 1500)])
             except GateError as error:

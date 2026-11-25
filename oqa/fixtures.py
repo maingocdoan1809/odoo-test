@@ -176,8 +176,9 @@ def run_key(session, case, label=""):
     base = record_names.fixture_prefix(session, case, prefix)
     try:
         attempt = live._attempt(session, case)
-    except GateError:
-        attempt = 1
+    except GateError:                                   # not started yet (or the last attempt is closed): the key is for the attempt that is about to start
+        started = [e["attempt"] for e in events.read(session.dir) if e["kind"] == "case_started" and e.get("case") == case]
+        attempt = started[-1] + 1 if started else 1
     again = f"a{attempt}-" if attempt > 1 else ""          # a case run again in the same session must not meet the record its blocked attempt left
     return base + again + (record_names.slug(label, limit=None) or "ban-ghi")
 

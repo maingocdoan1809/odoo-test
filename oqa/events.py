@@ -53,6 +53,8 @@ KINDS = {
     "action_recorded": ("case", "attempt", "code"),
     "profile_selected": ("case", "attempt", "profile"),
     "step": ("case", "attempt", "n", "status", "caption", "expected", "actual", "images"),
+    "cases_selected": ("cases", "by"),
+    "cases_added": ("cases", "by"),
     "step_evidence": ("case", "attempt", "n", "images"),
     "evidence_captured": ("case", "attempt", "n", "images"),
     "attempt_finished": ("case", "attempt", "status", "reason"),
@@ -69,7 +71,7 @@ KINDS = {
     "dispatch_resolved": ("case", "status"),
     "session_finished": ("counts",),
 }
-USER_KINDS = ("confirmed", "conflict_decided", "answered", "ref_added", "hint", "stopped", "resumed")        # what only the user does: the assistant waits for these
+USER_KINDS = ("confirmed", "conflict_decided", "answered", "ref_added", "hint", "stopped", "resumed", "cases_selected", "cases_added")        # what only the user does: the assistant waits for these
 STEP_STATUSES = ("PASS", "FAIL", "SKIPPED")
 CATEGORIES = ("application", "automation", "precondition")    # what a non-PASS conclusion means: the application is wrong, our automation is, or the test lacks what it needs
 CASE_STATUSES = ("PASS", "FAIL", "PENDING", "BLOCKED", "NOT EXECUTED")

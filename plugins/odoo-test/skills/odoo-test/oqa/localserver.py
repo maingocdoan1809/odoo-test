@@ -7,7 +7,6 @@ import json
 import secrets
 import threading
 import time
-import webbrowser
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -142,7 +141,8 @@ class LocalApp:
         url = f"http://127.0.0.1:{self.httpd.server_address[1]}/?t={self.token}"
         announce(url)
         if open_browser:
-            threading.Thread(target=lambda: webbrowser.open(url), daemon=True).start()
+            from . import autostart
+            threading.Thread(target=lambda: autostart.open_url(url), daemon=True).start()
         deadline = time.monotonic() + self.timeout
         try:
             while not self.finished() and time.monotonic() < deadline:

@@ -70,9 +70,9 @@ async function replay(config) {
     const account = config.accounts[name];
     if (!account.state && !account.password) throw new Error("No signed-in state for profile " + name + ".");
     const context = await browser.newContext({
-      viewport: null, baseURL: config.url,
+      viewport: { width: 1920, height: 1080 }, baseURL: config.url,          // the same full HD as the evidence pictures (oqa/browser.py VIEWPORT)
       ignoreHTTPSErrors: true, storageState: account.state || undefined,
-      ...(config.videoDir ? { recordVideo: { dir: config.videoDir, size: { width: 1280, height: 800 } } } : {})
+      ...(config.videoDir ? { recordVideo: { dir: config.videoDir, size: { width: 1280, height: 720 } } } : {})
     });
     check();
     await context.addInitScript(drawCaption);

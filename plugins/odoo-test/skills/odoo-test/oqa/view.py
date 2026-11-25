@@ -133,6 +133,7 @@ def case_records(session: Session):
     state = session.state()
     log = events.read(session.dir)
     held = {e["id"]: e for e in strategy["excluded"]}
+    deferred = set(strategy.get("deferred", []))
     by_id = {c["id"]: c for c in cases}
     ordered = [i for i in strategy["order"] if i in by_id]
     ordered += [i for i in analysis if i not in ordered and i in by_id] if analysis else []
@@ -179,6 +180,8 @@ def case_records(session: Session):
             status = {"RUNNING": "RUNNING", "STOPPED": "STOPPED"}.get(attempts[-1]["status"], "REPAIRING")
         elif ident in strategy["order"]:
             status = "EXPLORING" if explore["live"] else ("BUILT" if explore["built"] else "PLANNED")
+        elif ident in deferred:
+            status = "DEFERRED"
         elif ident in held:
             status = "HELD"
         else:
@@ -205,6 +208,19 @@ def case_records(session: Session):
                     "exhausted": state["attempts"].get(ident, 0) >= 1 + (1 if state.get("channel") else MAX_REPAIRS),
                     "can_hint": state["phase"] in ("EXECUTE", "REPORT") and ident in strategy["order"] and status != "PASS" and bool(attempts or result or state["attempts"].get(ident))})
     return out
+
+
+def selection_view(session, state, phase):
+    """What the dashboard needs to let the user tick the cases of the run (before approval) and to add the ones left out (after)."""
+    doc = read_json(session.dir / "analysis.json") or {"cases": []}
+    strategy = read_json(session.dir / "strategy.json") or {"order": []}
+    titles = {c["id"]: c.get("title", "") for c in session.cases()["cases"]}
+    ready = [{"id": c["id"], "title": c.get("title") or titles.get(c["id"], ""), "depends_on": c.get("depends_on") or []} for c in doc["cases"] if c["verdict"] == "ready"]
+    selected = strategy["order"] if strategy["order"] else [c["id"] for c in ready]
+    left = strategy.get("deferred", [])
+    return {"ready": ready, "selected": selected, "deferred": left,
+            "can_select": phase == "CONFIRM" and len(ready) > 1,
+            "can_add": phase in ("EXECUTE", "REPORT", "DONE") and bool(left) and not state.get("stopped") and not state["waiting"]}
 
 
 def counts(records):
@@ -262,7 +278,8 @@ def session_view(session: Session):
     latest = next((e for e in reversed(log) if e["kind"] == "phase"), None)
     strategy_md = session.dir / "strategy.md"
     conflict_list = analysis_mod.conflicts(read_json(session.dir / "analysis.json"), state.get("conflict_choices"))
-    return {"conflicts": conflict_list, "conflicts_pending": sum(1 for c in conflict_list if not c["choice"]), "workspace": session.ws, "session": session.id, "replay_caption_language": replay_language, "file": state["file"], "phase": current, "phases": phases, "waiting": state["waiting"], "stopped": state.get("stopped"), "can_stop": current != "DONE" and not state.get("stopped"),
+    selection = selection_view(session, state, current)
+    return {"selection": selection, "conflicts": conflict_list, "conflicts_pending": sum(1 for c in conflict_list if not c["choice"]), "workspace": session.ws, "session": session.id, "replay_caption_language": replay_language, "file": state["file"], "phase": current, "phases": phases, "waiting": state["waiting"], "stopped": state.get("stopped"), "can_stop": current != "DONE" and not state.get("stopped"),
             "confirmed": bool(state["confirmation"]), "created": state["created"], "updated": log[-1]["ts"] if log else state["created"], "idle_hours": round(hours, 1), "idle": hours >= IDLE_HOURS, "now": latest["text"] if latest else "",
             "counts": counts(records), "workers": worker_load(records), "replay_counts": replay_counts(records), "total": len(records), "cases": records, "activity": activity(log), "free_cases": claims.free_cases(session) if current == "EXECUTE" else [], "notes": claims.notes(session, 12), "connect": state.get("connect"),
             "reports": reports(session), "strategy": strategy_md.read_text(encoding="utf-8") if strategy_md.exists() else "", "can_confirm": current == "CONFIRM" and bool(state.get("strategy_sha")) and (session.dir / "strategy.json").exists()

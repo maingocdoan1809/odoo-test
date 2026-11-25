@@ -159,6 +159,67 @@ class Session:
             self._enter(state, "EXECUTE" if has_cases else "REPORT",
                         "Confirmed; ready to run the approved cases" if has_cases else "Confirmed; there are no approved cases to run")
 
+    def _write_strategy(self, state, selected):
+        """Build the strategy for the chosen cases (None = every ready case), write it and remember its digest. Called with the state open."""
+        from . import workspace
+
+        data, text = analysis.strategy(read_json(self.dir / "analysis.json"), self.cases(), workspace.load(self.ws), selected)
+        write_json(self.dir / "strategy.json", data)
+        (self.dir / "strategy.md").write_text(text + "\n", encoding="utf-8")
+        state["strategy_sha"] = data["sha"]
+        return data
+
+    def select_cases(self, cases, by="dashboard"):
+        """Before the strategy is approved: which of the analysed (ready) cases belong to this run. Everything is ticked until the user unticks something.
+        A case needs the cases it depends on, so those are added. The strategy is rebuilt, so what the user approves is what was ticked."""
+        with self.update() as state:
+            if state["phase"] != "CONFIRM":
+                raise GateError(f"The cases of this run are chosen before the strategy is approved, not in phase {state['phase']}. To run more cases later use oqa run-more or the dashboard.")
+            if state["waiting"]:
+                raise GateError("The session is waiting for the user to answer; run `oqa answer` first.")
+            doc = read_json(self.dir / "analysis.json")
+            ready = [c["id"] for c in doc["cases"] if c["verdict"] == "ready"]
+            unknown = [c for c in cases if c not in ready]
+            if unknown or not cases:
+                raise GateError("Choose at least one case to run." if not cases else f"Not a case that is ready to run: {', '.join(unknown)}.")
+            closed, added = analysis.close_selection(doc, cases)
+            state["selected"] = None if set(closed) == set(ready) else closed
+            data = self._write_strategy(state, state["selected"])
+            events.append(self.dir, "cases_selected", cases=data["order"], by=by, added=added)
+        return {"selected": data["order"], "deferred": data.get("deferred", []), "added": added}
+
+    def add_cases(self, cases, by="dashboard"):
+        """After the approved cases ran (or while they run): the user adds cases that were left out. Same session, same connection, same evidence folder: the new cases
+        join the queue and the session goes back to EXECUTE. Choosing them is the user's approval of them."""
+        with self.update() as state:
+            if state["phase"] not in ("EXECUTE", "REPORT", "DONE"):
+                raise GateError(f"Cases are added after the approved ones have started, not in phase {state['phase']}.")
+            if state.get("stopped"):
+                raise GateError("The test is stopped: resume it first.")
+            if state["waiting"]:
+                raise GateError("The session is waiting for the user to answer; run `oqa answer` first.")
+            strategy = read_json(self.dir / "strategy.json") or {"order": []}
+            left = strategy.get("deferred", [])
+            wrong = [c for c in cases if c not in left]
+            if not cases or wrong:
+                raise GateError("Choose at least one of the cases that were left out." if not cases else f"Not among the cases left out: {', '.join(wrong)}.")
+            doc = read_json(self.dir / "analysis.json")
+            passed = {c for c, r in state["results"].items() if r["status"] == "PASS"}
+            closed, _ = analysis.close_selection(doc, cases, passed)
+            new = [c for c in closed if c not in strategy["order"]]
+            by_id = {c["id"]: c for c in doc["cases"]}
+            for case in new:
+                for parent in by_id[case].get("depends_on") or []:
+                    if parent in state["results"] and state["results"][parent]["status"] != "PASS":
+                        raise GateError(f"{case} depends on {parent}, which ended {state['results'][parent]['status']}: it cannot run until {parent} passes.")
+            state["selected"] = list(strategy["order"]) + new
+            data = self._write_strategy(state, state["selected"])
+            state["confirmation"] = {"by": by, "at": time.strftime("%Y-%m-%d %H:%M:%S"), "strategy_sha": data["sha"], "added": new}
+            events.append(self.dir, "cases_added", cases=new, by=by)
+            if state["phase"] != "EXECUTE":
+                self._enter(state, "EXECUTE", f"{', '.join(new)} added to the run by the user")
+        return {"added": new, "deferred": data.get("deferred", [])}
+
     def confirm_current(self, by):
         """The user approves the strategy that is on disk now (the terminal and the dashboard both come here). Refuses a strategy that was
         edited or no longer matches the analysis."""

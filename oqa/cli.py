@@ -12,7 +12,6 @@ import tempfile
 import textwrap
 import time
 import urllib.request
-import webbrowser
 from pathlib import Path
 from urllib.parse import quote
 
@@ -228,12 +227,40 @@ def cmd_strategy(args):
     session = Session.open(args.ws, args.session)
     session.require("CONFIRM")
     config = workspace.load(session.ws)
-    data, text = analysis.strategy(read_json(session.dir / "analysis.json"), session.cases(), config)
+    data, text = analysis.strategy(read_json(session.dir / "analysis.json"), session.cases(), config, session.state().get("selected"))
     write_json(session.dir / "strategy.json", data)
     (session.dir / "strategy.md").write_text(text + "\n", encoding="utf-8")
     session.strategy_ready(data["sha"])
     return {"order": data["order"], "excluded": data["excluded"], "file": str(session.dir / "strategy.md"), "sha": data["sha"]}, \
         f"Strategy written to {session.dir / 'strategy.md'}: {len(data['order'])} cases to run, {len(data['excluded'])} held back.\nShow it to the user and ask them to approve it."
+
+
+def cmd_select(args):
+    """Which analysed cases belong to this run (before the user approves the strategy). Without arguments: what is chosen and what is left out."""
+    session = Session.open(args.ws, args.session)
+    if args.all or args.cases:
+        doc = read_json(session.dir / "analysis.json") or {"cases": []}
+        chosen = [c["id"] for c in doc["cases"] if c["verdict"] == "ready"] if args.all else [c.strip() for c in args.cases.split(",") if c.strip()]
+        result = session.select_cases(chosen, by="terminal")
+        return result, (f"Chosen: {', '.join(result['selected'])}." + (f" Added because they are needed: {', '.join(result['added'])}." if result["added"] else "")
+                        + (f" Left out (can run later): {', '.join(result['deferred'])}." if result["deferred"] else "") + "\nThe strategy was rebuilt: the user approves it as it is.")
+    strategy = read_json(session.dir / "strategy.json") or {"order": [], "deferred": []}
+    return {"selected": strategy["order"], "deferred": strategy.get("deferred", [])}, (
+        f"Chosen: {', '.join(strategy['order']) or 'none'}. Left out: {', '.join(strategy.get('deferred', [])) or 'none'}.")
+
+
+def cmd_run_more(args, is_tty=None):
+    """The USER adds cases that were left out to the same session (their choice is their approval)."""
+    session = Session.open(args.ws, args.session)
+    tty = (sys.stdin.isatty() and sys.stdout.isatty()) if is_tty is None else is_tty
+    if not tty:
+        raise GateError("Only the user adds cases to a running session: run `oqa run-more` yourself in a terminal, or press 'Chạy các case đã chọn' in the dashboard.")
+    cases = [c.strip() for c in (args.cases or "").split(",") if c.strip()]
+    if not cases:
+        left = (read_json(session.dir / "strategy.json") or {}).get("deferred", [])
+        raise GateError("Say which cases: --cases A,B. Left out: " + (", ".join(left) or "none"))
+    result = session.add_cases(cases, by="terminal")
+    return result, f"Added {', '.join(result['added'])}. The session is back in EXECUTE."
 
 
 def cmd_confirm(args, is_tty=None):
@@ -436,6 +463,21 @@ def cmd_dispatch(args):
     from . import dispatch
 
     session = Session.open(args.ws, args.session)
+    if args.repair:
+        problem = dispatch.replay_check(session, args.repair)
+        if not problem:
+            return {"case": args.repair, "repair": None}, f"{args.repair}: its saved script replays: nothing to repair."
+        brief = dispatch.repair_brief(session, args.repair, problem)
+        return {"case": args.repair, "problem": problem, "brief": brief}, f"===== script repair · case {args.repair} =====\n{brief}\nGive this brief to one of your own agents; when it is done run: oqa dispatch --settle {args.repair}"
+    if args.settle:
+        text = dispatch.settle(session, args.settle, reopen=args.reopen)
+        return {"case": args.settle, "settled": text}, text
+    if args.plan:
+        result = dispatch.plan(session, args.limit)
+        if not result["workers"]:
+            return result, "No case is free now. Held: " + (", ".join(result["held"]) or "none") + ". Waiting for a result: " + (", ".join(result["pending"]) or "none") + "."
+        text = "\n\n".join(f"===== worker {w['agent']} · case {w['case']} =====\n{w['brief']}" for w in result["workers"])
+        return result, text + f"\n\nStart one of your own agents per brief above (up to {len(result['workers'])} at once). When an agent finishes, run: oqa dispatch --settle <case>."
     result = dispatch.run(session, args.worker_model, args.coordinator_model, args.worker_timeout)
     return result, json.dumps(result, ensure_ascii=False, indent=2)
 
@@ -673,7 +715,7 @@ def cmd_dashboard(args):
         if running.get("build") == build_id():
             url = running["url"] + (f"#{quote(select[0])}/{quote(select[1])}" if select else "")
             if not args.no_open:
-                webbrowser.open(url)
+                autostart.open_url(url)
             return {"url": url, "reused": True}, f"Dashboard already running: {url}"
         _retire(running)                         # started from older files: its pages and its answers no longer match, so a new one takes its place
 
@@ -893,6 +935,10 @@ def _describe(event):
         return f"The user shared {event.get('what', 'file')} {event['path']}: read it with `oqa ref show \"{event.get('name', event['path'])}\"`."
     if kind == "hint":
         return f"The user sent a hint for {case}: {event['text']}\n{case} is back in the queue with a fresh budget."
+    if kind == "cases_selected":
+        return f"The user chose the cases of this run: {', '.join(event['cases'])}. The strategy was rebuilt for them: wait for the confirmation."
+    if kind == "cases_added":
+        return f"The user added {', '.join(event['cases'])} to this session. The session is back in EXECUTE: hand them to workers (oqa dispatch --plan), then run oqa report again when every case has a result."
     if kind == "stopped":
         return "The user stopped the test. Do nothing until they resume it: run `oqa wait` again."
     return "The user resumed the test. Check the execution queue with oqa status."
@@ -1053,7 +1099,17 @@ def build_parser():
     p = add("release", cmd_release, "give a claimed case back")
     p.add_argument("case")
     add("claims", cmd_claims, "who holds which case, and which cases are free")
-    p = add("dispatch", cmd_dispatch, "run the approved queue with Claude CLI case workers")
+    p = add("select", cmd_select, "which analysed cases belong to this run (before approval): select --cases A,B | --all; without arguments shows the choice")
+    p.add_argument("--cases", help="the cases to run, comma-separated; the cases they depend on are added")
+    p.add_argument("--all", action="store_true", help="run every ready case")
+    p = add("run-more", cmd_run_more, "the USER adds cases that were left out to the same session (needs a real terminal)")
+    p.add_argument("--cases", help="the cases to add, comma-separated")
+    p = add("dispatch", cmd_dispatch, "run the approved queue: with --plan the host's own agents do the cases; without it oqa spawns Claude CLI workers")
+    p.add_argument("--plan", action="store_true", help="claim the free cases and print one brief per case for the host's own agents (Claude Code Agent tool, Copilot CLI agents, ...)")
+    p.add_argument("--limit", type=int, help="--plan: at most this many cases")
+    p.add_argument("--settle", metavar="CASE", help="a host agent finished CASE: replay its script and check the conclusion against the facts")
+    p.add_argument("--repair", metavar="CASE", help="CASE passed live but its saved script does not replay: print a brief for one agent that fixes only the script (no live rerun)")
+    p.add_argument("--reopen", action="store_true", help="--settle: when the script of a PASS does not replay, reopen the whole case instead of repairing only the script")
     p.add_argument("--worker-model", default="haiku")
     p.add_argument("--coordinator-model", default="sonnet")
     p.add_argument("--worker-timeout", type=int, default=480)

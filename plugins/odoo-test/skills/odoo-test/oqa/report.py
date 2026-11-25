@@ -279,11 +279,30 @@ def write_summary(sheet, session: Session, ws, records, t, sheet_names):
     sheet.sheet_view.zoomScale = 90
 
 
+_CONTROL = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def scrub(value):
+    """Text that came from a terminal (an error with colour codes from a browser tool) carries control characters that a workbook refuses at the moment a cell is set: one of
+    them stops the whole report. Remove them from every text of the records before anything is written."""
+    if isinstance(value, str):
+        return _CONTROL.sub("", value)
+    if isinstance(value, list):
+        return [scrub(item) for item in value]
+    if isinstance(value, dict):
+        return {key: scrub(item) for key, item in value.items()}
+    return value
+
+
+def case_records(session):
+    return scrub(view.case_records(session))
+
+
 def build(session: Session, ws):
     """Write the evidence workbook and SUMMARY.md. Returns {folder, main, files, counts}."""
     from openpyxl import Workbook
     t = LABELS.get(ws.get("language"), LABELS["en"])
-    records = sorted(view.case_records(session), key=lambda r: r["row"])
+    records = sorted(case_records(session), key=lambda r: r["row"])
     folder = session.dir / "report"
     folder.mkdir(parents=True, exist_ok=True)
     stem = re.sub(r"[^\w.-]+", "_", Path(session.state()["file"]).stem)

@@ -425,20 +425,44 @@ def verify_strategy(strategy_doc, analysis):
 
 
 LABELS = {
-    "vi": {"title": "Chiến lược test", "run": "Sẽ chạy theo thứ tự", "skip": "Chưa chạy (cần xử lý trước)", "profile": "Profile", "deps": "Phụ thuộc", "reuse": "Tận dụng",
+    "vi": {"title": "Chiến lược test", "run": "Sẽ chạy theo thứ tự", "skip": "Chưa chạy (cần xử lý trước)", "deferred": "Chưa chọn chạy (có thể chạy tiếp sau)", "profile": "Profile", "deps": "Phụ thuộc", "reuse": "Tận dụng",
            "data": "Dữ liệu có thể thiếu → cách bù", "edge": "Tình huống biên", "steps": "Các bước", "clarity": "Rõ ràng", "suff": "Đủ dữ kiện", "none": "không",
            "concrete": "Điều mơ hồ đã được cụ thể hoá thành", "warn": "Cảnh báo: testcase lệch BD (sẽ chạy theo BD)", "tc": "Testcase", "bd": "BD", "basis": "Căn cứ"},
-    "en": {"title": "Test strategy", "run": "Will run in this order", "skip": "Not run yet (needs attention)", "profile": "Profile", "deps": "Depends on", "reuse": "Reuses",
+    "en": {"title": "Test strategy", "run": "Will run in this order", "skip": "Not run yet (needs attention)", "deferred": "Not selected for this run (can be run later)", "profile": "Profile", "deps": "Depends on", "reuse": "Reuses",
            "data": "Data that may be missing → fallback", "edge": "Edge cases", "steps": "Steps", "clarity": "Clarity", "suff": "Sufficiency", "none": "none",
            "concrete": "Vague wording made concrete", "warn": "Warning: testcase differs from the design (the test follows the design)", "tc": "Testcase", "bd": "Design", "basis": "Basis"},
 }
 
 
-def strategy(analysis, cases_doc, workspace):
-    """(strategy dict, markdown). The digest in the dict is what `confirm` checks, so the user approves exactly what will run."""
+def close_selection(analysis, chosen, done=()):
+    """The chosen ready cases plus the ready cases they depend on (a case cannot run before the one it depends on has passed; `done` = cases that already passed).
+    Returns (closed, added): every case to run, and the ones that were added only because a chosen case needs them."""
+    by_id = {c["id"]: c for c in analysis["cases"]}
+    closed, added, seen, queue = [], [], set(), list(chosen)
+    while queue:
+        ident = queue.pop(0)
+        if ident in seen or ident not in by_id or by_id[ident]["verdict"] != "ready":
+            continue
+        seen.add(ident)
+        closed.append(ident)
+        for parent in by_id[ident].get("depends_on") or []:
+            if parent not in done and parent not in seen and parent in by_id and by_id[parent]["verdict"] == "ready":
+                if parent not in chosen:
+                    added.append(parent)
+                queue.append(parent)
+    return closed, added
+
+
+def strategy(analysis, cases_doc, workspace, selected=None):
+    """(strategy dict, markdown). The digest in the dict is what `confirm` checks, so the user approves exactly what will run.
+    `selected` = the ready cases the user ticked (None = all of them); the others are `deferred`: analysed, not part of this run, and can be added later."""
     ordered, excluded = order(analysis, cases_doc)
+    deferred = [i for i in ordered if selected is not None and i not in selected]
+    ordered = [i for i in ordered if i not in deferred]
     by_id, info = {c["id"]: c for c in analysis["cases"]}, {c["id"]: c for c in cases_doc["cases"]}
     data = {"schema_version": SCHEMA_VERSION, "order": ordered, "excluded": excluded, "analysis_sha": digest(analysis)}
+    if deferred:
+        data["deferred"] = deferred
     warned = [w for w in warnings(analysis) if w["case"] in ordered]
     if warned:
         data["warnings"] = warned
@@ -462,6 +486,8 @@ def strategy(analysis, cases_doc, workspace):
     if warned:
         lines += [f"## {t['warn']} ({len(warned)})", ""] + [
             f"- {w['case']} bước {w['step']} ({w['ref']}): {t['tc']}: {w['testcase']} ≠ {t['bd']}: {w['bd']}" for w in warned] + [""]
+    if deferred:
+        lines += [f"## {t.get('deferred', 'Not selected for this run')} ({len(deferred)})", ""] + [f"- {i}: {record_names.title(info[i], by_id[i], {})}" for i in deferred] + [""]
     if excluded:
         lines += [f"## {t['skip']} ({len(excluded)})", ""] + [f"- {e['id']} [{e['verdict']}]: {e['reason']}" for e in excluded] + [""]
     return data, "\n".join(lines)

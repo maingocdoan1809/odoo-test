@@ -29,8 +29,8 @@ TOOLS = [
     schema("profile", "Switch to a signed-in workspace profile required by the case.", strings("name"), ("name",)),
     schema("evidence_before", "Capture a checkpoint before the next action. Repeat for intermediate states; all pictures are retained.",
            (*strings("target", "caption"), ("n", "integer", {})), ("n", "target")),
-    schema("pgadmin_shot", "Database evidence for a step the testcase says to confirm on the database. Record that step with step first, then pass step number n and ONE read-only SQL (SELECT, WITH, SHOW, EXPLAIN). "
-                           "It signs in to the workspace's PgAdmin, runs the SQL on the right database and attaches the real PgAdmin screen to step n. Returns the row count and the rows: judge PASS or FAIL from them. "
+    schema("pgadmin_shot", "Database evidence for a step the testcase says to confirm on the database. Call it BEFORE recording that step (n is the next step; the picture becomes part of the step), with ONE read-only SQL (SELECT, WITH, SHOW, EXPLAIN), then record the step with step, its actual = what the rows showed. "
+                           "It signs in to the workspace's PgAdmin, runs the SQL on the right database and keeps the real PgAdmin screen as evidence of step n. Returns the row count and the rows: judge PASS or FAIL from them. "
                            "Use this run's fixture key in the SQL, never a fixed name. Do not open PgAdmin yourself.",
            (*strings("sql", "caption"), ("n", "integer", {})), ("n", "sql")),
     schema("step", "Record observed PASS/FAIL and a screenshot for a planned step. Include code and shows for replay.",

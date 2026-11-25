@@ -120,14 +120,15 @@ def test_shot_attaches_the_pgadmin_picture_to_a_recorded_step(session, ws, monke
     _recorded_session(session, ws, monkeypatch)
     result = {"rows": [["", "id", "name"], ["1", "7", "AUTO_TEST_x"]], "total": 1, "error": "", "box": [352, 501, 1248, 370]}
     _fake_pgadmin(monkeypatch, result)
-    with pytest.raises(GateError, match="not recorded yet"):                 # the step must exist first
-        pgadmin.shot(session, ws, store, "ORD-001", 1, "select id, name from res_partner")
-    live.step(session, "ORD-001", 1, "PASS", "The saved record is visible", target="#saved")
-    before = len(view.case_records(session)[0]["attempts"][0]["steps"][0]["images"])
-    out, picture = pgadmin.shot(session, ws, store, "ORD-001", 1, "select id, name from res_partner;")
+    with pytest.raises(GateError, match="Record the steps in order"):          # only the next step, or one already recorded
+        pgadmin.shot(session, ws, store, "ORD-001", 2, "select id, name from res_partner")
+    out, picture = pgadmin.shot(session, ws, store, "ORD-001", 1, "select id, name from res_partner;")     # before the step: it becomes part of the step
     assert out is result and picture.is_file()
+    live.step(session, "ORD-001", 1, "PASS", "The saved record is visible", target="#saved")
     images = view.case_records(session)[0]["attempts"][0]["steps"][0]["images"]
-    assert len(images) == before + 1
+    assert len(images) == 2 and images[0]["target"] == "PgAdmin"
+    pgadmin.shot(session, ws, store, "ORD-001", 1, "select 1")                                                # after the step: supplemental
+    assert len(view.case_records(session)[0]["attempts"][0]["steps"][0]["images"]) == 3
     assert "1 row(s)" in pgadmin.summary(result, "x") and "7 | AUTO_TEST_x" in pgadmin.summary(result, "x")
     with pytest.raises(GateError, match="reading query"):
         pgadmin.shot(session, ws, store, "ORD-001", 1, "delete from res_partner")
@@ -166,3 +167,46 @@ def test_a_case_run_again_gets_a_new_record_name(session, ws, monkeypatch):
     from oqa import record_names
 
     assert record_names.owns(session, second, "AUTO_TEST_", "ORD-001")      # still a name this run owns
+
+
+def test_sql_is_laid_out_one_clause_per_line_and_quoted_text_is_untouched():
+    out = pgadmin.format_sql("select a, b from t where name = 'x from y where z' order by a limit 5")
+    assert out.split("\n") == ["select a, b", "from t", "where name = 'x from y where z'", "order by a", "limit 5"]
+    assert pgadmin.format_sql("select 1\nfrom t") == "select 1\nfrom t"
+
+
+def test_a_shows_text_the_page_does_not_carry_is_refused_when_the_step_is_recorded(session, ws, monkeypatch):
+    from oqa import live
+    from PIL import Image
+    from test_evidence_replay import approved
+
+    approved(session, ws)
+    monkeypatch.setattr(live, "open_browser", lambda *a, **kw: "Admin")
+    monkeypatch.setattr(live, "_box", lambda browser, target: ((50, 50, 200, 40), (600, 400)))
+    monkeypatch.setattr(live, "_shot", lambda browser, path: (path.parent.mkdir(parents=True, exist_ok=True), Image.new("RGB", (600, 400), (240, 200, 180)).save(path)))
+
+    def run(browser, command, *args, **kwargs):
+        if command == "run-code" and "waitForFunction" in " ".join(map(str, args)) and "e.g. Lumber Inc" in " ".join(map(str, args)):
+            raise GateError("TimeoutError: page.waitForFunction: Timeout 1500ms exceeded.")
+        return ""
+
+    monkeypatch.setattr(live, "_run", run)
+    live.start(session, "ORD-001")
+    with pytest.raises(GateError, match="could not find 'shows' verbatim"):
+        live.step(session, "ORD-001", 1, "PASS", "The form is empty and ready", target="getByRole('textbox')", verified_code="await page.goto('http://localhost/x');", shows="e.g. Lumber Inc")
+
+
+def test_a_key_asked_before_the_case_starts_is_for_the_next_attempt(session, ws, monkeypatch):
+    from oqa import fixtures, live
+    from test_evidence_replay import approved
+
+    approved(session, ws)
+    monkeypatch.setattr(live, "open_browser", lambda *a, **kw: "Admin")
+    monkeypatch.setattr(live, "_run", lambda *a, **kw: "")
+    assert fixtures.run_key(session, "ORD-001", "x").endswith("_x")                  # nothing started yet: attempt 1
+    live.start(session, "ORD-001")
+    first = fixtures.run_key(session, "ORD-001", "x")
+    live.recover(session, "ORD-001", "the first worker stopped; start again with new data")
+    asked_before_start = fixtures.run_key(session, "ORD-001", "x")
+    live.start(session, "ORD-001")
+    assert asked_before_start == fixtures.run_key(session, "ORD-001", "x") != first

@@ -10,7 +10,7 @@ import unicodedata
 from pathlib import Path
 from urllib.parse import quote
 
-from . import captions, conflicts, dispatch_requests, generalize, live, paths, refs, regression, report, script_bundle, sitemap, view, workspace
+from . import autostart, captions, conflicts, dispatch_requests, generalize, live, paths, refs, regression, report, script_bundle, sitemap, view, workspace
 from .localserver import LocalApp, font_faces
 from .state import GateError, Session
 from .store import SchemaError, read_json
@@ -149,6 +149,8 @@ class Dashboard(LocalApp):
 
     def handle(self, method, path, query, body):
         try:
+            if method == "GET" and path in ("/api/sessions", "/api/session"):
+                autostart.mark_viewer()                      # the open page asks these every few seconds: a tab is showing the dashboard
             if method == "GET" and path == "/api/sessions":
                 return 200, {"sessions": view.list_sessions()}
             if method == "GET" and path == "/api/workspaces":
@@ -297,6 +299,14 @@ class Dashboard(LocalApp):
                 session = self._session(body)
                 entry, created = dispatch_requests.submit(session, str(body.get("case", "")))
                 return 200, {"ok": True, "created": created, "request": dispatch_requests.of_case(session, str(body.get("case", "")))}
+            if method == "POST" and path == "/api/select":
+                cases = body.get("cases")
+                result = self._session(body).select_cases([str(c) for c in cases] if isinstance(cases, list) else [], "dashboard")
+                return 200, {"ok": True, **result}
+            if method == "POST" and path == "/api/run_more":
+                cases = body.get("cases")
+                result = self._session(body).add_cases([str(c) for c in cases] if isinstance(cases, list) else [], "dashboard")
+                return 200, {"ok": True, **result}
             if method == "POST" and path == "/api/hint":
                 self._session(body).hint(str(body.get("case", "")), str(body.get("text", "")), "dashboard")
                 return 200, {"ok": True}

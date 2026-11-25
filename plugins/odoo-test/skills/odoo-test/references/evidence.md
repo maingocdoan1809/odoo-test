@@ -33,11 +33,11 @@ The dashboard gallery and Excel evidence sheet retain all pictures. Supplemental
 
 ## Database evidence (PgAdmin)
 
-When a step says to confirm on the database, check a record in PostgreSQL or capture a query result, keep it as one planned step and do not open PgAdmin yourself. Write the SQL from the step's wording (table and columns it names, the case's own `AUTO_TEST_` values). Record the step first (`oqa live step`, framing the saved record still on screen), then pass only the SQL:
+When a step says to confirm on the database, check a record in PostgreSQL or capture a query result, keep it as one planned step and do not open PgAdmin yourself. Write the SQL from the step's wording (table and columns it names, the case's own `AUTO_TEST_` values). Take the PgAdmin picture first (the step is the next one to record), then record the step (`oqa live step`, framing the saved record still on screen, `--actual` saying what the rows showed). Pass only the SQL:
 
 `oqa pgadmin shot CASE --n N --sql "SELECT id, name FROM res_partner WHERE name = 'AUTO_TEST_x'"`
 
-- It signs in to the PgAdmin of the workspace (address, login, server and database come from `oqa init`), opens a fresh Query Tool on the right database, runs the SQL and adds the real PgAdmin screen to step N as supplemental evidence, result panel framed. The output lists the rows it read, so you can judge PASS or FAIL from them.
+- It signs in to the PgAdmin of the workspace (address, login, server and database come from `oqa init`), opens a fresh Query Tool on the right database, runs the SQL and keeps the real PgAdmin screen as evidence of step N: before the step is recorded it becomes part of the step, after it is recorded it is added to the step as supplemental evidence. Long values are shown in full (columns are widened) and the SQL is laid out one clause per line, result panel framed. The output lists the rows it read, so you can judge PASS or FAIL from them.
 - Only one reading statement is accepted (SELECT, WITH, SHOW, EXPLAIN). Anything that writes is refused.
 - Query the rows the case itself created or changed (its `AUTO_TEST_` names), and select the columns the expectation names.
 - `oqa connect` already runs this check once before the run, so a wrong address, password, server or database stops the run at the start. Do not start cases while it fails.

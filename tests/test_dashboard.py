@@ -114,10 +114,10 @@ def test_case_statuses_follow_the_events(session, tmp_path):
 
 
 def test_asking_for_the_dashboard_again_reuses_the_running_one_on_the_right_session(session, up, monkeypatch, capsys):
-    from oqa import build_id, cli, paths
+    from oqa import autostart, build_id, cli, paths
     write_json(paths.home() / "dashboard.json", {"url": f"{up.base}/?t={up.app.token}", "pid": 0, "build": build_id()})
     opened = []
-    monkeypatch.setattr(cli.webbrowser, "open", opened.append)
+    monkeypatch.setattr(autostart, "open_url", opened.append)
     assert cli.main(["dashboard", "--ws", "demo", "--session", session.id]) == 0
     assert "already running" in capsys.readouterr().out
     assert opened == [f"{up.base}/?t={up.app.token}#demo/{session.id}"]          # a new tab on THIS session; no second server was started

@@ -35,6 +35,36 @@ def check_sql(sql):
     return sql.strip().rstrip(";").strip()
 
 
+def format_sql(sql):
+    """One clause per line, so a long statement fits the editor without scrolling sideways and the whole query is in the picture. Quoted text is never touched."""
+    if "\n" in sql:
+        return sql
+    parts = re.split(r"('(?:[^']|'')*')", sql)
+    clause = re.compile(r"\s+(FROM|WHERE|GROUP\s+BY|ORDER\s+BY|HAVING|LIMIT|OFFSET|UNION|(?:LEFT\s+|RIGHT\s+|INNER\s+|FULL\s+)?JOIN)\b", re.I)
+    return "".join(part if index % 2 else clause.sub(lambda m: "\n" + m.group(1), part) for index, part in enumerate(parts))
+
+
+MEASURE_COLUMNS = """() => [...document.querySelectorAll('[role=columnheader]')].map((h, i) => { const r = h.getBoundingClientRect();
+    const over = Math.max(0, ...[...document.querySelectorAll('[role=gridcell][aria-colindex="' + (i + 1) + '"]')].map(c => { const g = document.createRange(); g.selectNodeContents(c); return g.getBoundingClientRect().width + 20 - c.clientWidth; }));
+    return {i, right: r.right, top: r.top, h: r.height, over}; })"""
+
+
+def fit_columns(page, frame):
+    """PgAdmin cuts a long value with an ellipsis. Drag each too-narrow column wider (the way a person does) until every value is written out in the picture."""
+    offset = frame.frame_element().bounding_box() or {"x": 0, "y": 0}
+    for _ in range(10):
+        todo = [c for c in frame.evaluate(MEASURE_COLUMNS) if c["over"] > 2 and c["i"] > 0]          # column 0 is the row number
+        if not todo:
+            return
+        c = todo[0]
+        x, y = offset["x"] + c["right"] - 3, offset["y"] + c["top"] + c["h"] / 2
+        page.mouse.move(x, y)
+        page.mouse.down()
+        page.mouse.move(x + c["over"] + 24, y, steps=8)
+        page.mouse.up()
+        page.wait_for_timeout(250)
+
+
 def settings(ws, store: SecretStore):
     """Everything the sign-in needs, or a sentence saying which part is missing."""
     missing = [label for key, label in (("pgadmin_url", "PgAdmin address"), ("pgadmin_login", "PgAdmin login")) if not ws.get(key)]
@@ -183,7 +213,7 @@ class PgAdmin:
         frame.wait_for_function("() => { const e = document.querySelector('.cm-content'); return !!e && e.getAttribute('aria-readonly') !== 'true'; }", timeout=SLOW_MS)   # read-only until the tab has connected
         frame.locator(".cm-content").click()
         page.keyboard.press("Control+A")
-        page.keyboard.insert_text(sql)
+        page.keyboard.insert_text(format_sql(sql))
         page.keyboard.press("F5")
         try:
             frame.wait_for_function("() => /Total rows: \\d|Query returned successfully|Query complete|ERROR:/.test(document.body.innerText)", timeout=SLOW_MS)
@@ -203,6 +233,11 @@ class PgAdmin:
         box = frame.evaluate("""() => { const t = [...document.querySelectorAll('*')].find(e => e.children.length === 0 && /^Data Output$/.test(e.innerText || ''));
             const p = t && (t.closest('.dock-panel') || t.parentElement.parentElement);
             if (!p) return null; const b = p.getBoundingClientRect(); return [Math.round(b.x), Math.round(b.y), Math.round(b.width), Math.round(b.height)]; }""")
+        if not failed:
+            try:
+                fit_columns(page, frame)
+            except Exception:                                  # a picture with a cut value is still a picture: never lose the result for a cosmetic step
+                pass
         offset = page.locator("iframe:visible").last.bounding_box() or {"x": 0, "y": 0}
         if box:
             box = [box[0] + round(offset["x"]), box[1] + round(offset["y"]), box[2], box[3]]
@@ -221,15 +256,17 @@ def session(ws, store: SecretStore, headless=True):
 
 
 def shot(run, ws, store: SecretStore, case, n, sql, caption=None, headless=True):
-    """Run `sql` on PgAdmin and attach the picture to the already recorded step `n` of `case` as supplemental evidence (the same place `oqa live shot` puts one).
-    The picture is the whole PgAdmin screen with the result panel framed and the caption under it."""
+    """Run `sql` on PgAdmin and keep the picture as evidence of step `n` of `case`.
+    Take it BEFORE recording the step (n is the next step): `oqa live step` then writes what the rows showed and the picture is already part of the step.
+    A step that is already recorded gets it as supplemental evidence (the same place `oqa live shot` puts one). The picture is the whole PgAdmin screen with the result panel framed."""
     import uuid
 
     from . import evidence, events, live
     run.require("EXECUTE")
     attempt = live._attempt(run, case)
-    if n not in live._recorded(run, case, attempt):
-        raise GateError(f"Step {n} of {case} is not recorded yet: record it with oqa live step {case} --n {n} first, then add the database picture.")
+    done = live._recorded(run, case, attempt)
+    if n not in done and n != len(done) + 1:
+        raise GateError(f"Record the steps in order: the next step of {case} is {len(done) + 1}, not {n}.")
     sql = check_sql(sql)
     folder = run.dir / "evidence" / re.sub(r"[^\w.-]+", "_", case) / f"a{attempt}"
     folder.mkdir(parents=True, exist_ok=True)
@@ -238,12 +275,16 @@ def shot(run, ws, store: SecretStore, case, n, sql, caption=None, headless=True)
     with globals()["session"](ws, store, headless) as pg:
         result = pg.query(sql, raw)
     label = caption or ("PgAdmin: " + (result["error"] or f"{result['total']} row(s)") + " - " + " ".join(sql.split())[:90])
-    evidence.annotate(raw, [tuple(result["box"] or (0, 0, 1600, 900))], label, annotated, ok=not result["error"])
+    evidence.annotate(raw, [tuple(result["box"] or (0, 0, browser.VIEWPORT["width"], browser.VIEWPORT["height"]))], label, annotated, ok=not result["error"])
     error = evidence.check(raw, annotated)
     if error:
         raise GateError(error)
-    events.append(run.dir, "step_evidence", case=case, attempt=attempt, n=n, source="pgadmin", sql=sql,
-                  images=[{"raw": str(raw.relative_to(run.dir)), "annotated": str(annotated.relative_to(run.dir))}])
+    rel = lambda path: str(path.relative_to(run.dir))
+    if n in done:
+        events.append(run.dir, "step_evidence", case=case, attempt=attempt, n=n, source="pgadmin", sql=sql, images=[{"raw": rel(raw), "annotated": rel(annotated)}])
+    else:
+        events.append(run.dir, "evidence_captured", case=case, attempt=attempt, n=n, source="pgadmin", sql=sql,
+                      images=[{"raw": rel(raw), "annotated": rel(annotated), "caption": label, "target": "PgAdmin", "box": list(result["box"] or [])}])
     return result, annotated
 
 

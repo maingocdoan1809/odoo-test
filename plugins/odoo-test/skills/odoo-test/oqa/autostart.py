@@ -20,6 +20,61 @@ ACTIVE_SECONDS = 6 * 3600       # a session untouched for this long is left alon
 SPAWN_COOLDOWN = 30             # a dashboard just started needs a few seconds before it answers: do not start a second one
 
 
+VIEWER_FRESH = 90         # seconds: the page asks the server every 1.5s; a hidden tab is slowed by the browser to about once a minute
+REOPEN_COOLDOWN = 120      # a tab just opened needs a moment to load; and a user who closed it on purpose is not hit again and again
+
+
+def _wsl():
+    try:
+        return "microsoft" in Path("/proc/version").read_text().lower()
+    except OSError:
+        return False
+
+
+def open_url(url):
+    """Open `url` in the user's browser. On WSL the Linux xdg-open often reaches no browser at all, so the Windows side is asked (cmd.exe start). True when something was started."""
+    if _wsl():
+        import shutil
+        for exe, args in (("cmd.exe", ["/c", "start", "", url]), ("explorer.exe", [url])):
+            if shutil.which(exe):
+                try:
+                    subprocess.Popen([exe, *args], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    return True
+                except OSError:
+                    continue
+    try:
+        return bool(webbrowser.open(url))
+    except Exception:
+        return False
+
+
+def mark_viewer():
+    """Called by the dashboard server whenever the open page asks it something: a tab is showing the dashboard right now."""
+    mark = paths.home() / "dashboard_viewer.json"
+    if time.time() - (read_json(mark, {}) or {}).get("at", 0) >= 2:
+        write_json(mark, {"at": time.time()})
+
+
+def viewer_seen(max_age=VIEWER_FRESH):
+    """True when a dashboard tab asked the server within the last `max_age` seconds."""
+    return time.time() - (read_json(paths.home() / "dashboard_viewer.json", {}) or {}).get("at", 0) < max_age
+
+
+def ensure_viewer(ws, session_id):
+    """The dashboard server may run with no tab open (the user closed it, or the browser never opened). When no tab asked the server lately, open one on this session.
+    True when a tab was opened."""
+    if os.environ.get("OQA_NO_OPEN"):
+        return False
+    url = dashboard_running()
+    if not url or viewer_seen():
+        return False
+    mark = paths.home() / "dashboard_open.json"
+    if time.time() - (read_json(mark, {}) or {}).get("at", 0) < REOPEN_COOLDOWN:
+        return False
+    write_json(mark, {"at": time.time()})
+    return open_url(f"{url}#{quote(ws)}/{quote(session_id)}")
+
+
 def _alive(url):
     try:
         with urllib.request.urlopen(url, timeout=1.5) as response:
@@ -43,7 +98,7 @@ def ensure_dashboard(ws, session_id, select_existing=False):
     existing = dashboard_running()
     if existing:
         if select_existing:
-            return webbrowser.open(f"{existing}#{quote(ws)}/{quote(session_id)}")
+            return open_url(f"{existing}#{quote(ws)}/{quote(session_id)}")
         return False
     mark = paths.home() / "dashboard_spawn.json"
     if time.time() - (read_json(mark, {}) or {}).get("at", 0) < SPAWN_COOLDOWN:

@@ -40,7 +40,7 @@
   .s-PASS, .s-VERIFIED { --c:var(--pass); } .s-FAIL { --c:var(--fail); } .s-PENDING { --c:var(--pending); }
   .s-BLOCKED, .s-STOPPED, .s-INTERRUPTED { --c:var(--blocked); } .s-RUNNING { --c:var(--running); }
   .s-REPAIRING, .s-EXPLORING, .s-TRYING { --c:var(--repairing); } .s-BUILT { --c:var(--pending); }
-  .s-PLANNED, .s-HELD, .s-NEW, .s-NOT { --c:var(--planned); }
+  .s-PLANNED, .s-HELD, .s-NEW, .s-NOT, .s-DEFERRED { --c:var(--planned); }
   .ico { width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; display:block; }
   .si { display:inline-flex; width:16px; height:16px; align-items:center; justify-content:center; color:var(--c); flex:none; }
   .spin { display:inline-block; flex:none; width:12px; height:12px; margin:0 2px; border:2px solid var(--line); border-top-color:var(--c); border-radius:50%; animation:spin .9s linear infinite; }
@@ -311,14 +311,21 @@
   #scriptsMain > .panel > header h2 { font:600 17px/1.4 var(--display); } #scriptsMain > .panel > header span { color:var(--muted); font-size:13px; }
   /*__SITE_MAP_CSS__*/
 
+  .picks { margin:10px 0 4px; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:var(--sunk); }
+  .picks h4 { margin:0 0 6px; font-size:13.5px; }
+  .pick-actions { display:flex; gap:8px; margin:0 0 6px; }
+  .pick { display:flex; align-items:baseline; gap:8px; padding:4px 2px; cursor:pointer; font-size:13px; }
+  .pick input { margin:0; flex:none; transform:translateY(2px); }
   .lightbox { position:fixed; inset:0; background:rgba(8,10,14,.94); display:none; flex-direction:column; z-index:40; }
   .lightbox.open { display:flex; }
   .lb-bar { display:flex; align-items:center; gap:10px; padding:12px 20px; color:var(--on-dark); }
   .lb-bar .grow { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .lb-bar button { background:var(--dark-elev); color:var(--on-dark); border:1px solid #3a4150; border-radius:6px; height:34px; padding:0 14px; cursor:pointer; font-weight:500; }
   .lb-bar button[aria-pressed=true] { background:var(--on-dark); color:var(--dark); }
-  .lb-body { flex:1; overflow:auto; display:flex; justify-content:center; align-items:flex-start; padding:0 20px 20px; }
-  .lb-body img { max-width:100%; height:auto; background:#fff; border-radius:6px; }
+  .lb-body { flex:1; min-height:0; overflow:auto; display:flex; justify-content:center; align-items:center; padding:0 20px 20px; }
+  .lb-body img { max-width:100%; max-height:calc(100vh - 96px); width:auto; height:auto; object-fit:contain; background:#fff; border-radius:6px; cursor:zoom-in; }          /* the whole picture fits the screen; a click shows it at its real size */
+  .lb-body.actual { align-items:flex-start; justify-content:flex-start; }
+  .lb-body.actual img { max-width:none; max-height:none; cursor:zoom-out; }
 
   /* ---------- desktop: the whole page scrolls; the case list stays in view beside the steps ---------- */
   @media (min-width:861px) {
@@ -372,17 +379,17 @@
 <div class="lightbox" id="lb" role="dialog" aria-modal="true" aria-label="Ảnh bằng chứng">
   <div class="lb-bar"><span class="grow" id="lbTitle"></span>
     <button id="lbRaw" aria-pressed="false" title="Phím R">Ảnh gốc</button><button id="lbPrev" aria-label="Ảnh trước">←</button><button id="lbNext" aria-label="Ảnh sau">→</button><button id="lbClose">Đóng (Esc)</button></div>
-  <div class="lb-body"><img id="lbImg" alt=""></div>
+  <div class="lb-body" id="lbBody"><img id="lbImg" alt="" title="Bấm vào ảnh để xem cỡ thật / vừa màn hình"></div>
 </div>
 
 <script>
 const TOKEN = "__TOKEN__";
 const BOOT = __BOOT__;
 const PHASE = { ANALYZE: "Phân tích", CONNECT: "Kết nối", CONFIRM: "Xác nhận", EXECUTE: "Thực thi", REPORT: "Báo cáo", DONE: "Xong" };
-const STATUS = { INTERRUPTED: "Bị bỏ dở", STOPPED: "Đã dừng", PASS: "PASS", FAIL: "FAIL", PENDING: "PENDING", BLOCKED: "BLOCKED", RUNNING: "Đang chạy", REPAIRING: "Đang sửa lỗi", EXPLORING: "Đang xác thực", PLANNED: "Chờ xác thực", BUILT: "Chờ chạy", VERIFIED: "Đã xác thực", TRYING: "Đang thử", HELD: "Cần xử lý trước", NEW: "Mới", "NOT EXECUTED": "Chưa chạy" };
-const ORDER = ["PASS", "FAIL", "REPAIRING", "RUNNING", "EXPLORING", "BUILT", "INTERRUPTED", "STOPPED", "PENDING", "BLOCKED", "PLANNED", "HELD", "NEW", "NOT EXECUTED"];
+const STATUS = { INTERRUPTED: "Bị bỏ dở", STOPPED: "Đã dừng", PASS: "PASS", FAIL: "FAIL", PENDING: "PENDING", BLOCKED: "BLOCKED", RUNNING: "Đang chạy", REPAIRING: "Đang sửa lỗi", EXPLORING: "Đang xác thực", PLANNED: "Chờ xác thực", BUILT: "Chờ chạy", VERIFIED: "Đã xác thực", TRYING: "Đang thử", HELD: "Cần xử lý trước", NEW: "Mới", "NOT EXECUTED": "Chưa chạy", DEFERRED: "Chưa chọn chạy" };
+const ORDER = ["PASS", "FAIL", "REPAIRING", "RUNNING", "EXPLORING", "BUILT", "INTERRUPTED", "STOPPED", "PENDING", "BLOCKED", "PLANNED", "HELD", "NEW", "DEFERRED", "NOT EXECUTED"];
 const S = { sig: "", histSig: "", open: {}, draft: {}, hintError: "", sessions: [], ws: "", sel: null, view: null, caseId: null, attempt: null, raw: false, gallery: [], index: 0, error: "", busy: false,
-            sq: "", sfilter: "all", cq: "", cs: "", drawer: false };
+            sq: "", sfilter: "all", cq: "", cs: "", drawer: false, more: new Set() };
 S.replayTiming = { action_delay_ms: 700, step_delay_ms: 1500 };
 S.videoMode = "fail";          // a plain re-run keeps the video only of a failure; the "Quay video" button always records, at a pace where the step notes can be read
 const RECORD_TIMING = { action_delay_ms: 700, step_delay_ms: 1500 };
@@ -549,6 +556,24 @@ const workerFailed = k => !!(k.request && k.request.failure && k.status !== "PAS
 const caseJump = list => `<div class="jump">${list.slice(0, 12).map(k => `<button type="button" data-case-jump="${esc(k.id)}" title="${esc(k.title || "")}">${esc(k.id)}</button>`).join("")}${list.length > 12 ? `<span class="muted">+${list.length - 12}</span>` : ""}</div>`;
 
 /** Where a testcase differs from its BD. The BD is the default but may itself be wrong, so the user chooses for each one: follow the BD or follow the testcase. Nothing can be confirmed before. */
+/** Before approval: tick the cases of this run (all ticked by default). The strategy is rebuilt on every change, so what is approved is what is ticked. */
+function selectionBox(v) {
+  const s = v.selection;
+  if (!s || !s.can_select) return "";
+  const rows = s.ready.map(c => `<label class="pick"><input type="checkbox" data-pick="${esc(c.id)}" ${s.selected.includes(c.id) ? "checked" : ""} ${S.busy ? "disabled" : ""}><b class="mono">${esc(c.id)}</b><span>${esc(c.title)}</span>${c.depends_on.length ? `<span class="muted">· cần ${c.depends_on.map(esc).join(", ")}</span>` : ""}</label>`).join("");
+  return `<div class="picks"><h4>Chọn case sẽ chạy <span class="muted" style="font-weight:400">(${s.selected.length}/${s.ready.length} đã chọn)</span></h4>
+    <div class="pick-actions"><button class="btn" id="pickAll" ${S.busy ? "disabled" : ""}>Chọn tất cả</button><button class="btn" id="pickNone" ${S.busy ? "disabled" : ""}>Bỏ chọn hết</button></div>${rows}
+    <p class="muted" style="margin:6px 0 0">Case chưa chọn vẫn được phân tích. Khi các case đã chọn chạy xong, bạn chạy tiếp chúng ngay trong phiên này.</p></div>`;
+}
+/** After the approved cases started: the cases that were left out can join the same session. */
+function moreBox(v) {
+  const s = v.selection;
+  if (!s || !s.can_add) return "";
+  const titles = Object.fromEntries(s.ready.map(c => [c.id, c.title]));
+  const rows = s.deferred.map(id => `<label class="pick"><input type="checkbox" data-more="${esc(id)}" ${S.more.has(id) ? "checked" : ""} ${S.busy ? "disabled" : ""}><b class="mono">${esc(id)}</b><span>${esc(titles[id] || "")}</span></label>`).join("");
+  return `<section class="ask"><h3>Case chưa chạy (${s.deferred.length})</h3><p class="muted">Tích case muốn chạy tiếp. Chúng chạy trong cùng phiên này, không cần tạo phiên mới.</p>${rows}
+    <div class="ask-actions"><button class="btn primary" id="runMore" ${S.busy || !S.more.size ? "disabled" : ""}>Chạy các case đã chọn (${S.more.size})</button></div>${S.error ? `<div class="err">${esc(S.error)}</div>` : ""}</section>`;
+}
 function conflictPanel(v) {
   const rows = v.conflicts.map(c => {
     const pick = (choice, label) => `<button type="button" class="btn ${c.choice === choice ? "primary" : ""}" data-conflict-case="${esc(c.case)}" data-conflict-step="${c.step}" data-conflict-choice="${choice}" aria-pressed="${c.choice === choice}" ${S.busy ? "disabled" : ""}>${label}</button>`;
@@ -572,10 +597,12 @@ function inboxItems(v) {
   } else if (v.waiting) items.push(`<section class="ask attn-panel"><h3>AI đang chờ bạn trả lời${v.waiting.case ? ` <span class="muted" style="font-weight:400">· case ${esc(v.waiting.case)}</span>` : ""}</h3><div class="q">${esc(v.waiting.question)}</div>
       <textarea id="answer" aria-label="Câu trả lời" placeholder="Dán thẳng đường dẫn tệp vào đây nếu cần thiết kế, file import… AI tự đọc."></textarea><div class="ask-actions"><button class="btn primary" id="sendAnswer" ${S.busy ? "disabled" : ""}>Gửi trả lời</button></div>${err}</section>`);
   else if (v.can_confirm) items.push(`<section class="ask attn-panel"><h3>Chiến lược chờ duyệt</h3><p class="muted">Xem thứ tự chạy và dữ liệu dự phòng trước khi cho AI chạy.</p>
+      ${selectionBox(v)}
       <details data-key="strategy" ${isOpen("strategy", true)}><summary>Nội dung chiến lược</summary><pre class="strategy">${esc(v.strategy)}</pre></details>
       ${v.conflicts_pending > 0 ? `<p class="err">Còn ${v.conflicts_pending} chỗ testcase lệch BD chưa chọn. Chọn xong mới duyệt được.</p>` : ""}
       <div class="ask-actions"><button class="btn primary" id="confirm" ${S.busy || v.conflicts_pending > 0 ? "disabled" : ""}>Xác nhận và bắt đầu test</button></div>${err}</section>`);
   if (["ANALYZE", "CONNECT", "CONFIRM"].includes(v.phase) && (v.conflicts || []).length) items.unshift(conflictPanel(v));
+  if (v.selection && v.selection.can_add && !v.stopped && !v.waiting) items.push(moreBox(v));
   const hint = v.cases.filter(needsHint);
   if (hint.length) items.push(`<section class="ask"><h3>AI cần gợi ý của bạn (${hint.length} case)</h3><p class="muted">Các case này đã hết số lần tự sửa.</p>${caseJump(hint)}</section>`);
   const broken = v.cases.filter(workerFailed);
@@ -1090,8 +1117,12 @@ document.addEventListener("click", async e => {
   if (t.id === "lbPrev") { S.index = (S.index + S.gallery.length - 1) % S.gallery.length; return drawLightbox(); }
   if (t.id === "lbNext") { S.index = (S.index + 1) % S.gallery.length; return drawLightbox(); }
   if (t.id === "lbRaw") { S.raw = !S.raw; return drawLightbox(); }
+  if (t.id === "lbImg") { $("lbBody").classList.toggle("actual"); return; }
   const where = { ws: S.sel && S.sel.ws, id: S.sel && S.sel.id };
   const call = {
+    pickAll: () => post("/api/select", { ...where, cases: S.view.selection.ready.map(c => c.id) }),
+    pickNone: () => Promise.resolve({ error: "Phải chọn ít nhất một case để chạy." }),
+    runMore: () => post("/api/run_more", { ...where, cases: [...S.more] }),
     exportReport: () => post("/api/report", where),
     confirm: () => post("/api/confirm", where), stop: () => post("/api/stop", where), resume: () => post("/api/resume", where),
     sendAnswer: () => post("/api/answer", { ...where, text: ($("answer") || {}).value || "" }),
@@ -1110,6 +1141,7 @@ document.addEventListener("click", async e => {
     if (t.id === "addRef" && r.ok) delete S.draft.refPath;
     await refreshView();
     renderMain();
+    if (t.id === "runMore" && !r.error) S.more.clear();
     if (t.id === "exportReport" && !r.error) window.location.assign(reportUrl(r.main));        // hand the workbook over as soon as it is built
   }
 });
@@ -1125,7 +1157,20 @@ document.addEventListener("submit", e => {
   if (e.target.id === "mapSearchForm") { e.preventDefault(); G.searchOpen = true; return loadMap(); }
   if (e.target.id === "mapDetailForm") { e.preventDefault(); return loadMapScreen(); }
 });
-document.addEventListener("change", e => {
+document.addEventListener("change", async e => {
+  if (e.target.dataset && e.target.dataset.pick !== undefined) {                      // tick or untick a case of this run: the strategy is rebuilt at once
+    const ids = [...document.querySelectorAll("[data-pick]")].filter(i => i.checked).map(i => i.dataset.pick);
+    const where = { ws: S.sel && S.sel.ws, id: S.sel && S.sel.id };
+    S.busy = true; S.error = ""; renderMain();
+    const r = ids.length ? await post("/api/select", { ...where, cases: ids }) : { error: "Phải chọn ít nhất một case để chạy." };
+    S.busy = false; S.error = r.error || "";
+    await refreshView(); renderMain();
+    return;
+  }
+  if (e.target.dataset && e.target.dataset.more !== undefined) {                      // tick a case that was left out, to run it next
+    if (e.target.checked) S.more.add(e.target.dataset.more); else S.more.delete(e.target.dataset.more);
+    return renderMain();
+  }
   if (e.target.dataset.captionLanguage !== undefined) {
     S.replayCaptionLanguage = e.target.value;
     try { localStorage.setItem("oqaReplayCaptionLanguage", S.replayCaptionLanguage); } catch (_) {}
