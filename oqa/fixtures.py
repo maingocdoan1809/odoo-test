@@ -174,10 +174,11 @@ def run_key(session, case, label=""):
     """A business name with a run-specific suffix for each new record."""
     prefix = workspace.load(session.ws)["test_prefix"]
     base = record_names.fixture_prefix(session, case, prefix)
+    log = events.read(session.dir)
     try:
-        attempt = live._attempt(session, case)
+        attempt = live._attempt(session, case, log)
     except GateError:                                   # not started yet (or the last attempt is closed): the key is for the attempt that is about to start
-        started = [e["attempt"] for e in events.read(session.dir) if e["kind"] == "case_started" and e.get("case") == case]
+        started = [e["attempt"] for e in log if e["kind"] == "case_started" and e.get("case") == case]
         attempt = started[-1] + 1 if started else 1
     again = f"a{attempt}-" if attempt > 1 else ""          # a case run again in the same session must not meet the record its blocked attempt left
     return base + again + (record_names.slug(label, limit=None) or "ban-ghi")

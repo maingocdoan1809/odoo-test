@@ -212,12 +212,14 @@ def case_records(session: Session):
 
 def selection_view(session, state, phase):
     """What the dashboard needs to let the user tick the cases of the run (before approval) and to add the ones left out (after)."""
-    doc = read_json(session.dir / "analysis.json") or {"cases": []}
     strategy = read_json(session.dir / "strategy.json") or {"order": []}
+    left = strategy.get("deferred", [])
+    if phase != "CONFIRM" and not left:                      # nothing to tick and nothing left out: do not read the analysis and the cases on every poll
+        return {"ready": [], "selected": strategy["order"], "deferred": [], "can_select": False, "can_add": False}
+    doc = read_json(session.dir / "analysis.json") or {"cases": []}
     titles = {c["id"]: c.get("title", "") for c in session.cases()["cases"]}
     ready = [{"id": c["id"], "title": c.get("title") or titles.get(c["id"], ""), "depends_on": c.get("depends_on") or []} for c in doc["cases"] if c["verdict"] == "ready"]
     selected = strategy["order"] if strategy["order"] else [c["id"] for c in ready]
-    left = strategy.get("deferred", [])
     return {"ready": ready, "selected": selected, "deferred": left,
             "can_select": phase == "CONFIRM" and len(ready) > 1,
             "can_add": phase in ("EXECUTE", "REPORT", "DONE") and bool(left) and not state.get("stopped") and not state["waiting"]}

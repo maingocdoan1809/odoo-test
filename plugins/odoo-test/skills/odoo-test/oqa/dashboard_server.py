@@ -28,6 +28,11 @@ def _attachment(name):
         ascii_name += Path(name).suffix
     return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name)}"
 
+def _case_ids(body):
+    cases = body.get("cases")
+    return [str(c) for c in cases] if isinstance(cases, list) else []
+
+
 class Dashboard(LocalApp):
     def __init__(self, select=None, timeout=4 * 3600):
         super().__init__(timeout)
@@ -300,12 +305,10 @@ class Dashboard(LocalApp):
                 entry, created = dispatch_requests.submit(session, str(body.get("case", "")))
                 return 200, {"ok": True, "created": created, "request": dispatch_requests.of_case(session, str(body.get("case", "")))}
             if method == "POST" and path == "/api/select":
-                cases = body.get("cases")
-                result = self._session(body).select_cases([str(c) for c in cases] if isinstance(cases, list) else [], "dashboard")
+                result = self._session(body).select_cases(_case_ids(body), "dashboard")
                 return 200, {"ok": True, **result}
             if method == "POST" and path == "/api/run_more":
-                cases = body.get("cases")
-                result = self._session(body).add_cases([str(c) for c in cases] if isinstance(cases, list) else [], "dashboard")
+                result = self._session(body).add_cases(_case_ids(body), "dashboard")
                 return 200, {"ok": True, **result}
             if method == "POST" and path == "/api/hint":
                 self._session(body).hint(str(body.get("case", "")), str(body.get("text", "")), "dashboard")

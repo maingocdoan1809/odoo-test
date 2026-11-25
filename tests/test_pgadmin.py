@@ -161,7 +161,7 @@ def test_a_case_run_again_gets_a_new_record_name(session, ws, monkeypatch):
     live.start(session, "ORD-001")
     first = fixtures.run_key(session, "ORD-001", "lien he")
     assert "-a2-" not in first and first.endswith("_lien-he")
-    monkeypatch.setattr(live, "_attempt", lambda s, c: 2)
+    monkeypatch.setattr(live, "_attempt", lambda s, c, log=None: 2)
     second = fixtures.run_key(session, "ORD-001", "lien he")
     assert second != first and second.endswith("a2-lien-he")
     from oqa import record_names

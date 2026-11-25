@@ -20,7 +20,7 @@ import uuid
 from pathlib import Path
 
 from . import analysis as analysis_mod
-from . import captions, connect, evidence, events, memory, paths, record_names, replays, workspace
+from . import captions, connect, evidence, events, memory, paths, record_names, replays, textfix, workspace
 from .state import GateError, Session
 from .store import read_json, write_json
 
@@ -62,10 +62,10 @@ def _run(case, *args, timeout=120):
     done = subprocess.run([*command, f"-s={sname(case)}", *args], capture_output=True,
                           text=True, encoding="utf-8", errors="replace", timeout=timeout, cwd=str(work),
                           creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
-    out = (done.stdout or "") + (done.stderr or "")
+    out = textfix.strip_control((done.stdout or "") + (done.stderr or ""))         # colour codes would reach the notes, the events and the report
     if done.returncode or "### Error" in out:
         raise GateError(f"playwright-cli {args[0]} failed: {out[-400:].strip()}")
-    return done.stdout or ""
+    return textfix.strip_control(done.stdout or "")
 
 
 _JSON_STRING = r'"(?:\\.|[^"\\])*"'
@@ -233,12 +233,13 @@ def passed_steps(session, case):
     return [] if any(e["status"] != "PASS" for e in done.values()) else sorted(done)
 
 
-def _attempt(session, case):
-    mine = [e for e in events.read(session.dir) if e["kind"] == "case_started" and e.get("case") == case]
+def _attempt(session, case, log=None):
+    log = events.read(session.dir) if log is None else log
+    mine = [e for e in log if e["kind"] == "case_started" and e.get("case") == case]
     if not mine:
         raise GateError(f"{case} was not started: oqa live start {case}")
     attempt = mine[-1]["attempt"]
-    if any(e["kind"] == "attempt_finished" and e.get("case") == case and e.get("attempt") == attempt for e in events.read(session.dir)):
+    if any(e["kind"] == "attempt_finished" and e.get("case") == case and e.get("attempt") == attempt for e in log):
         raise GateError(f"{case} attempt {attempt} is already closed.")
     return attempt
 

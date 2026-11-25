@@ -13,7 +13,7 @@ from oqa import paths  # noqa: E402
 
 OWNED = re.compile(r"/sessions/[^/]+/(state\.json|events\.jsonl|cases\.json|refs\.json|analysis\.json|strategy\.json|strategy\.md|evidence/|report/|logs/)|/workspace\.json$|/knowledge/index\.md$|\.odoo-test\.json$")
 SECRET = re.compile(r"/sessions/[^/]+/auth/|storageState|/credentials", re.I)
-CONFIRM = re.compile(r"(^|[\s;&|\"'])(?:\S*oqa(?:\.py)?|-m\s+oqa)\s+(?:confirm|resume|stop|run-more)\b")
+CONFIRM = re.compile(r"(^|[\s;&|\"'])(?:\S*oqa(?:\.py)?|-m\s+oqa)\s+(?:confirm|resume|stop|run-more|select\s+(?:--all|--cases))\b")
 SCRIPT = re.compile(r"\bpython[\w.]*\s+(?:-\S+\s+)*\S*[/\\]workspaces[/\\][^\s]+[/\\]scripts[/\\]\S+\.py")
 SECRET_SHELL = re.compile(r"(sessions[/\\][^\s\"']+[/\\]auth|storageState)", re.I)
 
@@ -36,7 +36,7 @@ def verdict(call):
     if tool == "Bash":
         command = str(args.get("command", ""))
         if CONFIRM.search(command):
-            return "Only the user confirms the strategy and stops or resumes the test: they do it on the dashboard or run the command in their own terminal. Tell them what is waiting, then `oqa wait` in the background."
+            return "Only the user chooses the cases, confirms the strategy and stops or resumes the test: they do it on the dashboard or run the command in their own terminal. Tell them what is waiting, then `oqa wait` in the background."
         if SECRET_SHELL.search(command):
             return "Signed-in cookies and passwords are never read: they are used by oqa only."
         if SCRIPT.search(command):

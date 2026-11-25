@@ -32,9 +32,7 @@ def verdict(event=None):
     state = session.state()
     if state["phase"] == "DONE" or state.get("stopped") or not autostart.session_active(session):
         return None
-    if not os.environ.get("OQA_NO_OPEN") and (not state.get("channel") or (session.dir / "analysis.json").is_file()):
-        if not autostart.ensure_dashboard(ws, session_id):
-            autostart.ensure_viewer(ws, session_id)             # the server runs but no tab is open: open one
+    autostart.ensure_open(session, state)                      # the dashboard runs, and a tab is open on it
     if state["waiting"] or state["phase"] == "CONFIRM":
         if autostart.wait_running(session):
             return None

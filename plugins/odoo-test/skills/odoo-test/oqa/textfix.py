@@ -47,3 +47,11 @@ def repair(value):
     if isinstance(value, dict):
         return {k: repair(v) for k, v in value.items()}
     return value
+
+
+_CONTROL = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def strip_control(text):
+    """Terminal colour codes and other control characters: a browser tool's output carries them, and a workbook refuses a cell that holds one."""
+    return _CONTROL.sub("", text) if isinstance(text, str) else text

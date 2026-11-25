@@ -151,6 +151,28 @@ REPLAY_HINT = ("The live run passed but its saved script does not replay: {probl
                "(act run-code with record=true), never an unrecorded click, and no record id in a URL. Redo the case and record the complete path.")
 
 
+def _flat(text, limit):
+    return " ".join(text.split())[:limit]
+
+
+def _reopen(session, case, note, reason=None):
+    """Put `note` in the shared notes and reopen the case for a new worker (with `reason`, else the note). The GateError text when it could not be reopened, else None."""
+    claims.add_note(session, "coordinator", note, case)
+    try:
+        live.recover(session, case, reason or note)
+    except GateError as error:
+        return str(error)
+    return None
+
+
+def _lease(session, case, agent):
+    """Hold `case` for `agent`; a dispatch request for the case is accepted at the same time. True when the case was leased."""
+    leased, _ = claims.claim(session, agent, case)
+    if leased and case in dispatch_requests.pending(session):
+        dispatch_requests.resolve(session, case, "accepted", worker=agent)
+    return leased
+
+
 def run(session, worker_model, coordinator_model, timeout):
     session.require("EXECUTE")
     executable = shutil.which("claude")
@@ -169,12 +191,8 @@ def run(session, worker_model, coordinator_model, timeout):
                     n = counters.get(case, 0) + 1
                     counters[case] = n
                     agent = f"dispatch-{order.index(case) + 1}-{n}"
-                    leased, _ = claims.claim(session, agent, case)
-                    if leased:
-                        task = workers.submit(_worker_checked, session, case, agent, executable, worker_model, timeout)
-                        tasks[task] = case
-                        if case in dispatch_requests.pending(session):
-                            dispatch_requests.resolve(session, case, "accepted", worker=agent)
+                    if _lease(session, case, agent):
+                        tasks[workers.submit(_worker_checked, session, case, agent, executable, worker_model, timeout)] = case
                 for case in dispatch_requests.pending(session):                      # a request nobody could take yet: say why at the case, re-checked on every pass
                     if case in tasks.values():
                         continue
@@ -198,21 +216,12 @@ def run(session, worker_model, coordinator_model, timeout):
                 verdict = state["results"].get(case)
                 if verdict and verdict["status"] == "PASS" and live.script_file(session, case).is_file():
                     if problem and counters[case] == 1 and session.state()["phase"] == "EXECUTE" and not session.state().get("stopped") and not session.state().get("waiting"):
-                        note = REPLAY_HINT.format(problem=" ".join(problem.split())[:400])
-                        claims.add_note(session, "coordinator", note, case)
-                        try:
-                            live.recover(session, case, note)
-                        except GateError:
-                            pass
+                        _reopen(session, case, REPLAY_HINT.format(problem=_flat(problem, 400)))
                     continue
                 if verdict and counters[case] == 1 and verdict["status"] in ("FAIL", "BLOCKED", "PENDING") and state["phase"] == "EXECUTE" and not state.get("stopped") and not state.get("waiting"):
                     again = audit(session, executable, coordinator_model, case, verdict)
                     if again:                                     # one recovery: the case is reopened for a new worker with the reason in the shared notes
-                        claims.add_note(session, "coordinator", "REOPENED after the environment check: " + again, case)
-                        try:
-                            live.recover(session, case, again)
-                        except GateError:
-                            pass
+                        _reopen(session, case, "REOPENED after the environment check: " + again, again)
                     continue
                 if case in state["results"] or state["phase"] != "EXECUTE" or state.get("stopped") or state.get("waiting"):
                     continue
@@ -236,10 +245,14 @@ def run(session, worker_model, coordinator_model, timeout):
 
 
 # --- the host's own agents (Claude Code's Agent tool, Copilot CLI agents, ...): no CLI process is spawned by oqa ------------------------------------------------------
+def _oqa_preamble(session):
+    return (f"In this brief `oqa` means: {sys.executable} {ENTRY}   (use exactly this, from any folder). "
+            f"Run every oqa command with `--ws {session.ws} --session {session.id}`.")
+
+
 def _host_brief(session, case, agent):
-    flags = f"--ws {session.ws} --session {session.id}"
     return f"""You are case worker {agent} for case {case} in oqa session {session.id} (workspace {session.ws}). You already hold this case: work on it and nothing else.
-In this brief `oqa` means: {sys.executable} {ENTRY}   (use exactly this, from any folder). Run every oqa command with `{flags}`. Follow the "Case worker" section of references/agents.md and references/evidence.md of the odoo-test skill: `oqa live start {case}`, act in the case browser, record every planned step with `oqa live step`, close with `oqa live end {case} --status PASS|FAIL|BLOCKED|PENDING`.
+{_oqa_preamble(session)} Follow the "Case worker" section of references/agents.md and references/evidence.md of the odoo-test skill: `oqa live start {case}`, act in the case browser, record every planned step with `oqa live step`, close with `oqa live end {case} --status PASS|FAIL|BLOCKED|PENDING`.
 Rules that never bend:
 - Write observations in Vietnamese. Quote exact Odoo text in the language shown.
 - Every record this case creates takes its name and code from `oqa fixture key --case {case} --label "<short Vietnamese label>"`; never type a fixed record name, never write a record id into saved code (use capture_id / $OQA_ID).
@@ -264,28 +277,26 @@ def plan(session, limit=None):
     session.require("EXECUTE")
     order = (read_json(session.dir / "strategy.json", {}) or {})["order"]
     workers = []
-    for case in claims.free_cases(session)[:limit or claims.MAX_WORKERS]:
+    free = claims.free_cases(session)
+    for case in free[:limit or claims.MAX_WORKERS]:
         agent = f"host-{order.index(case) + 1}-{uuid.uuid4().hex[:4]}"
-        leased, _ = claims.claim(session, agent, case)
-        if not leased:
+        if not _lease(session, case, agent):
             break
-        if case in dispatch_requests.pending(session):
-            dispatch_requests.resolve(session, case, "accepted", worker=agent)
         workers.append({"agent": agent, "case": case, "brief": _host_brief(session, case, agent)})
     state = session.state()
-    return {"workers": workers, "free": claims.free_cases(session), "held": sorted(claims.table(session)),
+    leased = {w["case"] for w in workers}
+    return {"workers": workers, "free": [c for c in free if c not in leased], "held": sorted(claims.table(session)),
             "pending": [c for c in order if c not in state["results"]]}
 
 
 def repair_brief(session, case, problem):
-    flags = f"--ws {session.ws} --session {session.id}"
     script = live.script_file(session, case)
     return f"""You repair the SAVED SCRIPT of case {case} (oqa session {session.id}, workspace {session.ws}). The live run PASSED and its evidence is final: do NOT run the case again
 (no `oqa live start`, `step` or `end`) and do not touch its result or pictures. Only the script, which must replay on other days, does not replay.
-In this brief `oqa` means: {sys.executable} {ENTRY}   (use exactly this, from any folder). Run every oqa command with `{flags}`.
+{_oqa_preamble(session)}
 
 The replay failed with:
-{" ".join(problem.split())[:600]}
+{_flat(problem, 600)}
 
 The script is {script}. Each step is a block: `// step N`, `// frame: <locator of the element framed>`, `// shows: <exact visible text>`, then `await page...` lines.
 1. Read the script and find the step named in the error. Typical causes: `shows` is text the page does not carry as visible text (a placeholder, a tooltip, an attribute): use a visible heading, value or label; a locator that matches nothing or several elements; a click after which the next line runs before the page is ready (wait for what the next line needs); a name typed by hand instead of the run's key.
@@ -311,11 +322,10 @@ def settle(session, case, reopen=False):
         if not problem:
             return f"{case} PASS and its saved script replays."
         if not reopen:                                       # the live run is good and its evidence is final: only the script needs fixing, which is quick
-            return (f"{case} passed live but its saved script does not replay: {' '.join(problem.split())[:300]} The live result and pictures stay as they are. "
+            return (f"{case} passed live but its saved script does not replay: {_flat(problem, 300)} The live result and pictures stay as they are. "
                     f"Fix only the script: oqa dispatch --repair {case} prints a brief for one agent; then run oqa dispatch --settle {case} again. "
                     f"If the script cannot be fixed, run oqa dispatch --settle {case} --reopen to run the whole case again.")
-        note = REPLAY_HINT.format(problem=" ".join(problem.split())[:400])
-        reopen = note
+        reopen = REPLAY_HINT.format(problem=_flat(problem, 400))
         summary = f"{case} passed live but its script does not replay: "
     else:
         reopen = audit_facts(session, case, verdict)
@@ -323,9 +333,7 @@ def settle(session, case, reopen=False):
             return (f"{case} {verdict['status']} kept: the fact checks found no leftover-data cause. Judge it yourself: could leftover data, a record shared with another run, "
                     "a fixture that is not this run's own or a setup step that did not take effect explain it? If so, oqa live recover.")
         summary = f"{case} {verdict['status']} looks environmental: "
-    claims.add_note(session, "coordinator", reopen, case)
-    try:
-        live.recover(session, case, reopen)
-    except GateError as error:
+    error = _reopen(session, case, reopen)
+    if error:
         return summary + f"it could not be reopened ({error})."
     return summary + "reopened once for a new worker (run oqa dispatch --plan again)."

@@ -12,10 +12,10 @@ def test_the_viewport_is_full_hd():
 
 
 def test_both_replay_runners_use_the_same_viewport():
-    for name in ("replay.mjs", "replay_browser.cjs"):
-        text = (WEB / name).read_text(encoding="utf-8")
-        found = re.search(r"viewport:\s*\{\s*width:\s*(\d+),\s*height:\s*(\d+)", text)
-        assert found and (int(found.group(1)), int(found.group(2))) == (browser.VIEWPORT["width"], browser.VIEWPORT["height"]), name
+    """replay.mjs ships alone in the scripts ZIP, so it keeps its own copy; the browser runner is handed the viewport in its config."""
+    found = re.search(r"viewport:\s*\{\s*width:\s*(\d+),\s*height:\s*(\d+)", (WEB / "replay.mjs").read_text(encoding="utf-8"))
+    assert found and (int(found.group(1)), int(found.group(2))) == (browser.VIEWPORT["width"], browser.VIEWPORT["height"])
+    assert "viewport: config.viewport" in (WEB / "replay_browser.cjs").read_text(encoding="utf-8")
 
 
 def test_live_evidence_browser_takes_the_same_viewport():

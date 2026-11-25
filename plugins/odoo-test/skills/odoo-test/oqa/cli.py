@@ -226,19 +226,17 @@ def cmd_ref(args):
 def cmd_strategy(args):
     session = Session.open(args.ws, args.session)
     session.require("CONFIRM")
-    config = workspace.load(session.ws)
-    data, text = analysis.strategy(read_json(session.dir / "analysis.json"), session.cases(), config, session.state().get("selected"))
-    write_json(session.dir / "strategy.json", data)
-    (session.dir / "strategy.md").write_text(text + "\n", encoding="utf-8")
-    session.strategy_ready(data["sha"])
+    data = session.rebuild_strategy()
     return {"order": data["order"], "excluded": data["excluded"], "file": str(session.dir / "strategy.md"), "sha": data["sha"]}, \
         f"Strategy written to {session.dir / 'strategy.md'}: {len(data['order'])} cases to run, {len(data['excluded'])} held back.\nShow it to the user and ask them to approve it."
 
 
-def cmd_select(args):
+def cmd_select(args, is_tty=None):
     """Which analysed cases belong to this run (before the user approves the strategy). Without arguments: what is chosen and what is left out."""
     session = Session.open(args.ws, args.session)
     if args.all or args.cases:
+        if not _user_at_terminal(is_tty):
+            raise GateError("Only the user chooses the cases of the run: run `oqa select` yourself in a terminal, or tick them in the dashboard.")
         doc = read_json(session.dir / "analysis.json") or {"cases": []}
         chosen = [c["id"] for c in doc["cases"] if c["verdict"] == "ready"] if args.all else [c.strip() for c in args.cases.split(",") if c.strip()]
         result = session.select_cases(chosen, by="terminal")
@@ -249,11 +247,15 @@ def cmd_select(args):
         f"Chosen: {', '.join(strategy['order']) or 'none'}. Left out: {', '.join(strategy.get('deferred', [])) or 'none'}.")
 
 
+def _user_at_terminal(is_tty=None):
+    """The commands only the user may run need a real terminal (tests pass `is_tty`)."""
+    return (sys.stdin.isatty() and sys.stdout.isatty()) if is_tty is None else is_tty
+
+
 def cmd_run_more(args, is_tty=None):
     """The USER adds cases that were left out to the same session (their choice is their approval)."""
     session = Session.open(args.ws, args.session)
-    tty = (sys.stdin.isatty() and sys.stdout.isatty()) if is_tty is None else is_tty
-    if not tty:
+    if not _user_at_terminal(is_tty):
         raise GateError("Only the user adds cases to a running session: run `oqa run-more` yourself in a terminal, or press 'Chạy các case đã chọn' in the dashboard.")
     cases = [c.strip() for c in (args.cases or "").split(",") if c.strip()]
     if not cases:
@@ -266,8 +268,7 @@ def cmd_run_more(args, is_tty=None):
 def cmd_confirm(args, is_tty=None):
     session = Session.open(args.ws, args.session)
     state = session.require("CONFIRM")
-    tty = (sys.stdin.isatty() and sys.stdout.isatty()) if is_tty is None else is_tty
-    if not tty:
+    if not _user_at_terminal(is_tty):
         raise GateError("Only the user can confirm: run `oqa confirm` yourself in a terminal, or press Confirm in the dashboard. The assistant cannot do this for them.")
     if is_tty is None:
         print((session.dir / "strategy.md").read_text(encoding="utf-8"))
@@ -985,7 +986,7 @@ def cmd_repair(args):
 
 def cmd_resume(args, is_tty=None):
     session = Session.open(args.ws, args.session)
-    if not ((sys.stdin.isatty() and sys.stdout.isatty()) if is_tty is None else is_tty):
+    if not _user_at_terminal(is_tty):
         raise GateError("Only the user resumes a test they stopped: run `oqa resume` in your own terminal or press Resume in the dashboard.")
     session.resume("terminal")
     return {"stopped": False}, "Resumed."

@@ -27,7 +27,7 @@ def run(session, ws, initial, blocks, timings, video_dir):
                           "state": connect.storage_path(session, name) if ws["env"] == workspace.MAIN_ENV else None}
     config = {"module": str(Path(cli).parent), "url": ws["url"], "db": ws["db"],
               "initial": initial, "accounts": accounts, "blocks": blocks, **timings,
-              "channel": browser.headless_channel(), "videoDir": str(video_dir) if video_dir else None}
+              "channel": browser.headless_channel(), "viewport": browser.VIEWPORT, "videoDir": str(video_dir) if video_dir else None}
     script = Path(__file__).with_name("web") / "replay_browser.cjs"
     child = subprocess.run([str(node), str(script)], input=json.dumps(config), capture_output=True,
                            text=True, encoding="utf-8", errors="replace",

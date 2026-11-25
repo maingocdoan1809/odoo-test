@@ -2,6 +2,7 @@
 
 Used by `oqa session new` (works even when no hook is installed) and by the hooks (which repair what is missing). A heartbeat file is used
 instead of a process id, so the check works the same on Windows, macOS and Linux."""
+import functools
 import os
 import subprocess
 import sys
@@ -24,6 +25,27 @@ VIEWER_FRESH = 90         # seconds: the page asks the server every 1.5s; a hidd
 REOPEN_COOLDOWN = 120      # a tab just opened needs a moment to load; and a user who closed it on purpose is not hit again and again
 
 
+def _recent(name, seconds):
+    """True when the marker file `name` in the home folder was touched less than `seconds` ago."""
+    return time.time() - (read_json(paths.home() / name, {}) or {}).get("at", 0) < seconds
+
+
+def _touch(name):
+    write_json(paths.home() / name, {"at": time.time()})
+
+
+def _spawn(*args):
+    """Start `oqa.py <args>` detached from this process. False when it could not be started."""
+    root = Path(__file__).resolve().parents[1]
+    flags = {"creationflags": 0x00000008 | 0x00000200} if sys.platform == "win32" else {"start_new_session": True}
+    try:
+        subprocess.Popen([sys.executable, str(root / "oqa.py"), *args], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=str(root), **flags)
+    except OSError:
+        return False
+    return True
+
+
+@functools.lru_cache(maxsize=1)
 def _wsl():
     try:
         return "microsoft" in Path("/proc/version").read_text().lower()
@@ -48,30 +70,33 @@ def open_url(url):
         return False
 
 
+_last_mark = {}         # home folder -> when the viewer marker was last written by this process
+
+
 def mark_viewer():
-    """Called by the dashboard server whenever the open page asks it something: a tab is showing the dashboard right now."""
-    mark = paths.home() / "dashboard_viewer.json"
-    if time.time() - (read_json(mark, {}) or {}).get("at", 0) >= 2:
-        write_json(mark, {"at": time.time()})
+    """Called by the dashboard server whenever the open page asks it something: a tab is showing the dashboard right now. Written a few times a minute, not on every poll."""
+    home = str(paths.home())
+    if time.time() - _last_mark.get(home, 0) >= VIEWER_FRESH / 6:
+        _last_mark[home] = time.time()
+        _touch("dashboard_viewer.json")
 
 
 def viewer_seen(max_age=VIEWER_FRESH):
     """True when a dashboard tab asked the server within the last `max_age` seconds."""
-    return time.time() - (read_json(paths.home() / "dashboard_viewer.json", {}) or {}).get("at", 0) < max_age
+    return _recent("dashboard_viewer.json", max_age)
 
 
-def ensure_viewer(ws, session_id):
+def ensure_viewer(ws, session_id, url=None):
     """The dashboard server may run with no tab open (the user closed it, or the browser never opened). When no tab asked the server lately, open one on this session.
     True when a tab was opened."""
     if os.environ.get("OQA_NO_OPEN"):
         return False
-    url = dashboard_running()
+    url = url or dashboard_running()
     if not url or viewer_seen():
         return False
-    mark = paths.home() / "dashboard_open.json"
-    if time.time() - (read_json(mark, {}) or {}).get("at", 0) < REOPEN_COOLDOWN:
+    if _recent("dashboard_open.json", REOPEN_COOLDOWN):
         return False
-    write_json(mark, {"at": time.time()})
+    _touch("dashboard_open.json")
     return open_url(f"{url}#{quote(ws)}/{quote(session_id)}")
 
 
@@ -100,18 +125,21 @@ def ensure_dashboard(ws, session_id, select_existing=False):
         if select_existing:
             return open_url(f"{existing}#{quote(ws)}/{quote(session_id)}")
         return False
-    mark = paths.home() / "dashboard_spawn.json"
-    if time.time() - (read_json(mark, {}) or {}).get("at", 0) < SPAWN_COOLDOWN:
+    if _recent("dashboard_spawn.json", SPAWN_COOLDOWN):
         return False
-    write_json(mark, {"at": time.time()})
-    root = Path(__file__).resolve().parents[1]
-    flags = {"creationflags": 0x00000008 | 0x00000200} if sys.platform == "win32" else {"start_new_session": True}
-    try:
-        subprocess.Popen([sys.executable, str(root / "oqa.py"), "dashboard", "--ws", ws, "--session", session_id], stdin=subprocess.DEVNULL,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=str(root), **flags)
-    except OSError:
-        return False
-    return True
+    _touch("dashboard_spawn.json")
+    return _spawn("dashboard", "--ws", ws, "--session", session_id)
+
+
+def ensure_open(session, state):
+    """What the hooks want on every prompt and stop: the dashboard running, with a tab open on it. Returns "started", "opened" or None (nothing was needed).
+    A channel session shows nothing until its analysis exists."""
+    if os.environ.get("OQA_NO_OPEN") or (state.get("channel") and not (session.dir / "analysis.json").is_file()):
+        return None
+    url = dashboard_running()
+    if not url:
+        return "started" if ensure_dashboard(session.ws, session.id) else None
+    return "opened" if ensure_viewer(session.ws, session.id, url) else None
 
 
 def session_active(session):
@@ -124,18 +152,10 @@ def ensure_init_form(ws=None):
     """Start the setup form in the background (it opens in the user's browser) when no workspace is configured. True when one was started."""
     if os.environ.get("OQA_NO_OPEN"):
         return False
-    mark = paths.home() / "init_spawn.json"
-    if time.time() - (read_json(mark, {}) or {}).get("at", 0) < 120:        # the form waits for the user for minutes: do not open a second one
+    if _recent("init_spawn.json", 120):        # the form waits for the user for minutes: do not open a second one
         return False
-    write_json(mark, {"at": time.time()})
-    root = Path(__file__).resolve().parents[1]
-    flags = {"creationflags": 0x00000008 | 0x00000200} if sys.platform == "win32" else {"start_new_session": True}
-    try:
-        subprocess.Popen([sys.executable, str(root / "oqa.py"), "init", *(["--ws", ws] if ws else [])], stdin=subprocess.DEVNULL,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=str(root), **flags)
-    except OSError:
-        return False
-    return True
+    _touch("init_spawn.json")
+    return _spawn("init", *(["--ws", ws] if ws else []))
 
 
 def ensure_prepare(ws):
@@ -145,17 +165,10 @@ def ensure_prepare(ws):
     from . import sitemap
     if sitemap.file_of(ws).exists():
         return False
-    mark = paths.home() / f"prepare_{ws}.json"
-    if time.time() - (read_json(mark, {}) or {}).get("at", 0) < 600:
+    if _recent(f"prepare_{ws}.json", 600):
         return False
-    write_json(mark, {"at": time.time()})
-    root = Path(__file__).resolve().parents[1]
-    flags = {"creationflags": 0x00000008 | 0x00000200} if sys.platform == "win32" else {"start_new_session": True}
-    try:
-        subprocess.Popen([sys.executable, str(root / "oqa.py"), "prepare", "--ws", ws], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=str(root), **flags)
-    except OSError:
-        return False
-    return True
+    _touch(f"prepare_{ws}.json")
+    return _spawn("prepare", "--ws", ws)
 
 
 def _beat_file(session):

@@ -562,7 +562,7 @@ function selectionBox(v) {
   if (!s || !s.can_select) return "";
   const rows = s.ready.map(c => `<label class="pick"><input type="checkbox" data-pick="${esc(c.id)}" ${s.selected.includes(c.id) ? "checked" : ""} ${S.busy ? "disabled" : ""}><b class="mono">${esc(c.id)}</b><span>${esc(c.title)}</span>${c.depends_on.length ? `<span class="muted">· cần ${c.depends_on.map(esc).join(", ")}</span>` : ""}</label>`).join("");
   return `<div class="picks"><h4>Chọn case sẽ chạy <span class="muted" style="font-weight:400">(${s.selected.length}/${s.ready.length} đã chọn)</span></h4>
-    <div class="pick-actions"><button class="btn" id="pickAll" ${S.busy ? "disabled" : ""}>Chọn tất cả</button><button class="btn" id="pickNone" ${S.busy ? "disabled" : ""}>Bỏ chọn hết</button></div>${rows}
+    <div class="pick-actions"><button class="btn" id="pickAll" ${S.busy ? "disabled" : ""}>Chọn tất cả</button></div>${rows}
     <p class="muted" style="margin:6px 0 0">Case chưa chọn vẫn được phân tích. Khi các case đã chọn chạy xong, bạn chạy tiếp chúng ngay trong phiên này.</p></div>`;
 }
 /** After the approved cases started: the cases that were left out can join the same session. */
@@ -1121,7 +1121,6 @@ document.addEventListener("click", async e => {
   const where = { ws: S.sel && S.sel.ws, id: S.sel && S.sel.id };
   const call = {
     pickAll: () => post("/api/select", { ...where, cases: S.view.selection.ready.map(c => c.id) }),
-    pickNone: () => Promise.resolve({ error: "Phải chọn ít nhất một case để chạy." }),
     runMore: () => post("/api/run_more", { ...where, cases: [...S.more] }),
     exportReport: () => post("/api/report", where),
     confirm: () => post("/api/confirm", where), stop: () => post("/api/stop", where), resume: () => post("/api/resume", where),
@@ -1162,7 +1161,7 @@ document.addEventListener("change", async e => {
     const ids = [...document.querySelectorAll("[data-pick]")].filter(i => i.checked).map(i => i.dataset.pick);
     const where = { ws: S.sel && S.sel.ws, id: S.sel && S.sel.id };
     S.busy = true; S.error = ""; renderMain();
-    const r = ids.length ? await post("/api/select", { ...where, cases: ids }) : { error: "Phải chọn ít nhất một case để chạy." };
+    const r = await post("/api/select", { ...where, cases: ids });
     S.busy = false; S.error = r.error || "";
     await refreshView(); renderMain();
     return;

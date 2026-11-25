@@ -3,7 +3,7 @@ from contextlib import contextmanager
 import os
 from pathlib import Path
 
-VIEWPORT = {"width": 1920, "height": 1080}      # full HD, the same everywhere (live evidence, connect, PgAdmin, both replay runners): oqa/web/replay*.{mjs,cjs} repeat it, tests/test_viewport.py keeps them equal
+VIEWPORT = {"width": 1920, "height": 1080}      # full HD, the same everywhere (live evidence, connect, PgAdmin, both replay runners): oqa/web/replay.mjs (which ships alone) repeats it and tests/test_viewport.py keeps them equal; replay_browser.cjs is handed it
 
 
 def headless_channel():

@@ -487,7 +487,7 @@ def strategy(analysis, cases_doc, workspace, selected=None):
         lines += [f"## {t['warn']} ({len(warned)})", ""] + [
             f"- {w['case']} bước {w['step']} ({w['ref']}): {t['tc']}: {w['testcase']} ≠ {t['bd']}: {w['bd']}" for w in warned] + [""]
     if deferred:
-        lines += [f"## {t.get('deferred', 'Not selected for this run')} ({len(deferred)})", ""] + [f"- {i}: {record_names.title(info[i], by_id[i], {})}" for i in deferred] + [""]
+        lines += [f"## {t['deferred']} ({len(deferred)})", ""] + [f"- {i}: {record_names.title(info[i], by_id[i], {})}" for i in deferred] + [""]
     if excluded:
         lines += [f"## {t['skip']} ({len(excluded)})", ""] + [f"- {e['id']} [{e['verdict']}]: {e['reason']}" for e in excluded] + [""]
     return data, "\n".join(lines)

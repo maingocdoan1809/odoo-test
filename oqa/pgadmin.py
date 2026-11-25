@@ -279,12 +279,12 @@ def shot(run, ws, store: SecretStore, case, n, sql, caption=None, headless=True)
     error = evidence.check(raw, annotated)
     if error:
         raise GateError(error)
-    rel = lambda path: str(path.relative_to(run.dir))
+    image = {"raw": str(raw.relative_to(run.dir)), "annotated": str(annotated.relative_to(run.dir))}
     if n in done:
-        events.append(run.dir, "step_evidence", case=case, attempt=attempt, n=n, source="pgadmin", sql=sql, images=[{"raw": rel(raw), "annotated": rel(annotated)}])
+        events.append(run.dir, "step_evidence", case=case, attempt=attempt, n=n, source="pgadmin", sql=sql, images=[image])
     else:
         events.append(run.dir, "evidence_captured", case=case, attempt=attempt, n=n, source="pgadmin", sql=sql,
-                      images=[{"raw": rel(raw), "annotated": rel(annotated), "caption": label, "target": "PgAdmin", "box": list(result["box"] or [])}])
+                      images=[{**image, "caption": label, "target": "PgAdmin", "box": list(result["box"] or [])}])
     return result, annotated
 
 

@@ -29,9 +29,10 @@ def note(prompt):
         state = session.state()
         if state["phase"] != "DONE" and autostart.session_active(session):
             lines = [f"oqa session {session_id} (workspace {ws}) is in phase {state['phase']}. Follow `oqa status`; this skill's process still applies."]
-            if (not state.get("channel") or (session.dir / "analysis.json").is_file()) and autostart.ensure_dashboard(ws, session_id):
+            opened = autostart.ensure_open(session, state)
+            if opened == "started":
                 lines.append("The dashboard was not running: it has just been started for the user.")
-            elif (not state.get("channel") or (session.dir / "analysis.json").is_file()) and autostart.ensure_viewer(ws, session_id):
+            elif opened == "opened":
                 lines.append("The dashboard was running but no tab was open: a tab has just been opened for the user.")
             news = session.news()
             if news:

@@ -169,6 +169,13 @@ class Session:
         state["strategy_sha"] = data["sha"]
         return data
 
+    def rebuild_strategy(self):
+        """Build the strategy again for the cases chosen so far, to be shown to the user (`oqa strategy`)."""
+        with self.update() as state:
+            if state["phase"] != "CONFIRM":
+                raise GateError(f"Not allowed in phase {state['phase']}. Next: {NEXT[state['phase']]}")
+            return self._write_strategy(state, state.get("selected"))
+
     def select_cases(self, cases, by="dashboard"):
         """Before the strategy is approved: which of the analysed (ready) cases belong to this run. Everything is ticked until the user unticks something.
         A case needs the cases it depends on, so those are added. The strategy is rebuilt, so what the user approves is what was ticked."""
