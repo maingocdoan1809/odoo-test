@@ -266,6 +266,8 @@ def start(session, case):
              f"Read the page: playwright-cli -s={browser_name} snapshot   (labels are in the page's language). Act on what you read, fix mistakes in the browser.",
              f"After each planned step: oqa live step {case} --n N --status PASS|FAIL --actual \"what the page showed\" --target \"<locator of the element the step is about>\"."
              f" If the click leaves the page, take the picture first: oqa live shot {case} --n N --target \"<locator>\"."]
+    if workspace.load(session.ws).get("pgadmin_url"):
+        lines.append(f"A step that confirms on the database: record it with step first, then oqa pgadmin shot {case} --n N --sql \"SELECT ...\" (MCP: pgadmin_shot) with this run's fixture key. Do not open PgAdmin yourself.")
     for step in item["steps"]:
         lines.append(f"  {step['n']}. {step['action']}   ->   {step['expected']}")
         if step.get("evidence"):

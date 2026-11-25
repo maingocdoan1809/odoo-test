@@ -80,3 +80,89 @@ def test_connect_checks_pgadmin_before_the_run(monkeypatch):
     monkeypatch.setattr(pgadmin, "session", fails)
     with pytest.raises(GateError, match="PgAdmin does not connect: PgAdmin shows no database"):
         connect.check_pgadmin(ws, MemoryStore())
+
+
+def _fake_pgadmin(monkeypatch, result):
+    from contextlib import contextmanager
+
+    from PIL import Image
+
+    class Page:
+        def query(self, sql, picture):
+            Image.new("RGB", (1600, 900), (240, 240, 240)).save(picture)
+            self.sql = sql
+            return result
+
+    @contextmanager
+    def fake(*_args, **_kwargs):
+        yield Page()
+
+    monkeypatch.setattr(pgadmin, "session", fake)
+
+
+def _recorded_session(session, ws, monkeypatch):
+    from PIL import Image
+
+    from oqa import live
+    from test_evidence_replay import approved
+
+    approved(session, ws)
+    monkeypatch.setattr(live, "open_browser", lambda *a, **kw: "Admin")
+    monkeypatch.setattr(live, "_run", lambda *a, **kw: "")
+    monkeypatch.setattr(live, "_box", lambda browser, target: ((50, 50, 200, 40), (600, 400)))
+    monkeypatch.setattr(live, "_shot", lambda browser, path: (path.parent.mkdir(parents=True, exist_ok=True), Image.new("RGB", (600, 400), (240, 200, 180)).save(path)))
+    live.start(session, "ORD-001")
+
+
+def test_shot_attaches_the_pgadmin_picture_to_a_recorded_step(session, ws, monkeypatch, store):
+    from oqa import live, view
+
+    _recorded_session(session, ws, monkeypatch)
+    result = {"rows": [["", "id", "name"], ["1", "7", "AUTO_TEST_x"]], "total": 1, "error": "", "box": [352, 501, 1248, 370]}
+    _fake_pgadmin(monkeypatch, result)
+    with pytest.raises(GateError, match="not recorded yet"):                 # the step must exist first
+        pgadmin.shot(session, ws, store, "ORD-001", 1, "select id, name from res_partner")
+    live.step(session, "ORD-001", 1, "PASS", "The saved record is visible", target="#saved")
+    before = len(view.case_records(session)[0]["attempts"][0]["steps"][0]["images"])
+    out, picture = pgadmin.shot(session, ws, store, "ORD-001", 1, "select id, name from res_partner;")
+    assert out is result and picture.is_file()
+    images = view.case_records(session)[0]["attempts"][0]["steps"][0]["images"]
+    assert len(images) == before + 1
+    assert "1 row(s)" in pgadmin.summary(result, "x") and "7 | AUTO_TEST_x" in pgadmin.summary(result, "x")
+    with pytest.raises(GateError, match="reading query"):
+        pgadmin.shot(session, ws, store, "ORD-001", 1, "delete from res_partner")
+
+
+def test_the_worker_has_a_pgadmin_tool_that_takes_only_the_sql(session, ws, monkeypatch, store):
+    from oqa import pgadmin as module, worker_mcp
+    from oqa.secrets import default_store  # noqa: F401  (imported by the tool)
+
+    tool = next(t for t in worker_mcp.TOOLS if t["name"] == "pgadmin_shot")
+    assert set(tool["inputSchema"]["required"]) == {"n", "sql"}
+    seen = {}
+
+    def fake_shot(run, workspace_doc, _store, case, n, sql, caption=None, headless=True):
+        seen.update(case=case, n=n, sql=sql)
+        return {"rows": [["", "c"], ["1", "1"]], "total": 1, "error": "", "box": None}, "picture.png"
+
+    monkeypatch.setattr(module, "shot", fake_shot)
+    text = worker_mcp._call(session, "ORD-001", "w1", "pgadmin_shot", {"n": 2, "sql": "select 1"})
+    assert seen == {"case": "ORD-001", "n": 2, "sql": "select 1"} and "1 row(s)" in text
+
+
+def test_a_case_run_again_gets_a_new_record_name(session, ws, monkeypatch):
+    from oqa import fixtures, live
+    from test_evidence_replay import approved
+
+    approved(session, ws)
+    monkeypatch.setattr(live, "open_browser", lambda *a, **kw: "Admin")
+    monkeypatch.setattr(live, "_run", lambda *a, **kw: "")
+    live.start(session, "ORD-001")
+    first = fixtures.run_key(session, "ORD-001", "lien he")
+    assert "-a2-" not in first and first.endswith("_lien-he")
+    monkeypatch.setattr(live, "_attempt", lambda s, c: 2)
+    second = fixtures.run_key(session, "ORD-001", "lien he")
+    assert second != first and second.endswith("a2-lien-he")
+    from oqa import record_names
+
+    assert record_names.owns(session, second, "AUTO_TEST_", "ORD-001")      # still a name this run owns

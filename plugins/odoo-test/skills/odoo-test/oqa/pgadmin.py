@@ -220,19 +220,18 @@ def session(ws, store: SecretStore, headless=True):
         yield PgAdmin(page, cfg).login().select_database()
 
 
-def shot(session, ws, store: SecretStore, case, n, sql, caption=None, headless=True):
+def shot(run, ws, store: SecretStore, case, n, sql, caption=None, headless=True):
     """Run `sql` on PgAdmin and attach the picture to the already recorded step `n` of `case` as supplemental evidence (the same place `oqa live shot` puts one).
     The picture is the whole PgAdmin screen with the result panel framed and the caption under it."""
-    import shutil
     import uuid
 
     from . import evidence, events, live
-    session.require("EXECUTE")
-    attempt = live._attempt(session, case)
-    if n not in live._recorded(session, case, attempt):
+    run.require("EXECUTE")
+    attempt = live._attempt(run, case)
+    if n not in live._recorded(run, case, attempt):
         raise GateError(f"Step {n} of {case} is not recorded yet: record it with oqa live step {case} --n {n} first, then add the database picture.")
     sql = check_sql(sql)
-    folder = session.dir / "evidence" / re.sub(r"[^\w.-]+", "_", case) / f"a{attempt}"
+    folder = run.dir / "evidence" / re.sub(r"[^\w.-]+", "_", case) / f"a{attempt}"
     folder.mkdir(parents=True, exist_ok=True)
     suffix = uuid.uuid4().hex[:8]
     raw, annotated = folder / f"s{n}_supp_{suffix}_raw.png", folder / f"s{n}_supp_{suffix}_annotated.png"
@@ -243,6 +242,17 @@ def shot(session, ws, store: SecretStore, case, n, sql, caption=None, headless=T
     error = evidence.check(raw, annotated)
     if error:
         raise GateError(error)
-    events.append(session.dir, "step_evidence", case=case, attempt=attempt, n=n, source="pgadmin", sql=sql,
-                  images=[{"raw": str(raw.relative_to(session.dir)), "annotated": str(annotated.relative_to(session.dir))}])
+    events.append(run.dir, "step_evidence", case=case, attempt=attempt, n=n, source="pgadmin", sql=sql,
+                  images=[{"raw": str(raw.relative_to(run.dir)), "annotated": str(annotated.relative_to(run.dir))}])
     return result, annotated
+
+
+def summary(result, where):
+    """What the assistant reads after a query: the row count (or PgAdmin's error) and the first rows, so it can judge PASS or FAIL from them."""
+    if result["error"]:
+        return f"PgAdmin ERROR: {result['error']}\nThe picture of the error is {where}."
+    lines = [f"PgAdmin returned {result['total']} row(s). Picture {where}."]
+    rows = result["rows"]
+    if rows:
+        lines += [" | ".join(cell.split(chr(10))[0] for cell in row[1:]) for row in rows[:21]]
+    return "\n".join(lines)

@@ -174,7 +174,12 @@ def run_key(session, case, label=""):
     """A business name with a run-specific suffix for each new record."""
     prefix = workspace.load(session.ws)["test_prefix"]
     base = record_names.fixture_prefix(session, case, prefix)
-    return base + (record_names.slug(label, limit=None) or "ban-ghi")
+    try:
+        attempt = live._attempt(session, case)
+    except GateError:
+        attempt = 1
+    again = f"a{attempt}-" if attempt > 1 else ""          # a case run again in the same session must not meet the record its blocked attempt left
+    return base + again + (record_names.slug(label, limit=None) or "ban-ghi")
 
 
 def date_expression(days=0):

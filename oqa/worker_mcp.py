@@ -29,6 +29,10 @@ TOOLS = [
     schema("profile", "Switch to a signed-in workspace profile required by the case.", strings("name"), ("name",)),
     schema("evidence_before", "Capture a checkpoint before the next action. Repeat for intermediate states; all pictures are retained.",
            (*strings("target", "caption"), ("n", "integer", {})), ("n", "target")),
+    schema("pgadmin_shot", "Database evidence for a step the testcase says to confirm on the database. Record that step with step first, then pass step number n and ONE read-only SQL (SELECT, WITH, SHOW, EXPLAIN). "
+                           "It signs in to the workspace's PgAdmin, runs the SQL on the right database and attaches the real PgAdmin screen to step n. Returns the row count and the rows: judge PASS or FAIL from them. "
+                           "Use this run's fixture key in the SQL, never a fixed name. Do not open PgAdmin yourself.",
+           (*strings("sql", "caption"), ("n", "integer", {})), ("n", "sql")),
     schema("step", "Record observed PASS/FAIL and a screenshot for a planned step. Include code and shows for replay.",
            (*strings("status", "actual", "target", "code", "shows"), ("n", "integer", {})),
            ("n", "status", "actual", "target", "code", "shows")),
@@ -146,6 +150,12 @@ def _call(session, case, agent, name, args):
         return live.select_profile(session, case, args["name"])[1]
     if name == "evidence_before":
         return live.shot(session, case, args["n"], args["target"], caption=args.get("caption"))[1]
+    if name == "pgadmin_shot":
+        from . import pgadmin
+        from .secrets import default_store
+
+        result, picture = pgadmin.shot(session, workspace.load(session.ws), default_store(), case, args["n"], args["sql"], args.get("caption"))
+        return pgadmin.summary(result, f"attached to step {args['n']}")
     if name == "step":
         return live.step(session, case, args["n"], args["status"], args["actual"], args["target"],
                          args["code"], args["shows"])[1]

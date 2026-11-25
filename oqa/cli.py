@@ -527,10 +527,7 @@ def cmd_pgadmin(args):
         with pgadmin.session(ws, store, headless=not args.headed) as pg:
             result = pg.query(pgadmin.check_sql(args.sql), out)
         where = str(out)
-    header = result["rows"][0] if result["rows"] else []
-    lines = [("PgAdmin ERROR: " + result["error"]) if result["error"] else f"PgAdmin returned {result['total']} row(s). Picture {where}"]
-    lines += [" | ".join(c.split(chr(10))[0] for c in row[1:]) for row in result["rows"][:20]] if not result["error"] and header else []
-    return {"result": result, "picture": where}, "\n".join(lines)
+    return {"result": result, "picture": where}, pgadmin.summary(result, where)
 
 
 def cmd_live(args):
