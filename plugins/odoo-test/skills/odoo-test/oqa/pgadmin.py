@@ -10,6 +10,7 @@ from .state import GateError
 from .workspace import pgadmin_secret_ref
 
 SLOW_MS = 60000
+TREE_MS = 20000          # the tree is already on the page: a name that is not there after this long is not coming
 READ_ONLY = {"select", "with", "show", "explain", "values", "table"}
 FORBIDDEN = {"insert", "update", "delete", "drop", "alter", "truncate", "create", "grant", "revoke", "copy", "call", "do", "vacuum", "reindex", "cluster", "comment", "merge", "lock", "refresh", "reassign", "security", "set", "listen", "notify"}
 
@@ -65,17 +66,27 @@ class PgAdmin:
     def _answer_password(self):
         dialog = self.page.locator(".MuiDialog-root")
         if dialog.count() and dialog.locator("input[type=password]").count():
+            asked = dialog.first.inner_text()
+            wanted = self.cfg["server"]
+            if wanted and f'"{wanted}"' not in asked:
+                raise GateError(f"PgAdmin asks for the password of another server ({' '.join(asked.split())[:140]}), not of {wanted}: check the server name in oqa init.")
             if self.cfg["db_password"] is None:
                 raise GateError("PgAdmin asks for the database password and none is saved: run oqa init and enter it in the PgAdmin section.")
             dialog.locator("input[type=password]").fill(self.cfg["db_password"])
             dialog.locator("button:has-text('OK')").last.click()
-            self.page.wait_for_timeout(1500)
-            if self.page.locator(".MuiDialog-root input[type=password]").count():
-                raise GateError("PgAdmin refused the database password: run oqa init and enter the right one.")
+            self.page.wait_for_timeout(2500)
+            again = self.page.locator(".MuiDialog-root")
+            if again.count() and again.locator("input[type=password]").count():
+                reason = " ".join(again.first.inner_text().split())
+                reason = re.sub(r"\s*Cancel\s*OK\s*$", "", reason.split("Save Password")[-1].strip() or reason)
+                raise GateError(f"PgAdmin could not connect to the database server {wanted or ''}: {reason[:220]}. Check the database password, and that the server in PgAdmin points to the right host, port and user.")
+
+    def _server_names(self):
+        return [t.strip() for t in self.page.locator(".file-entry[data-depth='2'] .file-name").all_inner_texts()]
 
     def _open(self, name):
         entry = self.entry(name)
-        entry.wait_for(timeout=SLOW_MS)
+        entry.wait_for(timeout=TREE_MS)
         if "open" not in (entry.locator(".directory-toggle").get_attribute("class") or ""):
             entry.locator(".directory-toggle").click()
         self.page.wait_for_timeout(1200)
@@ -97,7 +108,16 @@ class PgAdmin:
 
     def select_database(self):
         cfg = self.cfg
-        self._open("Servers")
+        servers = self.entry("Servers")
+        servers.wait_for(timeout=SLOW_MS)
+        if "open" not in (servers.locator(".directory-toggle").get_attribute("class") or ""):
+            servers.locator(".directory-toggle").click()
+        self.page.wait_for_selector(".file-entry[data-depth='2']", timeout=TREE_MS)
+        names = self._server_names()
+        if cfg["server"] and cfg["server"] not in names:
+            raise GateError(f"PgAdmin has no server named {cfg['server']}. Servers it shows: {', '.join(names) or 'none'}. Fix the server name in oqa init, or register the server in PgAdmin.")
+        if cfg["server"] and names.count(cfg["server"]) > 1:
+            raise GateError(f"PgAdmin has {names.count(cfg['server'])} servers named {cfg['server']}: delete the extra one in PgAdmin (or give them different names), so the tool cannot open the wrong one.")
         if cfg["server"]:
             self._open(cfg["server"])
         else:
@@ -110,7 +130,7 @@ class PgAdmin:
         self._open("Databases")
         database = self.entry(cfg["database"])
         try:
-            database.wait_for(timeout=SLOW_MS)
+            database.wait_for(timeout=TREE_MS)
         except Exception as error:
             raise GateError(f"PgAdmin shows no database named {cfg['database']}" + (f" on server {cfg['server']}" if cfg["server"] else "") + ": check the names in oqa init") from error
         database.click()

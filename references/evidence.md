@@ -40,6 +40,7 @@ When a step says to confirm on the database, check a record in PostgreSQL or cap
 - It signs in to the PgAdmin of the workspace (address, login, server and database come from `oqa init`), opens a fresh Query Tool on the right database, runs the SQL and adds the real PgAdmin screen to step N as supplemental evidence, result panel framed. The output lists the rows it read, so you can judge PASS or FAIL from them.
 - Only one reading statement is accepted (SELECT, WITH, SHOW, EXPLAIN). Anything that writes is refused.
 - Query the rows the case itself created or changed (its `AUTO_TEST_` names), and select the columns the expectation names.
+- `oqa connect` already runs this check once before the run, so a wrong address, password, server or database stops the run at the start. Do not start cases while it fails.
 - `oqa pgadmin check` only signs in and selects the database (use it to see whether the setup works). Without CASE, `--out FILE.png` saves the picture on its own.
 - If it says PgAdmin is not set up or a password is missing, tell the user to run `oqa init` and fill the PgAdmin section; never ask for the password in the chat.
 

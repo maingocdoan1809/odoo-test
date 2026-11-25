@@ -83,6 +83,22 @@ def reuse_session(session: Session, context, page, ws, profile):
     raise LoginFailed(f"no password is saved for profile {profile['name']} and no earlier session of this workspace is still signed in: run oqa init and enter it")
 
 
+def check_pgadmin(ws, store: SecretStore, headless=True):
+    """When the workspace has PgAdmin, sign in and select the database now, so a wrong address, password, server or database is found before the run starts and not in
+    the middle of a case. Returns "ok", or "not configured" when the workspace has no PgAdmin. Raises GateError saying what to fix."""
+    if not ws.get("pgadmin_url"):
+        return "not configured"
+    from . import pgadmin
+
+    try:
+        with pgadmin.session(ws, store, headless):
+            return "ok"
+    except GateError as error:
+        raise GateError(f"PgAdmin does not connect: {error}") from error
+    except Exception as error:
+        raise GateError(f"PgAdmin does not connect ({str(error).splitlines()[0][:160]}): check the address, server and database in oqa init, and that this computer can reach {ws['pgadmin_url']}.") from error
+
+
 def connect(session: Session, ws, store: SecretStore, headless=True):
     """Sign every profile in, store each signed-in state under the session (auth/, never read by the assistant), then move CONNECT -> CONFIRM."""
     session.require("CONNECT")
@@ -108,7 +124,8 @@ def connect(session: Session, ws, store: SecretStore, headless=True):
     for name, item in info.items():
         path = "/" + item["landing_url"].split("//", 1)[-1].partition("/")[2]
         knowledge.learn(ws["name"], "login", "login", f"After signing in as {name} the page is {path.split('?')[0]}" + (f" (Odoo {item['version']})" if item["version"] else ""))
-    session.connected({"profiles": info, "version": next(iter(info.values()))["version"]})
+    pgadmin_state = check_pgadmin(ws, store, headless)
+    session.connected({"profiles": info, "version": next(iter(info.values()))["version"], "pgadmin": pgadmin_state})
     return info
 
 

@@ -56,3 +56,27 @@ def test_settings_say_what_is_missing():
         pgadmin.settings(ws, store)
     store.set("oqa:w:pgadmin", "x")
     assert pgadmin.settings(ws, store)["database"] == "d"
+
+
+def test_connect_checks_pgadmin_before_the_run(monkeypatch):
+    from contextlib import contextmanager
+
+    from oqa import connect
+
+    assert connect.check_pgadmin({"name": "w"}, MemoryStore()) == "not configured"
+    ws = {"name": "w", "pgadmin_url": "http://p:5050"}
+
+    @contextmanager
+    def fails(*_args, **_kwargs):
+        raise GateError("PgAdmin shows no database named x")
+        yield
+
+    @contextmanager
+    def works(*_args, **_kwargs):
+        yield object()
+
+    monkeypatch.setattr(pgadmin, "session", works)
+    assert connect.check_pgadmin(ws, MemoryStore()) == "ok"
+    monkeypatch.setattr(pgadmin, "session", fails)
+    with pytest.raises(GateError, match="PgAdmin does not connect: PgAdmin shows no database"):
+        connect.check_pgadmin(ws, MemoryStore())
