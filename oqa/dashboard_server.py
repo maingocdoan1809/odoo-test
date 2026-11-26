@@ -61,9 +61,10 @@ class Dashboard(LocalApp):
         session = self._session(query)
         root = (session.dir / "report").resolve()
         target = (root / query.get("name", "")).resolve()
-        if root not in target.parents or target.suffix.lower() not in (".xlsx", ".md") or not target.is_file():
+        kinds = {".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsm": "application/vnd.ms-excel.sheet.macroEnabled.12", ".md": "text/markdown"}
+        if root not in target.parents or target.suffix.lower() not in kinds or not target.is_file():
             return 404, {"error": "no such file"}
-        kind = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if target.suffix.lower() == ".xlsx" else "text/markdown"
+        kind = kinds[target.suffix.lower()]
         return 200, target.read_bytes(), kind, {"Content-Disposition": _attachment(target.name)}
 
     def _sitemap(self, query):

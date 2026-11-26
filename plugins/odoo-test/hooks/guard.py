@@ -13,7 +13,9 @@ from oqa import paths  # noqa: E402
 
 OWNED = re.compile(r"/sessions/[^/]+/(state\.json|events\.jsonl|cases\.json|refs\.json|analysis\.json|strategy\.json|strategy\.md|evidence/|report/|logs/)|/workspace\.json$|/knowledge/index\.md$|\.odoo-test\.json$")
 SECRET = re.compile(r"/sessions/[^/]+/auth/|storageState|/credentials", re.I)
-CONFIRM = re.compile(r"(^|[\s;&|\"'])(?:\S*oqa(?:\.py)?|-m\s+oqa)\s+(?:confirm|resume|stop|run-more|select\s+(?:--all|--cases))\b")
+# oqa, a path to oqa.py (quoted or not) or -m oqa, then any of the global options (--json, --ws X, --session X) before the command
+CONFIRM = re.compile(r"(^|[\s;&|\"'(])(?:[^\s\"']*oqa(?:\.py)?[\"']?|-m\s+oqa)\s+(?:--json\s+|--(?:ws|session)(?:=|\s+)\S+\s+)*"
+                     r"(?:confirm|resume|stop|run-more|select\s+(?:--all|--cases))\b")
 SCRIPT = re.compile(r"\bpython[\w.]*\s+(?:-\S+\s+)*\S*[/\\]workspaces[/\\][^\s]+[/\\]scripts[/\\]\S+\.py")
 SECRET_SHELL = re.compile(r"(sessions[/\\][^\s\"']+[/\\]auth|storageState)", re.I)
 
@@ -33,7 +35,7 @@ def verdict(call):
             return "This file belongs to oqa (session state, evidence, workspace or knowledge). Change it with an oqa command, not by hand: oqa knowledge learn, oqa analyze --submit, oqa ask / answer, oqa finish."
     if tool in ("Read", "Grep", "Glob") and target and SECRET.search(target):
         return "Signed-in cookies and passwords are never read: they are used by oqa only."
-    if tool == "Bash":
+    if tool in ("Bash", "PowerShell"):
         command = str(args.get("command", ""))
         if CONFIRM.search(command):
             return "Only the user chooses the cases, confirms the strategy and stops or resumes the test: they do it on the dashboard or run the command in their own terminal. Tell them what is waiting, then `oqa wait` in the background."

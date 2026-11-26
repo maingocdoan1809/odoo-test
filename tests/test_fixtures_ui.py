@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from oqa import events, fixtures, live, record_names, workspace
+from oqa import events, fixtures, live, record_names, replays, workspace
 from oqa.state import GateError
 from oqa.store import write_json
 from test_evidence_replay import approved
@@ -107,6 +107,24 @@ def test_created_records_are_tracked_per_run_and_cleanup_lists_before_removing(s
     assert dry == [{"model": "license.user", "field": "memo", "key": "ZZ_AUTOTEST_s_ORD-001_u1", "found": 1, "removed": False}] and sent[-1]["apply"] is False
     done = fixtures.cleanup(session, "ORD-001", apply=True)
     assert done[0]["removed"] is True and sent[-1]["apply"] is True
+
+
+def test_cleanup_refuses_a_replay_without_an_environment_for_this_case(session, ws, monkeypatch):
+    started(session, ws, monkeypatch)
+    case, run = "ORD-001", "r0123456789"
+    key = fixtures.run_key(session, case, "user")
+    events.append(session.dir, "data_created", case=case, attempt=1, model="license.user", field="memo", key=key, via="ui")
+    opened = []
+    monkeypatch.setattr(live, "open_browser", lambda *a, **kw: opened.append(kw["env"]))
+    monkeypatch.setattr(live, "_run", lambda *a, **kw: "[]")
+    replays.record(session, "ORD-002", "PASS", run_id=run, env="staging")
+    with pytest.raises(GateError, match="environment.*missing"):
+        fixtures.cleanup(session, case, run=run, apply=True)
+    assert opened == []
+
+    replays.record(session, case, "PASS", run_id=run, env="staging")
+    assert fixtures.cleanup(session, case, run=run)[0]["found"] == 0
+    assert opened == ["staging"]
 
 
 def test_fixture_apply_uses_the_form_and_tracks_a_saved_record(session, ws, monkeypatch):

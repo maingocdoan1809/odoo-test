@@ -182,7 +182,7 @@ def submit(session, case, text, replays=2):
                 return {"case": case, "status": "UNVERIFIED", "attempts": attempt, "replays": 0, "backup": str(backup)}
             for round_ in range(1, replays + 1):
                 try:
-                    live.replay(session, case, headed=False, fast=True)
+                    live.replay(session, case, headed=False, fast=True, keep=False)     # a trial: a rejected candidate leaves no Replay result behind
                 except GateError as error:
                     failure = f"replay {round_} of {replays} failed: {str(error)[:600]}"
                     break

@@ -12,7 +12,8 @@ from .workspace import pgadmin_secret_ref
 SLOW_MS = 60000
 TREE_MS = 20000          # the tree is already on the page: a name that is not there after this long is not coming
 READ_ONLY = {"select", "with", "show", "explain", "values", "table"}
-FORBIDDEN = {"insert", "update", "delete", "drop", "alter", "truncate", "create", "grant", "revoke", "copy", "call", "do", "vacuum", "reindex", "cluster", "comment", "merge", "lock", "refresh", "reassign", "security", "set", "listen", "notify"}
+FORBIDDEN = {"insert", "update", "delete", "drop", "alter", "truncate", "create", "grant", "revoke", "copy", "call", "do", "vacuum", "reindex", "cluster", "comment", "merge", "lock", "refresh", "reassign", "security", "set", "listen", "notify", "into"}
+_TOKENS = re.compile(r"('(?:[^']|'')*'|\"(?:[^\"]|\"\")*\"|--[^\n]*|/\*.*?\*/)", re.S)     # quoted text and comments, read left to right so neither hides the other
 
 
 secret_ref = pgadmin_secret_ref
@@ -20,7 +21,7 @@ secret_ref = pgadmin_secret_ref
 
 def check_sql(sql):
     """Only a reading query may run: the evidence must never change the data it is checking. Returns the SQL without a trailing semicolon."""
-    plain = re.sub(r"'(?:[^']|'')*'|\"(?:[^\"]|\"\")*\"", "''", re.sub(r"--[^\n]*|/\*.*?\*/", " ", sql or "", flags=re.S))
+    plain = _TOKENS.sub(lambda m: "''" if m.group(0)[0] in "'\"" else " ", sql or "")
     words = re.findall(r"[a-z_]+", plain.lower())
     statements = [s for s in plain.split(";") if s.strip()]
     if not words:
@@ -39,7 +40,9 @@ def format_sql(sql):
     """One clause per line, so a long statement fits the editor without scrolling sideways and the whole query is in the picture. Quoted text is never touched."""
     if "\n" in sql:
         return sql
-    parts = re.split(r"('(?:[^']|'')*')", sql)
+    parts = _TOKENS.split(sql)
+    if any(part.startswith("--") for part in parts[1::2]):
+        return sql                     # a line comment runs to the end of the line: a new line inside it would turn the rest into SQL
     clause = re.compile(r"\s+(FROM|WHERE|GROUP\s+BY|ORDER\s+BY|HAVING|LIMIT|OFFSET|UNION|(?:LEFT\s+|RIGHT\s+|INNER\s+|FULL\s+)?JOIN)\b", re.I)
     return "".join(part if index % 2 else clause.sub(lambda m: "\n" + m.group(1), part) for index, part in enumerate(parts))
 

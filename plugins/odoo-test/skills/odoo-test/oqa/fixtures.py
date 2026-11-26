@@ -206,10 +206,10 @@ def ui_create(session, case, screen, key_field, values):
     return {"model": form["model"], "key": value, "code": code, "id": record_id}
 
 
-def created(session, run=None, case=None):
+def created(session, run=None, case=None, *, replay_cases=None):
     """Return the tracked keys, optionally translated to the names used in a replay."""
     prefix = workspace.load(session.ws)["test_prefix"]
-    saved = replays.load(session) if run else {}
+    saved = (replays.load(session) if replay_cases is None else replay_cases) if run else {}
     rewrites = {}
     seen, out = set(), []
     for event in events.read(session.dir):
@@ -234,11 +234,18 @@ def cleanup(session, case, run=None, apply=False):
     """Remove the records this session's runs created (and only those: keys that start with the test prefix and were tracked). Without `apply` it only lists them.
     Records are found by their tracked key, archived ones included; a record that cannot be removed (the application refuses) is reported, never forced."""
     prefix = workspace.load(session.ws)["test_prefix"]
-    items = [item for item in created(session, run, case) if item["key"].startswith(record_names.prefixes(prefix))]
+    replay_cases = replays.load(session) if run else {}
+    env = None
+    if run:
+        entry = next((entry for entry in replay_cases.get(case, {}).get("runs", []) if entry.get("run_id") == run), {})
+        env = entry.get("env")
+        if not env:
+            raise GateError(f"Cannot clean up replay {run} for {case}: its environment is missing from this case's replay history.")
+    items = [item for item in created(session, run, case, replay_cases=replay_cases) if item["key"].startswith(record_names.prefixes(prefix))]
     report = []
     if not items:
         return report
-    live.open_browser(session, case)
+    live.open_browser(session, case, env=env)
     for item in items:
         entry = {**item, "found": None, "removed": False}
         probe = ("async spec => { const call = async (method, args, kwargs) => { const response = await fetch('/web/dataset/call_kw/' + spec.model + '/' + method, {method: 'POST', "

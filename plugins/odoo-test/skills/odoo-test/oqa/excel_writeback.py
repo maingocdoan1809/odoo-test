@@ -12,7 +12,7 @@ def apply(source, staged, patch, folder):
     request.write_text(json.dumps(patch, ensure_ascii=False), encoding="utf-8")
     try:
         result = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-File",
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
              str(Path(__file__).with_name("excel_writeback.ps1")),
              "-WorkbookPath", str(source), "-ReportPath", str(staged), "-PatchPath", str(request)],
             capture_output=True, encoding="utf-8", errors="replace", timeout=60,

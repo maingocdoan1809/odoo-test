@@ -23,18 +23,40 @@ def _to_bytes(text):
     return bytes(out)
 
 
+def _plausible(ch):
+    """A character mis-decoded text really holds: Latin letters and their accents (Vietnamese included) and common punctuation. Anything else (Cyrillic, IPA...)
+    means the run was correct text that only happens to look like UTF-8 bytes, such as "CÓ" followed by a closing quote."""
+    code = ord(ch)
+    return (0xA0 <= code <= 0x24F or 0x300 <= code <= 0x36F or 0x1E00 <= code <= 0x1EFF
+            or 0x2000 <= code <= 0x206F or 0x20A0 <= code <= 0x20CF or code in (0x2122, 0x2116))
+
+
 def _fix_run(match):
     run = match.group(0)
     try:
-        return _to_bytes(run).decode("utf-8")
+        fixed = _to_bytes(run).decode("utf-8")
     except (UnicodeEncodeError, UnicodeDecodeError):
         return run
+    return fixed if all(_plausible(ch) for ch in fixed) else run
+
+
+def _decoded_elsewhere(text):
+    """True when the text holds a character Windows-1252 cannot produce (such as "ạ" or "Đ"): it was read as UTF-8, so a run inside it is real text."""
+    for ch in text:
+        if ch.isascii() or ord(ch) == 0xFFFD or 0x80 <= ord(ch) <= 0x9F:
+            continue
+        try:
+            ch.encode("cp1252")
+        except UnicodeEncodeError:
+            return True
+    return False
 
 
 def repair_text(text):
     if not isinstance(text, str) or text.isascii():
         return text
-    text = _RUN.sub(_fix_run, text)
+    if not _decoded_elsewhere(text):
+        text = _RUN.sub(_fix_run, text)
     return text.replace(_LOST_LEAD, "à") if _LOST_LEAD in text else text
 
 

@@ -74,7 +74,8 @@ def _sessions_newest_first(ws):
         try:
             session = Session(ws, sid)
             state = session.state()
-            if (session.dir / "strategy.json").is_file() and (session.dir / "analysis.json").is_file():
+            confirmed = state.get("phase") in ("EXECUTE", "REPORT", "DONE")          # strategy.json exists before the user confirms it
+            if confirmed and (session.dir / "strategy.json").is_file() and (session.dir / "analysis.json").is_file():
                 found.append((state["created"], session, state))
         except Exception:
             continue
@@ -94,11 +95,19 @@ def sources(ws):
     return out
 
 
+def _legacy_keys(origins):
+    keys = {}
+    for key, (session, case) in origins.items():
+        keys.setdefault(legacy_key(session.state()["file"], case), set()).add(key)
+    return keys
+
+
 def matrix(ws):
     """What the dashboard shows: environments and, per script, the latest result on each (NOT RUN when there is none)."""
     config = workspace.load(ws)
     envs = [e["name"] for e in workspace.environments(config)]
     saved, known = load(ws), sources(ws)
+    unique_legacy = {next(iter(keys)): old for old, keys in _legacy_keys(known).items() if len(keys) == 1}
     documents = {}
     rows = []
     for item in scripts(ws):
@@ -117,6 +126,7 @@ def matrix(ws):
         results = {env: (saved.get(item["key"], {}).get(env, {}).get("latest")
                          or previous.get("envs", {}).get(env)
                          or (previous.get("latest") if env == workspace.MAIN_ENV else None)
+                         or saved.get(unique_legacy.get(item["key"]), {}).get(env, {}).get("latest")
                          or {"status": NOT_RUN}) for env in envs}
         rows.append({"key": item["key"], "workbook": item["workbook"], "case": item["case"], "title": title, "results": results,
                      "session": origin[0].id if origin else None, "case_id": origin[1] if origin else None})
@@ -158,9 +168,9 @@ def import_results(ws, target):
     config = workspace.load(ws)
     envs = {e["name"].lower(): e["name"] for e in workspace.environments(config)}
     known = {item["key"] for item in scripts(ws)}
-    legacy, by_case = {}, {}
-    for key, (session, case) in sources(ws).items():
-        legacy.setdefault(legacy_key(session.state()["file"], case), set()).add(key)
+    origins = sources(ws)
+    legacy, by_case = _legacy_keys(origins), {}
+    for key, (_, case) in origins.items():
         by_case.setdefault(case, set()).add(key)
     entries = []
     for file in files:

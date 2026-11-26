@@ -39,7 +39,7 @@ def _spawn(*args):
     root = Path(__file__).resolve().parents[1]
     flags = {"creationflags": 0x00000008 | 0x00000200} if sys.platform == "win32" else {"start_new_session": True}
     try:
-        subprocess.Popen([sys.executable, str(root / "oqa.py"), *args], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=str(root), **flags)
+        subprocess.Popen([sys.executable, str(root / "oqa.py"), *args], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=str(Path.home()), **flags)   # never the skill folder: Windows could not replace it on publish while this runs
     except OSError:
         return False
     return True

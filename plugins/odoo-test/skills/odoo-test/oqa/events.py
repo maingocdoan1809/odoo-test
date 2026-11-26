@@ -32,7 +32,7 @@ import time
 from pathlib import Path
 
 from . import textfix
-from .store import SchemaError
+from .store import SchemaError, locked
 
 KINDS = {
     "queued": ("case", "job"),
@@ -112,11 +112,8 @@ def append(session_dir, kind, **data):
     file = Path(session_dir) / "events.jsonl"
     file.parent.mkdir(parents=True, exist_ok=True)
     line = (json.dumps(record, ensure_ascii=False, default=str) + "\n").encode("utf-8")
-    fd = os.open(file, os.O_WRONLY | os.O_APPEND | os.O_CREAT)
-    try:
-        os.write(fd, line)
-    finally:
-        os.close(fd)
+    with locked(file), open(file, "ab") as out:         # Windows appends are seek-then-write: two writers at once would overwrite each other's line
+        out.write(line)
     return record
 
 

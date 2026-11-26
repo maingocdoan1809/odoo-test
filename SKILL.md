@@ -3,7 +3,7 @@ name: odoo-test
 description: Run Odoo testcase workbooks with workspace selection, per-case review, live Playwright evidence, saved replay scripts and Excel results. Use for Odoo testcase requests or /odoo-test.
 hooks:
   PreToolUse:
-    - matcher: "Bash|Write|Edit|MultiEdit|Read|Grep"
+    - matcher: "Bash|PowerShell|Write|Edit|MultiEdit|Read|Grep"
       hooks:
         - type: command
           command: "sh -c 'for P in python3 python py; do \"$P\" -c \"\" >/dev/null 2>&1 && exec \"$P\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\"; done; echo \"odoo-test hook: no working python\" >&2; exit 1'"

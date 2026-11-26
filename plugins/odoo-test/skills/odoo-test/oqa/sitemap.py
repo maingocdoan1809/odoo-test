@@ -254,7 +254,12 @@ def _build(rpc, profile="", version=""):
         """Read the actions asked for and make their nodes (an action known by number only has its type read first). Returns [(key, row)]."""
         unknown = ids_by_model.pop(None, set())
         if unknown:
-            for row in rpc("ir.actions.actions", "read", [sorted(unknown)], {"fields": ["type"]}):
+            try:
+                typed = rpc("ir.actions.actions", "read", [sorted(unknown)], {"fields": ["type"]})
+            except AssertionError as error:
+                issue("actions", "not readable with this profile, so {count} action(s) known by number only are left out: {error}", count=len(unknown), error=str(error))
+                typed = []
+            for row in typed:
                 if row["type"] in KINDS:
                     ids_by_model.setdefault(row["type"], set()).add(row["id"])
                     number_key[row["id"]] = f"{KINDS[row['type']]}:{row['id']}"
@@ -262,7 +267,12 @@ def _build(rpc, profile="", version=""):
         for model, ids in ids_by_model.items():
             kind = KINDS[model]
             ids = sorted(i for i in ids if f"{kind}:{i}" not in nodes)
-            for row in (rpc(model, "read", [ids], {"fields": ACTION_FIELDS[kind]}) if ids else []):
+            try:
+                rows = rpc(model, "read", [ids], {"fields": ACTION_FIELDS[kind]}) if ids else []
+            except AssertionError as error:            # ir.actions.* are often readable by Settings admins only
+                issue(model, "not readable with this profile, so {count} action(s) are left out: {error}", count=len(ids), error=str(error))
+                rows = []
+            for row in rows:
                 key = f"{kind}:{row['id']}"
                 node = {"kind": "action", "type": kind, "label": row.get("name") or key}
                 if (model, row["id"]) in by_id:

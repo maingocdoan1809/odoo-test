@@ -252,7 +252,7 @@ def _ooxml_text(path, pattern, parts):
             xml = z.read(name).decode("utf-8", "replace")
             if "word/" in name:
                 for paragraph in re.split(r"</w:p>", xml):
-                    text = "".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", paragraph, re.S))
+                    text = "".join(re.findall(r"<w:t(?:\s[^>]*)?>(.*?)</w:t>", paragraph, re.S))
                     if text.strip():
                         out.append(html.unescape(text))
             else:

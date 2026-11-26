@@ -231,6 +231,8 @@ def _clean(screen, kind, fact, tag="", ref="-", *, action="", condition="", prof
         raise KnowledgeError("a fact needs a screen and a sentence")
     if any("\n" in value or "\r" in value for value in (*labels.values(), fact, ref)) or any("]" in value for value in labels.values()):
         raise KnowledgeError("Use one line per fact. Scope labels cannot contain ']'.")
+    if " -> " in fact:
+        raise KnowledgeError("' -> ' separates a fact from its source in the knowledge file: write the path with '>' or '→' instead (Sales > Orders > New).")
     if any(SECRETISH.search(value) for value in (*labels.values(), fact, ref)):
         raise KnowledgeError("that looks like a password, token or cookie; write what you learned without the secret")
     return {**labels, "fact": fact, "ref": ref or "-"}

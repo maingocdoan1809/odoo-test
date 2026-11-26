@@ -38,7 +38,7 @@ def test_replay_rewrites_saved_main_urls_for_the_selected_environment(session, s
     monkeypatch.setattr(live, "_run", lambda *args: "")
     monkeypatch.setattr(live, "run_actions", lambda browser, code: lines.extend(code))
 
-    def visible(session, ws, item, path, blocks, problems, run, movie, video, fresh):
+    def visible(session, ws, item, path, blocks, problems, run, movie, video, fresh, keep=True):
         lines.extend(fresh(line) for block in blocks for line in block["code"])
         return {"replay": "PASS"}
 
@@ -115,10 +115,23 @@ def test_workbooks_with_the_same_name_have_independent_scripts_and_results(sessi
     _saved_script(other)
     assert live.script_file(session, "ORD-001") != live.script_file(other, "ORD-001")
 
+    legacy = regression.legacy_key(session.state()["file"], "ORD-001")
+    regression.record(session.ws, legacy, "main", {"status": "PASS"})
+    assert {row["results"]["main"]["status"] for row in regression.matrix(session.ws)["scripts"]} == {"NOT RUN"}
+
     replays.record(session, "ORD-001", "PASS")
     rows = {row["session"]: row for row in regression.matrix(session.ws)["scripts"]}
     assert rows[session.id]["results"]["main"]["status"] == "PASS"
     assert rows[other.id]["results"]["main"]["status"] == "NOT RUN"
+
+
+def test_the_matrix_reads_an_unambiguous_legacy_result(session, ws):
+    approved(session, ws)
+    _saved_script(session)
+    legacy = regression.legacy_key(session.state()["file"], "ORD-001")
+    regression.record(session.ws, legacy, "main", {"status": "PASS"})
+    (row,) = regression.matrix(session.ws)["scripts"]
+    assert row["results"]["main"]["status"] == "PASS"
 
 
 def _manual_result(folder, **over):

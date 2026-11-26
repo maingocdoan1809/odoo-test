@@ -244,7 +244,7 @@ def replay_counts(records):
 def reports(session: Session):
     """The Excel evidence workbook written so far (one per session), or none."""
     folder = session.dir / "report"
-    main = sorted(folder.glob("Result_*.xlsx"), key=lambda f: f.stat().st_mtime, reverse=True) if folder.is_dir() else []     # the testcase file as written back
+    main = sorted([*folder.glob("Result_*.xlsx"), *folder.glob("Result_*.xlsm")], key=lambda f: f.stat().st_mtime, reverse=True) if folder.is_dir() else []     # the testcase file as written back
     main = main or (sorted(folder.glob("Evidence_*.xlsx"), key=lambda f: f.stat().st_mtime, reverse=True) if folder.is_dir() else [])
     return [{"name": f.name, "size": f.stat().st_size, "main": True} for f in main[:1]]
 

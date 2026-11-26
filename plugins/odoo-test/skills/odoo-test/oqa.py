@@ -20,7 +20,11 @@ if not os.environ.get("OQA_NO_VENV"):
         _root, _exe = _venv_python()
         if _exe.exists() and Path(sys.prefix).resolve() != _root.resolve():
             os.environ["OQA_NO_VENV"] = "1"
-            os.execv(str(_exe), [str(_exe), str(Path(__file__).resolve()), *sys.argv[1:]])
+            _command = [str(_exe), str(Path(__file__).resolve()), *sys.argv[1:]]
+            if os.name == "nt":            # Windows has no exec: os.execv starts a child and this process exits 0 at once, losing its output and exit code
+                import subprocess
+                sys.exit(subprocess.call(_command))
+            os.execv(str(_exe), _command)
     except OSError:
         pass
 

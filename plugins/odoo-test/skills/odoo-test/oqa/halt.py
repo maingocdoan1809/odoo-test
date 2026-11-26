@@ -59,13 +59,27 @@ def _table():
     try:
         import psutil
     except ImportError:
-        return out
+        return _windows_table() if os.name == "nt" else out
     for item in psutil.process_iter(["pid", "ppid", "cmdline"]):
         try:
             out[item.info["pid"]] = (item.info["ppid"] or 0, " ".join(item.info["cmdline"] or []))
         except (psutil.Error, TypeError):
             continue
     return out
+
+
+def _windows_table():
+    """Windows without psutil: the process list from CIM, through PowerShell (always there on Windows)."""
+    import json
+    script = "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress"
+    try:
+        done = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True, encoding="utf-8",
+                              errors="replace", timeout=30, creationflags=subprocess.CREATE_NO_WINDOW)
+        rows = json.loads(done.stdout or "[]")
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return {}
+    rows = [rows] if isinstance(rows, dict) else rows
+    return {int(row["ProcessId"]): (int(row.get("ParentProcessId") or 0), row.get("CommandLine") or "") for row in rows if row.get("ProcessId")}
 
 
 def _mine(session, command):
@@ -92,6 +106,17 @@ def session_processes(session, table=None):
 
 
 def _alive(pid):
+    if os.name == "nt":                                        # os.kill(pid, 0) on Windows sends CTRL_C_EVENT; ask the process handle instead
+        import ctypes
+        kernel = ctypes.windll.kernel32
+        handle = kernel.OpenProcess(0x1000, False, pid)        # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        try:
+            code = ctypes.c_ulong()
+            return bool(kernel.GetExitCodeProcess(handle, ctypes.byref(code))) and code.value == 259     # STILL_ACTIVE
+        finally:
+            kernel.CloseHandle(handle)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:

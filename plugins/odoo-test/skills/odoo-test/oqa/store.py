@@ -1,6 +1,7 @@
 """JSON files on disk: written atomically, versioned, and guarded by a lock where two writers could meet."""
 import json
 import os
+import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -36,9 +37,17 @@ def write_json(path, data):
     """Write to a temp file and rename, so a reader never sees half a file."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    for wait in (0.01, 0.02, 0.05, 0.1, 0.1, 0.2, 0.2, 0.3, 0.5, 0.5, 1.0, None):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:          # Windows: someone is reading the file at this moment; it is closed again in a few milliseconds
+            if wait is None:
+                tmp.unlink(missing_ok=True)
+                raise
+            time.sleep(wait)
 
 
 @contextmanager
@@ -51,7 +60,7 @@ def locked(path, timeout=10.0):
         try:
             os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
             break
-        except FileExistsError:
+        except (FileExistsError, PermissionError):          # Windows answers "access denied" while the previous holder's lock is still being deleted
             try:
                 if time.time() - lock.stat().st_mtime > 60:
                     lock.unlink(missing_ok=True)

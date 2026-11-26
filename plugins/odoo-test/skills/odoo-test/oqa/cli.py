@@ -872,7 +872,7 @@ def cmd_hooks(args):
     root = Path(__file__).resolve().parents[1]
     exe = "python" if sys.platform == "win32" else "python3"      # a Linux or macOS machine often has no `python`
     command = lambda name: f'{exe} "{root / "hooks" / name}"'
-    snippet = {"hooks": {"PreToolUse": [{"matcher": "Bash|Write|Edit|MultiEdit|Read|Grep", "hooks": [{"type": "command", "command": command("guard.py")}]}],
+    snippet = {"hooks": {"PreToolUse": [{"matcher": "Bash|PowerShell|Write|Edit|MultiEdit|Read|Grep", "hooks": [{"type": "command", "command": command("guard.py")}]}],
                          "Stop": [{"hooks": [{"type": "command", "command": command("stop.py")}]}],
                          "UserPromptSubmit": [{"hooks": [{"type": "command", "command": command("prompt.py")}]}]}}
     return snippet, json.dumps(snippet, indent=2)
@@ -884,7 +884,7 @@ def cmd_plugin(args):
     from . import plugin
     if args.apply:
         target = plugin.build(Path.home() / ".odoo-test" / "plugin")
-        done = subprocess.run(["claude", "plugin", "update", f"{plugin.NAME}@{plugin.NAME}-local"], capture_output=True, text=True) if shutil.which("claude") else None
+        done = subprocess.run([shutil.which("claude") or "claude", "plugin", "update", f"{plugin.NAME}@{plugin.NAME}-local"], capture_output=True, text=True) if shutil.which("claude") else None
         note = (done.stdout + done.stderr).strip().splitlines()[-1:] if done else ["`claude` was not found: run `claude plugin update odoo-test@odoo-test-local` yourself"]
         return {"plugin": str(target), "updated": bool(done and done.returncode == 0)}, f"Built {target} from {plugin.ROOT}.\n" + "\n".join(note) + "\nOpen a new Claude Code window to use it."
     if not args.out:
@@ -903,11 +903,11 @@ def cmd_publish(args):
     _install_skill(target, force=True)
     lines = [f"Skill published to {target}"]
     built = plugin.build(Path.home() / ".odoo-test" / "plugin")
-    done = subprocess.run(["claude", "plugin", "update", f"{plugin.NAME}@{plugin.NAME}-local"], capture_output=True, text=True, encoding="utf-8", errors="replace") if shutil.which("claude") else None
+    done = subprocess.run([shutil.which("claude") or "claude", "plugin", "update", f"{plugin.NAME}@{plugin.NAME}-local"], capture_output=True, text=True, encoding="utf-8", errors="replace") if shutil.which("claude") else None
     lines.append(f"Plugin rebuilt at {built}" + (f" ({(done.stdout + done.stderr).strip().splitlines()[-1]})" if done and (done.stdout + done.stderr).strip() else ""))
-    if shutil.which("claude") and f"{plugin.NAME}@{plugin.NAME}-local" not in (subprocess.run(["claude", "plugin", "list"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout or ""):
+    if shutil.which("claude") and f"{plugin.NAME}@{plugin.NAME}-local" not in (subprocess.run([shutil.which("claude") or "claude", "plugin", "list"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout or ""):
         for step in (["marketplace", "add", str(built.parent)], ["install", f"{plugin.NAME}@{plugin.NAME}-local"]):
-            run = subprocess.run(["claude", "plugin", *step], capture_output=True, text=True, encoding="utf-8", errors="replace")
+            run = subprocess.run([shutil.which("claude") or "claude", "plugin", *step], capture_output=True, text=True, encoding="utf-8", errors="replace")
             lines.append(("Plugin: " if run.returncode == 0 else "Plugin step failed: ") + " ".join(step[:2]) + (f" - {(run.stdout + run.stderr).strip().splitlines()[-1]}" if (run.stdout + run.stderr).strip() else ""))
     lines.append("Open a new Claude Code window to use the new version.")
     return {"skill": str(target), "plugin": str(built)}, "\n".join(lines)
@@ -941,9 +941,13 @@ def _install_skill(target, *, force):
     with tempfile.TemporaryDirectory(dir=target.parent) as staging:
         prepared = Path(staging) / target.name
         plugin.copy_skill(prepared)
-        if target.exists():
-            shutil.rmtree(target)
-        prepared.rename(target)
+        aside = plugin.move_aside(target)          # refuses, and keeps the old copy whole, while a dashboard still runs from it
+        try:
+            prepared.rename(target)
+        except BaseException:
+            plugin.put_back(aside, target)
+            raise
+        plugin.discard(aside)
 
 
 def cmd_ask(args):

@@ -5,7 +5,7 @@ import io
 import re
 from pathlib import Path
 
-from . import case_context, fixtures, live, mcp_server, refs, sitemap, workspace
+from . import case_context, claims, fixtures, live, mcp_server, refs, sitemap, workspace
 from .state import GateError
 
 

@@ -60,9 +60,12 @@ def _run(case, *args, timeout=120):
         node = shutil.which("node")
         if node and entry.is_file():
             command = [node, str(entry)]
-    done = subprocess.run([*command, f"-s={sname(case)}", *args], capture_output=True,
-                          text=True, encoding="utf-8", errors="replace", timeout=timeout, cwd=str(work),
-                          creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+    try:
+        done = subprocess.run([*command, f"-s={sname(case)}", *args], capture_output=True,
+                              text=True, encoding="utf-8", errors="replace", timeout=timeout, cwd=str(work),
+                              creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+    except subprocess.TimeoutExpired as error:
+        raise GateError(f"playwright-cli {args[0]} did not answer within {timeout} s.") from error
     out = textfix.strip_control((done.stdout or "") + (done.stderr or ""))         # colour codes would reach the notes, the events and the report
     if done.returncode or "### Error" in out:
         raise GateError(f"playwright-cli {args[0]} failed: {out[-400:].strip()}")
@@ -87,7 +90,70 @@ def literal_check(text, timeout):
             + json.dumps(text) + f", {{timeout: {timeout}}});")
 
 
+NUMBER_FORMS_JS = r"""const forms = token => { const out = [token]; const sign = /^[+-]/.test(token) ? token[0] : ''; const body = token.replace(/^[+-]/, '');
+          const pad = value => value.padStart(2, '0'); const parts = body.split(/[\/-]/);
+          if (parts.length === 3 && parts.every(part => /^\d+$/.test(part))) {
+            if (parts[0].length === 4) out.push('D' + parts[0] + '-' + pad(parts[1]) + '-' + pad(parts[2]));
+            else if (parts[2].length === 4 && parts[0].length <= 2 && parts[1].length <= 2) {
+              const [first, second, year] = parts;
+              if ((+first === +second || +first > 12) && +first <= 31 && +second >= 1 && +second <= 12)
+                out.push('D' + year + '-' + pad(second) + '-' + pad(first));
+              else if (+second > 12 && +second <= 31 && +first >= 1 && +first <= 12)
+                out.push('D' + year + '-' + pad(first) + '-' + pad(second));
+            }
+            return out; }
+          if (!/^\d+(?:[.,]\d+)*$/.test(body)) return out;
+          const number = (whole, fraction) => { whole = whole.replace(/^0+(?=\d)/, ''); fraction = (fraction || '').replace(/0+$/, '');
+            return 'N' + (sign === '-' && /[1-9]/.test(whole + fraction) ? '-' : '') + whole + (fraction ? '.' + fraction : ''); };
+          const seps = body.match(/[.,]/g) || []; const last = Math.max(body.lastIndexOf('.'), body.lastIndexOf(','));
+          if (!seps.length) out.push(number(body));
+          else if (/^[1-9]\d{0,2}(?:,\d{3})+\.\d+$|^[1-9]\d{0,2}(?:\.\d{3})+,\d+$/.test(body))
+            out.push(number(body.slice(0, last).replace(/[.,]/g, ''), body.slice(last + 1)));
+          else if (/^[1-9]\d{0,2}([.,])\d{3}(?:\1\d{3})+$/.test(body)) out.push(number(body.replace(/[.,]/g, '')));
+          else if (seps.length === 1 && !(body.length - last - 1 === 3 && /^[1-9]\d{0,2}$/.test(body.slice(0, last))))
+            out.push(number(body.slice(0, last), body.slice(last + 1)));
+          return out; };"""
+
+
+def number_forms(token):
+    """Keep literal matches and normalize unambiguous display formats. Mirrors NUMBER_FORMS_JS."""
+    out = {token}
+    sign = token[0] if token[:1] in "+-" else ""
+    body = token[1:] if sign else token
+    parts = re.split(r"[/-]", body)
+    if len(parts) == 3 and all(part.isdigit() for part in parts):
+        if len(parts[0]) == 4:
+            out.add(f"D{parts[0]}-{parts[1]:0>2}-{parts[2]:0>2}")
+        elif len(parts[2]) == 4 and len(parts[0]) <= 2 and len(parts[1]) <= 2:
+            first, second, year = parts
+            if (int(first) == int(second) or int(first) > 12) and int(first) <= 31 and 1 <= int(second) <= 12:
+                out.add(f"D{year}-{second:0>2}-{first:0>2}")
+            elif 12 < int(second) <= 31 and 1 <= int(first) <= 12:
+                out.add(f"D{year}-{first:0>2}-{second:0>2}")
+        return out
+    if not re.fullmatch(r"\d+(?:[.,]\d+)*", body):
+        return out
+
+    def number(whole, fraction=""):
+        whole, fraction = re.sub(r"^0+(?=\d)", "", whole), fraction.rstrip("0")
+        negative = "-" if sign == "-" and re.search(r"[1-9]", whole + fraction) else ""
+        return f"N{negative}{whole}" + (f".{fraction}" if fraction else "")
+
+    seps = re.findall(r"[.,]", body)
+    last = max(body.rfind("."), body.rfind(","))
+    if not seps:
+        out.add(number(body))
+    elif re.fullmatch(r"[1-9]\d{0,2}(?:,\d{3})+\.\d+|[1-9]\d{0,2}(?:\.\d{3})+,\d+", body):
+        out.add(number(re.sub(r"[.,]", "", body[:last]), body[last + 1:]))
+    elif re.fullmatch(r"[1-9]\d{0,2}([.,])\d{3}(?:\1\d{3})+", body):
+        out.add(number(re.sub(r"[.,]", "", body)))
+    elif len(seps) == 1 and not (len(body) - last - 1 == 3 and re.fullmatch(r"[1-9]\d{0,2}", body[:last])):
+        out.add(number(body[:last], body[last + 1:]))
+    return out
+
+
 def outcome_check(shows, values, timeout, frame=None):
+    """Retried until the timeout: the value a step waits for often arrives with an RPC that ends after the page looked settled."""
     locator = _locator(frame or "body")
     expect = json.dumps({"shows": shows, "values": values}, ensure_ascii=False)
     check = (
@@ -100,13 +166,16 @@ def outcome_check(shows, values, timeout, frame=None):
             control.tagName === 'SELECT' ? (control.selectedOptions[0]?.text || '') : control.value)];
           const observed = normal(current.join(' '));
           if (!observed.includes(normal(expected.shows))) throw new Error('Expected visible outcome: ' + expected.shows);
-          const numbers = observed.match(/[+-]?\d+(?:[.,/:\-]\d+)*/g) || [];
+          """ + NUMBER_FORMS_JS + r"""
+          const seen = new Set((observed.match(/[+-]?\d+(?:[.,/:\-]\d+)*/g) || []).flatMap(forms));
           const absent = expected.values.filter(value => /^[+-]?\d+(?:[.,/:\-]\d+)*$/.test(normal(value))
-            ? !numbers.includes(normal(value)) : !observed.includes(normal(value)));
+            ? !forms(normal(value)).some(form => seen.has(form)) : !observed.includes(normal(value)));
           if (absent.length) throw new Error('Expected values missing from the result: ' + absent.join(', '));
         }"""
     )
-    return f"await {locator}.evaluate({' '.join(check.split())}, {expect}, {{timeout: {timeout}}});"
+    return (f"await (async () => {{ const deadline = Date.now() + {int(timeout)}; for (;;) {{ try {{ "
+            f"return await {locator}.evaluate({' '.join(check.split())}, {expect}, {{timeout: Math.max(1, deadline - Date.now())}}); "
+            f"}} catch (error) {{ if (Date.now() >= deadline) throw error; await new Promise(resolve => setTimeout(resolve, 250)); }} }} }})();")
 
 
 def replay_checks(block, timeout):
@@ -634,9 +703,18 @@ def _step_actions(log, case, attempt, n, verified_code):
         for action in recorded_actions:
             if not any(line == action.rstrip(";") for line in submitted):
                 raise GateError(f"Verified code omitted or reordered a recorded action ({action[:120]}). Include recorded actions in order, or omit --verified-code to use them directly.")
-        setup_code = [line for fragment in setup.values() for line in fragment.splitlines() if line not in code]
+        flat = [line.strip().rstrip(";") for line in code]
+
+        def included(fragment):                               # the whole fragment, in order: single generic lines (a Save click) say nothing
+            lines = [line.strip().rstrip(";") for line in fragment.splitlines() if line.strip()]
+            return any(flat[i:i + len(lines)] == lines for i in range(len(flat) - len(lines) + 1))
+
+        missing = [fragment for fragment in setup.values() if not included(fragment)]
+        own_page = [line for fragment in missing if fragment.lstrip().startswith("await page.goto(") for line in fragment.splitlines() if line.strip()]
+        in_page = [line for fragment in missing if not fragment.lstrip().startswith("await page.goto(") for line in fragment.splitlines() if line.strip()]
         offset = 1 if n == 1 and code[0].startswith("await page.goto(") else 0
-        code[offset:offset] = setup_code
+        code[offset:offset] = in_page                         # an in-page (RPC) fixture needs the step's page loaded first
+        code[0:0] = own_page                                  # a UI fixture opens its own form: it runs before the step goes to its screen
     else:
         code = recorded_path
     return code, profile
@@ -963,8 +1041,12 @@ def video_file(ws, script_key, env, run_id):
     return paths.workspace_dir(ws) / "videos" / script_key.replace("/", "__") / f"{env}-{run_id}.webm"
 
 
-def _visible_replay(session, ws, item, path, blocks, problems, run, movie, video, fresh):
+def _visible_replay(session, ws, item, path, blocks, problems, run, movie, video, fresh, keep=True):
     from . import replay_browser
+
+    def record(*args, **kwargs):
+        if keep:
+            replays.record(*args, **kwargs)
 
     case = item["id"]
     timing, failed, kept = {}, None, {}
@@ -999,10 +1081,10 @@ def _visible_replay(session, ws, item, path, blocks, problems, run, movie, video
             if outcome == "FAIL":
                 reason = reason or "Replay failed."
                 raise GateError(f"Step {failed} in {path.name}: {reason}" if failed else reason)
-            replays.record(session, case, outcome, timing=timing, **run, **kept,
-                           **({"reason": reason, "failed_step": failed} if reason else {}))
+            record(session, case, outcome, timing=timing, **run, **kept,
+                   **({"reason": reason, "failed_step": failed} if reason else {}))
     except GateError as error:
-        replays.record(session, case, "FAIL", reason=str(error)[:600], failed_step=failed, timing=timing, **run, **kept)
+        record(session, case, "FAIL", reason=str(error)[:600], failed_step=failed, timing=timing, **run, **kept)
         raise
     return {"session": session.id, "case": case, "env": run["env"], "status": "CANCELLED" if outcome == "CANCELLED" else "COMPLETED",
             "replay": outcome, "action_delay_ms": run["action_delay_ms"], "step_delay_ms": run["step_delay_ms"],
@@ -1025,8 +1107,9 @@ def replay_text(session, config, target_url, refresh_keys):
 
 
 def replay(session, case, headed=True, action_delay_ms=DEFAULT_ACTION_DELAY_MS,
-           step_delay_ms=DEFAULT_STEP_DELAY_MS, fast=False, env=None, video="off", caption_language=None):
-    """Open the saved script in a separate browser, keeping the original test session. The outcome goes to replay.json (Replay PASS/FAIL); the live result is not touched."""
+           step_delay_ms=DEFAULT_STEP_DELAY_MS, fast=False, env=None, video="off", caption_language=None, keep=True):
+    """Open the saved script in a separate browser, keeping the original test session. The outcome goes to replay.json (Replay PASS/FAIL); the live result is not touched.
+    keep=False runs it as a trial (a candidate script that may still be thrown away): nothing is recorded."""
     action_delay_ms, step_delay_ms = replay_delays(action_delay_ms, step_delay_ms, fast)
     if video not in VIDEO_MODES:
         raise GateError(f"video must be one of {', '.join(VIDEO_MODES)}.")
@@ -1060,7 +1143,7 @@ def replay(session, case, headed=True, action_delay_ms=DEFAULT_ACTION_DELAY_MS,
 
     movie = video_file(session.ws, regression.key_of(session.state()["file"], case), env, run["run_id"]) if video != "off" else None
     if headed:
-        return _visible_replay(session, ws, item, path, blocks, problems, run, movie, video, fresh)
+        return _visible_replay(session, ws, item, path, blocks, problems, run, movie, video, fresh, keep)
     capture = _home() / ".playwright-cli" / "videos" / f"{browser_id}-{run['run_id']}.webm" if movie else None
     recording = False
 
@@ -1117,7 +1200,8 @@ def replay(session, case, headed=True, action_delay_ms=DEFAULT_ACTION_DELAY_MS,
         kept = stop_video("PASS")             # inside the try: the `finally` below must not meet a recording that already succeeded
     except GateError as error:
         kept = stop_video("FAIL")
-        replays.record(session, case, "FAIL", reason=str(error)[:600], failed_step=failed, timing=clock.report(), **({"video": kept} if kept else {}), **run)
+        if keep:
+            replays.record(session, case, "FAIL", reason=str(error)[:600], failed_step=failed, timing=clock.report(), **({"video": kept} if kept else {}), **run)
         raise
     finally:
         if recording:
@@ -1127,7 +1211,8 @@ def replay(session, case, headed=True, action_delay_ms=DEFAULT_ACTION_DELAY_MS,
         except GateError:
             pass
     timing = clock.report()
-    replays.record(session, case, "PASS", timing=timing, **({"video": kept} if kept else {}), **run)
+    if keep:
+        replays.record(session, case, "PASS", timing=timing, **({"video": kept} if kept else {}), **run)
     return {"session": session.id, "case": case, "env": env, "status": "COMPLETED", "replay": "PASS", "browser": sname(browser_id),
             "action_delay_ms": action_delay_ms, "step_delay_ms": step_delay_ms, "timing": timing}
 
@@ -1270,11 +1355,13 @@ def specific_values(expected):
 
 
 def check_database_values(result, values):
-    observed = " ".join(str(value) for row in result["rows"] for value in row)
-    numbers = set(_NUMBER.findall(observed))
+    """The numbers and dates of the expected result must be among the rows. Words are not checked here: the database keeps keys (state = 'sale'), not the labels
+    the screen shows. The first cell of each row is PgAdmin's row number, not data."""
+    observed = " ".join(str(value) for row in result["rows"] for value in row[1:])
+    seen = {form for token in _NUMBER.findall(observed) for form in number_forms(token)}
     if result["total"] is not None:
-        numbers.add(str(result["total"]))
-    missing = [v for v in values if (v not in numbers if _NUMBER.fullmatch(v) else v not in observed)]
+        seen |= number_forms(str(result["total"]))
+    missing = [v for v in values if _NUMBER.fullmatch(v) and not number_forms(v) & seen]
     if missing:
         raise GateError("The PgAdmin result is missing expected values: " + ", ".join(missing))
 

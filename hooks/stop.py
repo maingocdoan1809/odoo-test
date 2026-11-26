@@ -44,9 +44,15 @@ def verdict(event=None):
     left = [c for c in order if c not in state["results"]]
     if not left:
         return None
+    from oqa import claims
+    held = claims.table(session)
+    idle = [c for c in left if not (held.get(c) or {}).get("fresh")]
+    if not idle:
+        return None                                            # every case left is with a sub-agent: stopping to wait for them is right
     return _push(session, "run", len(state["results"]), fingerprint(event or {}),
-                 f"Session {session_id} is executing and {len(left)} case(s) have no result: {', '.join(left[:6])}. Keep going with `oqa live`, "
-                 "or, if you are blocked, `oqa ask` the user or `oqa finish <case> --status BLOCKED --reason ...`.")
+                 f"Session {session_id} is executing and {len(idle)} case(s) have no result and no worker: {', '.join(idle[:6])}. "
+                 "Run `oqa dispatch --plan` and start one sub-agent per brief (never run a case yourself); when an agent finishes, `oqa dispatch --settle <case>`. "
+                 "If only the user can unblock it, `oqa ask` them.")
 
 
 def _push(session, kind, progress, event_id, text):
