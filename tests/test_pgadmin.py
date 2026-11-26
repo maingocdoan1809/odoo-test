@@ -82,6 +82,22 @@ def test_connect_checks_pgadmin_before_the_run(monkeypatch):
         connect.check_pgadmin(ws, MemoryStore())
 
 
+def test_pgadmin_answers_an_existing_server_prompt_before_toggling_the_tree(monkeypatch):
+    from types import SimpleNamespace
+
+    actions = []
+    page = SimpleNamespace(wait_for_timeout=lambda _ms: None)
+    pg = pgadmin.PgAdmin(page, {})
+    toggle = SimpleNamespace(get_attribute=lambda _name: "directory-toggle", click=lambda: actions.append("toggle"))
+    entry = SimpleNamespace(wait_for=lambda **_kwargs: None, locator=lambda _selector: toggle)
+    monkeypatch.setattr(pg, "entry", lambda _name: entry)
+    monkeypatch.setattr(pg, "_answer_password", lambda: actions.append("password"))
+
+    pg._open("Harness PostgreSQL")
+
+    assert actions == ["password", "toggle", "password"]
+
+
 def _fake_pgadmin(monkeypatch, result):
     from contextlib import contextmanager
 

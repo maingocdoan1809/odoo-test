@@ -44,7 +44,7 @@ def test_replay_resolves_a_relative_odoo_url(monkeypatch):
     commands = []
     monkeypatch.setattr(livemod, "_run", lambda *args: commands.append(args) or "")
     livemod.run_actions("case", ["await page.goto('/odoo/action-92/new');"])
-    assert 'new URL("/odoo/action-92/new", page.url()).href' in commands[0][2]
+    assert 'page.evaluate(path => new URL(path, location.href).href, "/odoo/action-92/new")' in commands[0][2]
 
 
 def test_live_rejects_replay_text_not_present_in_the_page(live, pw):

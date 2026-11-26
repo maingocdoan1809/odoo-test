@@ -94,7 +94,7 @@ class PgAdmin:
         return self.page.locator(".file-entry", has=self.page.locator(".file-name", has_text=_exact(name))).first
 
     def _answer_password(self):
-        dialog = self.page.locator(".MuiDialog-root")
+        dialog = self.page.locator(".MuiDialog-root:visible")
         if dialog.count() and dialog.locator("input[type=password]").count():
             asked = dialog.first.inner_text()
             wanted = self.cfg["server"]
@@ -105,7 +105,7 @@ class PgAdmin:
             dialog.locator("input[type=password]").fill(self.cfg["db_password"])
             dialog.locator("button:has-text('OK')").last.click()
             self.page.wait_for_timeout(2500)
-            again = self.page.locator(".MuiDialog-root")
+            again = self.page.locator(".MuiDialog-root:visible")
             if again.count() and again.locator("input[type=password]").count():
                 reason = " ".join(again.first.inner_text().split())
                 reason = re.sub(r"\s*Cancel\s*OK\s*$", "", reason.split("Save Password")[-1].strip() or reason)
@@ -115,6 +115,7 @@ class PgAdmin:
         return [t.strip() for t in self.page.locator(".file-entry[data-depth='2'] .file-name").all_inner_texts()]
 
     def _open(self, name):
+        self._answer_password()
         entry = self.entry(name)
         entry.wait_for(timeout=TREE_MS)
         if "open" not in (entry.locator(".directory-toggle").get_attribute("class") or ""):
@@ -151,6 +152,7 @@ class PgAdmin:
         if cfg["server"]:
             self._open(cfg["server"])
         else:
+            self._answer_password()
             first = self.page.locator(".file-entry.depth-2, .file-entry[data-depth='2']").first
             first.wait_for(timeout=SLOW_MS)
             if "open" not in (first.locator(".directory-toggle").get_attribute("class") or ""):

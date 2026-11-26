@@ -161,7 +161,7 @@ def run_actions(browser_id, lines):
             result = _upload_csv(browser_id, *(json.loads(field) for field in upload.groups())) or result
         else:
             pending.append(_RELATIVE_GOTO.sub(
-                lambda match: match[1] + "new URL(" + json.dumps(match[3]) + ", page.url()).href",
+                lambda match: match[1] + "await page.evaluate(path => new URL(path, location.href).href, " + json.dumps(match[3]) + ")",
                 line, count=1))
     return flush() or result
 

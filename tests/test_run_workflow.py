@@ -140,6 +140,24 @@ def test_oqa_tool_runs_a_case_tool_only_for_the_agent_that_holds_the_case(ws, wo
     assert '"id": "ORD-001"' in text and '"id": "ORD-002"' not in text and answer["tool"] == "context"
 
 
+def test_goto_fixture_resolves_the_url_in_the_browser(monkeypatch):
+    import json
+
+    from oqa import live, worker_mcp
+
+    recorded = []
+    def act(_session, _case, _command, _args, code, record):
+        assert record
+        recorded.append(code)
+        return {}, "opened record"
+    monkeypatch.setattr(live, "act", act)
+    result = worker_mcp.call(None, "ORD-001", "worker", "goto_fixture", {"action_url": "/odoo/action-40", "key": "fixture-key"})
+
+    assert json.loads(result)["code"] == recorded[0]
+    assert recorded[0].startswith("await page.goto(await page.evaluate(")
+    assert "new URL(route + id, location.href)" in recorded[0]
+
+
 def test_no_model_or_cli_is_started_by_oqa():
     """The host's own sub-agents do every job that needs a model: no module of oqa starts one."""
     import re as _re

@@ -187,10 +187,10 @@ def _call(session, case, agent, name, args):
                 "prefix": workspace.load(session.ws)["test_prefix"]}
         return json.dumps(plan, ensure_ascii=False)
     if name == "goto_fixture":
-        key = json.dumps(args["key"])
-        route = json.dumps(args["action_url"].rstrip("/") + "/")
-        lookup = "key => { const id = sessionStorage.getItem('oqa:fixture:' + key); if (!id) throw new Error('Fixture not prepared: ' + key); return id; }"
-        code = f"await page.goto(new URL({route} + await page.evaluate({lookup}, {key}), page.url()).href);"
+        target = json.dumps({"key": args["key"], "route": args["action_url"].rstrip("/") + "/"})
+        lookup = ("({key, route}) => { const id = sessionStorage.getItem('oqa:fixture:' + key); "
+                  "if (!id) throw new Error('Fixture not prepared: ' + key); return new URL(route + id, location.href).href; }")
+        code = f"await page.goto(await page.evaluate({lookup}, {target}));"
         observed = live.act(session, case, "run-code", [], code, record=True)[1]
         return json.dumps({"code": code, "output": observed}, ensure_ascii=False)
     if name == "reference":
