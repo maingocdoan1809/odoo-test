@@ -3,6 +3,7 @@ import json
 
 import pytest
 
+from conftest import filled
 from oqa import cli, dispatch, events, knowledge, knowledge_flow, report
 from oqa.case_context import build
 from oqa.state import GateError
@@ -95,6 +96,28 @@ def test_a_run_with_nothing_to_learn_closes_without_a_summary(session, ws):
     assert knowledge_flow.pending(session) == ""
     assert knowledge_flow.digest(session) is None and knowledge_flow.review(session)["status"] == "empty"
     assert report.finish(session, ws)["counts"] and session.state()["phase"] == "DONE"
+
+
+def test_cases_added_after_report_get_their_own_knowledge_review(session, ws):
+    from oqa import claims
+
+    session.analysis_submitted(document=filled(session.cases(), ws))
+    session.connected({})
+    session.select_cases(["ORD-001"])
+    session.confirm_current("test")
+    session.begin_attempt("ORD-001")
+    claims.add_note(session, "worker", "First workaround", "ORD-001")
+    session.finish_case("ORD-001", "PASS")
+    knowledge_flow.skip(session)
+    report.finish(session, ws)
+    session.add_cases(["ORD-002"])
+    session.begin_attempt("ORD-002")
+    claims.add_note(session, "worker", "New workaround from the added case", "ORD-002")
+    session.finish_case("ORD-002", "PASS")
+
+    assert "knowledge digest" in knowledge_flow.pending(session)
+    brief = knowledge_flow.digest(session)
+    assert "New workaround from the added case" in brief and "First workaround" not in brief
 
 
 def test_a_run_that_taught_something_stays_open_until_the_user_saves_the_summary(session, ws):

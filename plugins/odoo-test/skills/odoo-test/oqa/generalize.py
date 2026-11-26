@@ -28,7 +28,7 @@ Hard rules:
 5. Wait for visible conditions (waitFor, a state to be hidden, text to appear). Never waitForTimeout and never networkidle. After Save wait for the Save button to be hidden.
 6. Keep the meaning: the same actions, the same checks, the same expected result of each step. Do not weaken or remove an assertion. `// shows:` must be a text that is identical on every run
    (a label, a status, a name that starts with the run prefix), never an id, a date or a generated number.
-7. Keep the structure exactly: one block per step, in order, with the header lines `// step N`, `// frame: ...`, `// frame-before: yes` (when present), `// shows: ...`, `// profile: ...` (when present).
+7. Keep the structure exactly: one block per step, in order. Preserve frame, frame-before, shows, profile, check-target, check-values and assert lines when present.
    Keep every fixture setup line (`await page.evaluate(async spec => ...`) exactly as it is.
 8. The code runs inside the browser tool's sandbox: there is NO `require` and NO `import`, no `fs`, no `process`; `Buffer` and `page` exist. A file the page downloads must not be read from disk:
    take it from the download object, `const [download] = await Promise.all([page.waitForEvent('download'), <the click>]); let text = ''; for await (const chunk of await download.createReadStream()) text += chunk;`,
@@ -85,7 +85,7 @@ def _count(text):
 
 def check(session, case, text, steps, prefix, original=""):
     """What makes a candidate unfit before any browser is used: the structure, record ids, delays, fixed record names."""
-    _, problems = live.parse_script(text, steps)
+    blocks, problems = live.parse_script(text, steps)
     for number, line in enumerate(text.splitlines(), 1):
         code = line.strip()
         if code.startswith("//") or not code:
@@ -97,6 +97,9 @@ def check(session, case, text, steps, prefix, original=""):
         if live.RECORD_ID_URL.search(code):
             problems.append(f"line {number}: a record id in an address; use $OQA_CAPTURE(name) and $OQA_ID(name)")
     if original:
+        if not problems:
+            previous, _ = live.parse_script(original, steps)
+            problems.extend(live.preserved_checks(previous, blocks))
         for pattern, now, before in zip(EFFECTS, _count(text), _count(original)):
             if now > before:
                 problems.append(f"the rewrite repeats an action that changes data ({pattern}: {now} times, the original does it {before}); do not redo what an earlier step already did")

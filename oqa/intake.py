@@ -5,6 +5,7 @@ Header names are matched through synonyms (en / ja / vi). The sheet and the head
 first 15 rows) has an ID column and an expected-result or action column."""
 import hashlib
 import re
+from io import BytesIO
 from pathlib import Path
 
 from . import SCHEMA_VERSION, refs
@@ -93,10 +94,10 @@ def _match(cell):
     return None
 
 
-def read_workbook(path, sheet_name=None):
+def read_workbook(path, sheet_name=None, *, content=None):
     """(sheet title, header row, [raw case dicts], {key: column}). Raises SchemaError when no testcase table is found."""
     import openpyxl
-    book = openpyxl.load_workbook(path, data_only=True, read_only=False)
+    book = openpyxl.load_workbook(BytesIO(content) if content is not None else path, data_only=True, read_only=False)
     for sheet in book:
         if sheet_name is not None and sheet.title != sheet_name:
             continue
@@ -191,13 +192,14 @@ def select(cases_doc, spec):
     return out
 
 
-def build(path, reference_dirs=(), selection=None, sheet_name=None):
+def build(path, reference_dirs=(), selection=None, sheet_name=None, *, _content=None):
     """cases.json content for a testcase workbook."""
     path = Path(path)
     if not path.is_file():
         raise SchemaError(f"file not found: {path}", "testcase file")
     if path.suffix.lower() not in (".xlsx", ".xlsm"):
         raise SchemaError("only .xlsx / .xlsm testcase files are read", path.name)
+    content = path.read_bytes() if _content is None else _content
     if selection and "!" in selection:
         combined, tables, seen, documents = [], {}, set(), {}
         for part in re.split(r"[,;\n]", selection):
@@ -207,7 +209,7 @@ def build(path, reference_dirs=(), selection=None, sheet_name=None):
                 raise SchemaError("Use Sheet!A64:R64 for every selected region", "cases")
             name = name.strip("'")
             if name not in documents:
-                documents[name] = build(path, reference_dirs, sheet_name=name)
+                documents[name] = build(path, reference_dirs, sheet_name=name, _content=content)
             doc = documents[name]
             first, last = map(int, match.groups())
             chosen = [c for c in doc["cases"] if first <= c["row"] <= last]
@@ -229,7 +231,7 @@ def build(path, reference_dirs=(), selection=None, sheet_name=None):
         doc["warnings"] = []
         doc["selection"] = {"of": len(combined), "ids": [c["id"] for c in combined], "regions": selection}
         return doc
-    sheet, header, rows, columns = read_workbook(path, sheet_name)
+    sheet, header, rows, columns = read_workbook(path, sheet_name, content=content)
     folders = [path.parent] + [Path(d) for d in reference_dirs]
     ids = [r["no"] for r in rows]
     warnings = [f"ID '{i}' appears {ids.count(i)} times; the first occurrence is used" for i in dict.fromkeys(ids) if ids.count(i) > 1]
@@ -262,5 +264,5 @@ def build(path, reference_dirs=(), selection=None, sheet_name=None):
     except Exception:          # a workbook that cannot be inspected twice must not stop the intake
         pass
     return {"schema_version": SCHEMA_VERSION,
-            "source": {"file": str(path.resolve()), "name": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "sheet": sheet, "header_row": header, "columns": columns},
+            "source": {"file": str(path.resolve()), "name": path.name, "sha256": hashlib.sha256(content).hexdigest(), "sheet": sheet, "header_row": header, "columns": columns},
             "warnings": warnings, "cases": cases}

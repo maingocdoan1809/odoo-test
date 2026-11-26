@@ -37,7 +37,10 @@ const stamp = randomUUID().replaceAll("-", "").slice(0, 10);
 const prefix = manifest.prefix || "AUTO_TEST_";
 const item = manifest.cases[caseId];
 const sourcePrefixes = item.fixtureSources || [prefix];
-const fixturePattern = new RegExp(sourcePrefixes.map(value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g");
+const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const fixturePattern = new RegExp(sourcePrefixes.map(escapeRegex).join("|"), "g");
+const originalOrigin = new RegExp(escapeRegex(original.origin) + "(?=$|[/#?\\s'\"\x60])", "gi");
+const rebase = text => text.replace(originalOrigin, () => base.origin);
 const fresh = text => text.replace(fixturePattern, () => `${item.fixtureStem || prefix}r${stamp}_`);
 const runDir = `evidence/${caseId.replace(/[^\w.-]/g, "_")}-${stamp}`;
 await mkdir(runDir, { recursive: true });
@@ -110,7 +113,7 @@ try {
       const text = `Step ${step.n}/${manifest.cases[caseId].steps.length}: ${step.action || ""}`.slice(0, 200);
       await page.evaluate(([src, note]) => { try { if (!window.__oqaDraw) (0, eval)(`(${src})()`); sessionStorage.setItem("__oqa_note", note); window.__oqaDraw && window.__oqaDraw(); } catch (e) {} }, [noteScript.toString(), text]).catch(() => {});
     }
-    const code = step.code.map(line => fresh(line.replaceAll(original.origin, base.origin)));
+    const code = step.code.map(line => fresh(rebase(line)));
     const execute = async lines => {
       for (const line of lines) {
         const action = new AsyncFunction("page", line);
@@ -126,8 +129,12 @@ try {
       } else {
         await execute(code);
       }
-      await settle(page);
-      await page.waitForFunction(text => { const norm = value => value.replace(/[\s\u00a0\u202f]+/g, ' ').trim(); return norm(document.body.innerText).includes(norm(text)); }, fresh(step.shows));
+      if (step.checks) {
+        for (const source of step.checks) await new AsyncFunction("page", fresh(rebase(source)))(page);
+      } else {
+        await settle(page);
+        await page.waitForFunction(text => { const norm = value => value.replace(/[\s\u00a0\u202f]+/g, ' ').trim(); return norm(document.body.innerText).includes(norm(text)); }, fresh(step.shows));
+      }
       await page.screenshot({ path: `${runDir}/step-${step.n}.png` });
       await pause(stepDelay);
     } catch (error) {

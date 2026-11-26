@@ -274,7 +274,7 @@ def cmd_confirm(args, is_tty=None):
         print((session.dir / "strategy.md").read_text(encoding="utf-8"))
         if input("Type 'yes' to approve this strategy and start testing: ").strip().lower() not in ("yes", "y", "có", "co"):
             raise GateError("Not confirmed.")
-    strategy_doc = session.confirm_current("terminal")
+    strategy_doc = session.confirm_current("terminal", expected_sha=state.get("strategy_sha"))
     return {"confirmed": True, "by": "terminal"}, f"Confirmed. {len(strategy_doc['order'])} cases will run. Next: {session.summary()['next']}"
 
 
@@ -390,6 +390,8 @@ def cmd_fixture(args):
     from . import fixtures
 
     session = Session.open(args.ws, args.session)
+    if args.case:
+        claims.require_owner(session, args.case, getattr(args, "agent", None))
     if args.action == "key":
         if not args.case:
             raise GateError("Key needs --case.")
@@ -491,8 +493,7 @@ def cmd_tool(args):
         lines = [f"{r['name']}: {r['about']}\n    arguments {json.dumps(r['arguments'], ensure_ascii=False)} (required: {', '.join(r['required']) or 'none'})" for r in rows]
         return {"tools": rows}, "\n".join(lines)
     claim = claims.table(session).get(args.case) or {}
-    if args.agent and claim.get("agent") != args.agent:
-        raise GateError(f"{args.agent} does not hold {args.case}.")
+    claims.require_owner(session, args.case, args.agent)
     try:
         arguments = json.loads(args.args) if args.args else {}
     except ValueError as error:
@@ -576,6 +577,7 @@ def cmd_pgadmin(args):
         raise GateError("Give the query: --sql \"SELECT ...\"")
     if args.case:
         session = Session.open(args.ws, args.session)
+        claims.require_owner(session, args.case, getattr(args, "agent", None))
         result, picture = pgadmin.shot(session, ws, store, args.case, args.n, args.sql, args.caption, headless=not args.headed)
         where = f"attached to step {args.n} of {args.case}: {picture}"
     else:
@@ -589,6 +591,7 @@ def cmd_pgadmin(args):
 def cmd_live(args):
     """EXECUTE with playwright-cli: the case's own browser, the outcome of each step with a picture framed by oqa (see oqa/live.py)."""
     session = Session.open(args.ws, args.session)
+    claims.require_owner(session, args.case, getattr(args, "agent", None))
     if args.action == "start":
         return live.start(session, args.case)
     if args.action == "recover":
@@ -606,11 +609,18 @@ def cmd_live(args):
         except OSError as error:
             raise GateError(str(error)) from error
     if args.action == "act":
-        return live.act(session, args.case, args.browser_command, args.browser_arg, code)
+        return live.act(session, args.case, args.browser_command, args.browser_arg, code, record=args.record)
     if args.action == "shot":
         return live.shot(session, args.case, args.n, args.target, from_pre=args.from_pre, caption=args.caption)
     if args.action == "step":
-        return live.step(session, args.case, args.n, args.status, args.actual or "", args.target, code, args.shows)
+        assertions = None
+        if args.assert_code:
+            try:
+                assertions = Path(args.assert_code).read_text(encoding="utf-8")
+            except OSError as error:
+                raise GateError(str(error)) from error
+        return live.step(session, args.case, args.n, args.status, args.actual or "", args.target, code, args.shows, assertions,
+                         require_checks=bool(session.state().get("channel")))
     if args.action == "script":
         return live.keep_script(session, args.case, args.script)
     if args.action == "regenerate":
@@ -1128,6 +1138,7 @@ def build_parser():
     p.add_argument("action", choices=["plan", "apply", "ui", "ref", "key", "cleanup"])
     p.add_argument("screen", nargs="?", default="", help="a screen/model, or ledger | license_user | contract; not needed for key and cleanup")
     p.add_argument("--case")
+    p.add_argument("--agent", help="worker holding the live case claim")
     p.add_argument("--label", help="key: a short name for the record within the case")
     p.add_argument("--value", help="ref: the exact name of an existing record to rely on (read only)")
     p.add_argument("--run", help="cleanup: a replay's run id (rXXXXXXXXXX) instead of the live run")
@@ -1203,6 +1214,7 @@ def build_parser():
     p = add("pgadmin", cmd_pgadmin, "database evidence: pgadmin shot --sql \"SELECT ...\" [CASE --n N] | pgadmin check")
     p.add_argument("action", choices=["shot", "check"])
     p.add_argument("case", nargs="?", help="shot: the case whose recorded step gets the picture (without it the picture is only saved to --out)")
+    p.add_argument("--agent", help="worker holding the live case claim")
     p.add_argument("--n", type=int, help="the recorded step number the picture belongs to")
     p.add_argument("--sql", help="one reading query (SELECT, WITH, SHOW, EXPLAIN)")
     p.add_argument("--out", help="without a case: where to save the picture (default pgadmin.png)")
@@ -1211,6 +1223,7 @@ def build_parser():
     p = add("live", cmd_live, "run a case live in its own playwright-cli browser: start | shot | step | end")
     p.add_argument("action", choices=["start", "act", "profile", "shot", "step", "end", "replay", "script", "recover", "diagnose", "handover", "regenerate"])
     p.add_argument("case", help="the case id; `replay all` replays every saved script of the session")
+    p.add_argument("--agent", help="worker holding the live case claim")
     p.add_argument("--n", type=int, help="the step number (shot, step)")
     p.add_argument("--status", help="step: PASS or FAIL; end: PASS, FAIL, BLOCKED or PENDING")
     p.add_argument("--actual", help="step: what the page showed, in a few words (compared with the expected result)")
@@ -1242,6 +1255,8 @@ def build_parser():
     p.add_argument("--from-pre", action="store_true", help="shot: attach a saved live pre-action picture to an already recorded step")
     p.add_argument("--code", help="act or step: one verified Playwright action per line")
     p.add_argument("--shows", help="step: expected page text for replay")
+    p.add_argument("--assert-code", metavar="FILE", help="step: read-only Playwright assertions, one await page.waitForFunction(...) per line")
+    p.add_argument("--record", action="store_true", help="act: retain this run-code fragment for the next replayable step")
     p.add_argument("--browser-command", help="act: playwright-cli operation in this case's browser")
     p.add_argument("--browser-arg", action="append", default=[], help="act: argument for the browser operation")
     p.add_argument("--profile", help="profile: switch the active case to another signed-in account")
@@ -1347,4 +1362,4 @@ def main(argv=None):
             print("REFUSED: " + message, file=sys.stderr)
         return 2
     print(json.dumps(data, ensure_ascii=False, indent=2) if args.json else text)
-    return 1 if args.func is cmd_regress and isinstance(data, dict) and data.get("failed") else 0      # a regression with a failure fails a pipeline
+    return 1 if args.func in (cmd_regress, cmd_live) and isinstance(data, dict) and data.get("failed") else 0

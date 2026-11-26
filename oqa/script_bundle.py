@@ -4,7 +4,7 @@ import json
 import zipfile
 from pathlib import Path
 
-from . import live, record_names, workspace
+from . import live, record_names, regression, workspace
 from .state import GateError
 from .store import read_json
 
@@ -14,8 +14,9 @@ def build(session):
     analysis = read_json(session.dir / "analysis.json", {}) or {}
     planned = {case["id"]: case for case in analysis.get("cases", [])}
     config = workspace.load(session.ws)
-    manifest = {"workspace": config["name"], "baseUrl": config["url"], "prefix": config.get("test_prefix"), "cases": {}}
-    channel = session.state().get("channel")
+    state = session.state()
+    manifest = {"workspace": config["name"], "baseUrl": (state.get("connect") or {}).get("url") or config["url"],
+                "prefix": config.get("test_prefix"), "cases": {}}
     content = io.BytesIO()
     with zipfile.ZipFile(content, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for case in strategy.get("order", []):
@@ -27,13 +28,15 @@ def build(session):
             if issues:
                 raise GateError(f"Cannot export {case}: " + "; ".join(issues))
             said = {step["n"]: step for step in planned[case]["steps"]}
-            blocks = [{**block, "action": said.get(block["n"], {}).get("action", ""), "expected": said.get(block["n"], {}).get("expected", "")} for block in blocks]
+            timeout = 1000 * (planned[case].get("timeout_s") or 8)
+            blocks = [{**block, "checks": live.replay_checks(block, timeout), "action": said[block["n"]]["action"],
+                       "expected": said[block["n"]]["expected"]} for block in blocks]
             prefix = config["test_prefix"]
             name = record_names.case_slug(session, case, plan=planned[case])
             manifest["cases"][case] = {"profile": planned[case].get("profile"), "steps": blocks,
                                        "fixtureStem": record_names.replay_stem(prefix, name),
                                        "fixtureSources": record_names.replay_sources(session, case, prefix, name=name),
-                                       **({} if channel else {"script": f"{source.parent.name}/{source.name[:-len('.spec.js')]}"})}
+                                       "script": regression.key_of(state["file"], case)}
             archive.writestr(f"scripts/{source.name}", text)
         if not manifest["cases"]:
             raise GateError("This session has no saved scripts.")

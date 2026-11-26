@@ -714,6 +714,7 @@ function sessionBar(v) {
           <div class="btnrow"><button class="btn ${main ? "" : "primary"}" id="exportReport" title="${esc(reportLabel)}" ${S.busy ? "disabled" : ""}>${reportLabel}</button>
             ${main ? `<a class="btn primary" href="${reportUrl(main.name)}" download>Tải file Evidence (.xlsx)</a>` : ""}
             ${canReplay ? `<a class="btn" href="${reportUrl("").replace("/api/report?", "/api/scripts?")}" download>Tải ZIP script</a>` : ""}</div>
+          ${S.reportNote ? `<p class="err" role="status">${esc(S.reportNote)}</p>` : ""}
           ${v.phase === "DONE" ? "" : `<hr>${refsPanel(v)}`}</div></details>
         ${v.phase === "EXECUTE" && v.can_stop ? `<button class="btn danger" id="stop" ${S.busy ? "disabled" : ""}>Dừng test</button>` : ""}
       </div></div>
@@ -1157,7 +1158,7 @@ async function refreshView() {
   liveHeader(v.phase !== "DONE" ? `Trực tiếp · cập nhật ${new Date().toLocaleTimeString("vi-VN")}` : `Đã xong · ${v.updated}`, v.phase !== "DONE");
 }
 function select(ws, id) {
-  S.sel = { ws, id }; S.view = null; S.sig = ""; S.caseId = null; S.attempt = null; S.cq = ""; S.cs = ""; S.drawer = false; S.error = "";
+  S.sel = { ws, id }; S.view = null; S.sig = ""; S.caseId = null; S.attempt = null; S.cq = ""; S.cs = ""; S.drawer = false; S.error = ""; S.reportNote = "";
   history.replaceState(null, "", `${location.pathname}${location.search}#${encodeURIComponent(ws)}/${encodeURIComponent(id)}`);
   renderMain(); refreshView(); if (S.tab === "site_map") loadMap();
 }
@@ -1291,7 +1292,7 @@ document.addEventListener("click", async e => {
     pickAll: () => post("/api/select", { ...where, cases: S.view.selection.ready.map(c => c.id) }),
     runMore: () => post("/api/run_more", { ...where, cases: [...S.more] }),
     exportReport: () => post("/api/report", where),
-    confirm: () => post("/api/confirm", where), stop: () => post("/api/stop", where), resume: () => post("/api/resume", where),
+    confirm: () => post("/api/confirm", { ...where, strategy_sha: S.view.strategy_sha }), stop: () => post("/api/stop", where), resume: () => post("/api/resume", where),
     sendAnswer: () => post("/api/answer", { ...where, text: ($("answer") || {}).value || "" }),
     sendReview: () => post("/api/review", { ...where, case: S.caseId, text: ($("reviewText") || {}).value || "" }),
     skipReview: () => post("/api/review", { ...where, case: S.caseId, text: ($("reviewText") || {}).value || "", skip: true }),
@@ -1303,6 +1304,7 @@ document.addEventListener("click", async e => {
     const r = await call();
     S.busy = false;
     if (t.id === "sendHint") { S.hintError = r.error || ""; if (!r.error) delete S.draft["hint-" + S.caseId]; } else S.error = r.error || "";
+    if (t.id === "exportReport") S.reportNote = r.error || r.note || "";
     if (t.id === "sendAnswer" && !r.error) delete S.draft.answer;
     if (["sendReview", "skipReview"].includes(t.id) && !r.error) delete S.draft["review-" + S.caseId];
     if (t.id === "addRef" && r.ok) delete S.draft.refPath;

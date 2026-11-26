@@ -125,7 +125,7 @@ def connect(session: Session, ws, store: SecretStore, headless=True):
         path = "/" + item["landing_url"].split("//", 1)[-1].partition("/")[2]
         knowledge.learn(ws["name"], "login", "login", f"After signing in as {name} the page is {path.split('?')[0]}" + (f" (Odoo {item['version']})" if item["version"] else ""))
     pgadmin_state = check_pgadmin(ws, store, headless)
-    session.connected({"profiles": info, "version": next(iter(info.values()))["version"], "pgadmin": pgadmin_state})
+    session.connected({"profiles": info, "version": next(iter(info.values()))["version"], "pgadmin": pgadmin_state, "url": ws["url"]})
     return info
 
 

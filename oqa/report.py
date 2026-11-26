@@ -7,6 +7,7 @@ One file, rebuilt in place each time: no pile of per-case workbooks.
 
 A case sheet says: what the testcase asked (from the workbook), how the assistant understood and planned it, what happened, and every step with the picture
 of the screen, red-framed, taken for it. Built from view.case_records, the same record the dashboard shows."""
+import hashlib
 import math
 import os
 import re
@@ -376,8 +377,12 @@ def write_back(session: Session, ws, records, t):
     folder = session.dir / "report"
     folder.mkdir(parents=True, exist_ok=True)
     backup = folder / ("original_" + source.name)
-    if not backup.exists():                                           # the first time only: it is what the user gave, not what we wrote
-        shutil.copy2(source, backup)
+    expected_sha = cases_doc["source"].get("sha256")
+    workbook_bytes = (backup if backup.exists() else source).read_bytes()
+    if expected_sha and hashlib.sha256(workbook_bytes).hexdigest() != expected_sha:
+        raise ValueError("The workbook changed after intake. Start a new session with the current workbook to write results into it.")
+    if not backup.exists():
+        backup.write_bytes(workbook_bytes)
     book = load_workbook(backup, keep_vba=source.suffix.lower() == ".xlsm")
     result_fields = ("res", "date", "evid", "why")
     layouts = {}

@@ -168,7 +168,10 @@ class Dashboard(LocalApp):
             if method == "GET" and path == "/api/image":
                 return self._image(query)
             if method == "POST" and path == "/api/confirm":
-                self._session(body).confirm_current("dashboard")
+                sha = body.get("strategy_sha")
+                if not isinstance(sha, str) or not sha:
+                    raise GateError("Refresh the strategy before confirming it.")
+                self._session(body).confirm_current("dashboard", expected_sha=sha)
                 return 200, {"ok": True}
             if method == "GET" and path == "/api/report":
                 return self._report_file(query)
@@ -259,7 +262,8 @@ class Dashboard(LocalApp):
             if method == "POST" and path == "/api/report":
                 session = self._session(body)
                 built = report.build(session, workspace.load(session.ws))
-                return 200, {"ok": True, "main": built["download"]}
+                note = built["testcase_file"]["note"]
+                return 200, {"ok": True, "main": built["download"], **({"note": note} if note else {})}
             if method == "POST" and path == "/api/regenerate":
                 session = self._session(body)
                 case = str(body.get("case", ""))

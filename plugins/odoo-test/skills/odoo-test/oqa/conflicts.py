@@ -5,7 +5,7 @@ testcase. Nothing runs until every conflict has a choice. The choice lives in th
 made through the dashboard."""
 import time
 
-from . import analysis, events, workspace
+from . import analysis, events
 from .state import GateError
 from .store import read_json, write_json
 
@@ -31,7 +31,4 @@ def decide(session, case, step, choice, by):
         write_json(session.dir / "analysis.json", document)
         events.append(session.dir, "conflict_decided", case=case, step=step, choice=choice, by=by, ref=item["ref"])
         if state["phase"] == "CONFIRM" and state.get("strategy_sha") and (session.dir / "strategy.json").is_file():
-            data, text = analysis.strategy(document, session.cases(), workspace.load(session.ws))
-            write_json(session.dir / "strategy.json", data)
-            (session.dir / "strategy.md").write_text(text + "\n", encoding="utf-8")
-            state["strategy_sha"] = data["sha"]
+            session._write_strategy(state, state.get("selected"))

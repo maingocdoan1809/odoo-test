@@ -62,6 +62,27 @@ def test_new_analysis_requires_an_evidence_description_and_reads_legacy_cases(se
     analysis.validate(data, session.cases(), ws)
 
 
+def test_an_edited_workbook_keeps_the_evidence_report_and_refuses_row_writeback(session, ws, workbook):
+    with session.update() as state:
+        state["channel"] = "path"
+    approved(session, ws)
+    session.begin_attempt("ORD-001")
+    session.finish_case("ORD-001", "PASS")
+    source = openpyxl.load_workbook(workbook)
+    source.active.insert_rows(3)
+    source.active["A3"] = "INSERTED"
+    source.save(workbook)
+    changed = workbook.read_bytes()
+
+    result = report.build(session, ws)
+
+    assert result["main"] == result["evidence_only"]
+    assert result["counts"]["PASS"] == 1
+    assert "changed after intake" in result["testcase_file"]["note"]
+    assert workbook.read_bytes() == changed
+    assert not list(workbook.parent.glob("*.result-*.xlsx"))
+
+
 def test_replay_pauses_after_each_action_and_checked_step(session, ws, monkeypatch):
     approved(session, ws)
     item = read_json(session.dir / "analysis.json")["cases"][0]

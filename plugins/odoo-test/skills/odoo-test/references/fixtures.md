@@ -11,5 +11,5 @@ Fixture tạo qua màn hình, không bao giờ bằng ORM write hay sửa DOM:
 - `oqa fixture key --case ID --label NAME`: khóa riêng của lần chạy.
 - `oqa fixture ui ledger|license_user|contract --case ID --key FIELD --values-json ...`: quan hệ viết `{"$ref": "existing record"}` (chỉ đọc) hoặc `{"$fixture": "key"}`; ngày tương đối viết `{"$date": -180}`.
 - `oqa fixture ref MODEL --case ID --value NAME`.
-- `oqa fixture cleanup --case ID [--run rXXXX] [--apply]`: dọn dữ liệu lần chạy này đã tạo.
+- `oqa fixture cleanup --case ID [--run rXXXX] [--apply]`: dọn dữ liệu theo khóa chính xác của từng fixture đã ghi nhận.
 - `oqa fixture plan <screen>`: trường, route và lệnh mẫu.

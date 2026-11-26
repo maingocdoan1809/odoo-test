@@ -77,16 +77,28 @@ def test_a_picture_is_served_but_nothing_outside_evidence(session, up):
 
 def test_the_user_confirms_from_the_dashboard_and_a_tampered_strategy_is_refused(session, up, tmp_path):
     at_confirm(session, tmp_path)
-    assert up.call(f"/api/session?ws=demo&id={session.id}")[1]["can_confirm"] is True
+    current = up.call(f"/api/session?ws=demo&id={session.id}")[1]
+    assert current["can_confirm"] is True
+    request = {"ws": "demo", "id": session.id, "strategy_sha": current["strategy_sha"]}
     doc = read_json(session.dir / "strategy.json")
     doc["order"] = doc["order"][::-1]
     write_json(session.dir / "strategy.json", doc)
-    assert "strategy" in up.call("/api/confirm", {"ws": "demo", "id": session.id})[1]["error"]
+    assert "strategy" in up.call("/api/confirm", request)[1]["error"]
     assert session.state()["phase"] == "CONFIRM"
     doc["order"] = doc["order"][::-1]
     write_json(session.dir / "strategy.json", doc)
-    assert up.call("/api/confirm", {"ws": "demo", "id": session.id})[1] == {"ok": True}
+    assert up.call("/api/confirm", request)[1] == {"ok": True}
     assert session.state()["phase"] == "EXECUTE" and session.state()["confirmation"]["by"] == "dashboard"
+
+
+def test_a_stale_dashboard_cannot_approve_a_new_case_selection(session, up, tmp_path):
+    at_confirm(session, tmp_path)
+    session.select_cases(["ORD-001"])
+    old = up.call(f"/api/session?ws=demo&id={session.id}")[1]["strategy_sha"]
+    session.select_cases(["ORD-002"])
+    assert "changed" in up.call("/api/confirm", {"ws": "demo", "id": session.id, "strategy_sha": old})[1]["error"]
+    assert session.state()["phase"] == "CONFIRM"
+    assert up.call("/api/confirm", {"ws": "demo", "id": session.id, "strategy_sha": session.state()["strategy_sha"]})[1] == {"ok": True}
 
 
 def test_the_user_answers_the_assistant_from_the_dashboard(session, up):

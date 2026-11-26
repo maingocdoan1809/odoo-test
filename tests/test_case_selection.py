@@ -52,6 +52,30 @@ def test_a_case_brings_the_cases_it_depends_on(session, ws):
     assert result["selected"][:2] == ["ORD-001", "ORD-003"] and result["added"] == ["ORD-001"]
 
 
+def test_failed_dependencies_close_the_queue_and_reopen_transitively(session, ws):
+    from oqa import claims
+
+    data = filled(session.cases(), ws, **{"ORD-002": {"depends_on": ["ORD-001"]}, "ORD-003": {"depends_on": ["ORD-002"]}})
+    session.analysis_submitted(document=data)
+    session.connected({})
+    session.rebuild_strategy()
+    session.confirm_current("test")
+    session.begin_attempt("ORD-001")
+    session.finish_case("ORD-001", "FAIL", "Root prerequisite failed")
+
+    state = session.state()
+    assert state["phase"] == "REPORT"
+    assert state["results"]["ORD-002"]["blocked_by"] == {"ORD-001": "FAIL"}
+    assert state["results"]["ORD-003"]["blocked_by"] == {"ORD-002": "NOT EXECUTED"}
+
+    session.hint("ORD-001", "The fixture is now available")
+    assert session.state()["phase"] == "EXECUTE" and session.state()["results"] == {}
+    assert claims.free_cases(session) == ["ORD-001"]
+    session.begin_attempt("ORD-001")
+    session.finish_case("ORD-001", "PASS")
+    assert claims.free_cases(session) == ["ORD-002"]
+
+
 def test_the_choice_cannot_be_empty_or_unknown_or_late(session, ws):
     at_confirm(session, ws)
     with pytest.raises(GateError, match="at least one"):

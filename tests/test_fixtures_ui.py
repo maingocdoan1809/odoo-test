@@ -96,6 +96,8 @@ def test_created_records_are_tracked_per_run_and_cleanup_lists_before_removing(s
 
     def run(browser, *args, **kw):
         if "run-code" in args:
+            assert "[[[spec.field, '=', spec.key]]]" in args[-1] and "'=like'" not in args[-1]
+            assert "ids.length > 1" in args[-1]
             sent.append(json.loads(args[-1][args[-1].rindex(', {"model"') + 2:-1]))
             return "### Result\n[7]"
         return ""
@@ -105,6 +107,26 @@ def test_created_records_are_tracked_per_run_and_cleanup_lists_before_removing(s
     assert dry == [{"model": "license.user", "field": "memo", "key": "ZZ_AUTOTEST_s_ORD-001_u1", "found": 1, "removed": False}] and sent[-1]["apply"] is False
     done = fixtures.cleanup(session, "ORD-001", apply=True)
     assert done[0]["removed"] is True and sent[-1]["apply"] is True
+
+
+def test_fixture_apply_uses_the_form_and_tracks_a_saved_record(session, ws, monkeypatch):
+    started(session, ws, monkeypatch)
+    key = fixtures.run_key(session, "ORD-001", "user")
+    monkeypatch.setattr(fixtures.sitemap, "load", lambda ws: {})
+    monkeypatch.setattr(fixtures, "form_for", lambda *args: ("screen", FORM))
+    monkeypatch.setattr(fixtures, "_route", lambda *args: "/odoo/users")
+    actions, lookups = [], []
+    monkeypatch.setattr(live, "run_actions", lambda browser, lines: actions.extend(lines))
+    monkeypatch.setattr(live, "_run", lambda browser, *args: lookups.extend(args) or '"17"')
+
+    result = fixtures.apply(session, "ORD-001", "license.user", "memo", {"memo": key})
+
+    assert result["id"] == "17"
+    assert actions[0] == 'await page.goto("/odoo/users");'
+    assert any(".o_form_button_save').click()" in line for line in actions)
+    assert "'search_read'" in lookups[-1] and "'create'" not in lookups[-1]
+    assert "'oqa:fixture:'" in result["code"]
+    assert fixtures.created(session) == [{"model": "license.user", "field": "memo", "key": key}]
 
 
 def test_a_fixed_fixture_key_is_refused_because_it_would_find_a_record_an_earlier_run_left(session):

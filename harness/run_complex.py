@@ -10,7 +10,7 @@ import run_matrix  # noqa: E402
 NOTES = """Plan every Odoo testcase below for real browser execution. Use concise English.
 Preserve each testcase's complete intent. Use six to ten meaningful evidence steps per case; one meaningful UI action or checked state per step.
 The expected text must describe a specific observable state, value or error. Testcases run independently, in the order given.
-Create fixture records for mutations with the keys fixture(action=key) returns; never write a literal record name or code in a step, say "a site with this run's own key". Each run prepares its own data: do not depend on records an earlier run may have left. fixture apply can prepare related records
+Create fixture records for mutations with the keys fixture(action=key) returns; never write a literal record name or code in a step, say "a site with this run's own key". Each run prepares its own data: do not depend on records an earlier run may have left. fixture ui can prepare related records
 using {"$fixture":"<key>"}; verify the application under test through the UI. Do not skip steps.
 CSV references (t01 to t07) hold the tokens {run}, {site}, {site2} and {existing}: upload_csv fills them with this run's own values. For a later round of the same import
 (fix a cell and upload again) upload_csv takes overrides: [{row, column, value}] applied on top of the approved file, so each round is one upload.

@@ -18,6 +18,7 @@ import tempfile
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from . import analysis as analysis_mod
 from . import captions, connect, evidence, events, memory, paths, record_names, replays, textfix, workspace
@@ -84,6 +85,35 @@ def literal_check(text, timeout):
     return ("await page.waitForFunction(text => { const norm = value => value.replace(/[\\s\\u00a0\\u202f]+/g, ' ').trim(); "
             "return norm(document.body.innerText).includes(norm(text)); }, "
             + json.dumps(text) + f", {{timeout: {timeout}}});")
+
+
+def outcome_check(shows, values, timeout, frame=None):
+    locator = _locator(frame or "body")
+    expect = json.dumps({"shows": shows, "values": values}, ensure_ascii=False)
+    check = (
+        r"""(element, expected) => {
+          const normal = value => value.normalize('NFKC').replace(/\s+/g, ' ').trim();
+          if (!element.getClientRects().length || getComputedStyle(element).visibility !== 'visible') throw new Error('The outcome target is hidden');
+          const controls = element.matches('input, textarea, select') ? [element] : [...element.querySelectorAll('input, textarea, select')];
+          const current = [element.innerText || '', ...controls.filter(control => control.getClientRects().length
+            && getComputedStyle(control).visibility === 'visible' && control.type !== 'password').map(control =>
+            control.tagName === 'SELECT' ? (control.selectedOptions[0]?.text || '') : control.value)];
+          const observed = normal(current.join(' '));
+          if (!observed.includes(normal(expected.shows))) throw new Error('Expected visible outcome: ' + expected.shows);
+          const numbers = observed.match(/[+-]?\d+(?:[.,/:\-]\d+)*/g) || [];
+          const absent = expected.values.filter(value => /^[+-]?\d+(?:[.,/:\-]\d+)*$/.test(normal(value))
+            ? !numbers.includes(normal(value)) : !observed.includes(normal(value)));
+          if (absent.length) throw new Error('Expected values missing from the result: ' + absent.join(', '));
+        }"""
+    )
+    return f"await {locator}.evaluate({' '.join(check.split())}, {expect}, {{timeout: {timeout}}});"
+
+
+def replay_checks(block, timeout):
+    frame = block["frame"] if block.get("check_target") else None
+    values = block.get("check_values", [])
+    check = outcome_check(block["shows"], values, timeout, frame) if frame or values else literal_check(block["shows"], timeout)
+    return [SETTLE, check, *block.get("assertions", [])]
 
 
 SETTLE_MAX_MS = 3000
@@ -252,6 +282,10 @@ def start(session, case):
 
         if not claims.table(session).get(case, {}).get("fresh"):
             raise GateError(f"Claim {case} with `oqa claim --agent WORKER --case {case}` before starting.")
+        results = session.state()["results"]
+        needed = [parent for parent in item.get("depends_on") or [] if results.get(parent, {}).get("status") != "PASS"]
+        if needed:
+            raise GateError(f"Wait for the prerequisites of {case} to pass: {', '.join(needed)}.")
     resumed = _handed_over(session, case)
     if resumed:
         return _resume(session, case, item, resumed)
@@ -313,9 +347,10 @@ def handover(session, case, reason, to=""):
         raise GateError(f"{case} has no running attempt to hand over. Use `oqa claim` for a case that has not started.")
     attempt = found[0]
     owner = (claims.table(session).get(case) or {}).get("agent", "")
-    claims.release(session, case, missing_ok=True)
     if to:
         claims.assign(session, case, to)
+    else:
+        claims.release(session, case, missing_ok=True)
     done = sorted(_recorded(session, case, attempt))
     events.append(session.dir, "handover", case=case, attempt=attempt, reason=reason.strip(), **{"from": owner, "to": to})
     claims.add_note(session, "coordinator", f"HANDOVER {case}: {reason.strip()} (steps recorded: {done or 'none'}; attempt {attempt} stays open)", case=case)
@@ -334,8 +369,11 @@ def _resume(session, case, item, taken):
         browser = f"reopened as {profile} (the page position was lost: navigate back to where step {len(_recorded(session, case, attempt)) + 1} starts)"
     done = _recorded(session, case, attempt)
     nxt = len(done) + 1
+    if nxt > len(item["steps"]) or any(step["status"] != "PASS" for step in done.values()):
+        nxt = None
     lines = [f"{case}: attempt {attempt} CONTINUES after a handover ({taken['handover'].get('reason', '')}). Browser `{browser_name}` {browser}.",
-             f"Steps already recorded: {sorted(done) or 'none'}. Do not redo them. Next is step {nxt}."]
+             f"Steps already recorded: {sorted(done) or 'none'}. Do not redo them.",
+             f"Next is step {nxt}." if nxt else "Review the recorded steps and close the case with the appropriate verdict."]
     for step in item["steps"]:
         mark = done[step["n"]]["status"] if step["n"] in done else "todo"
         lines.append(f"  {step['n']}. [{mark}] {step['action']}   ->   {step['expected']}")
@@ -361,6 +399,7 @@ def recover(session, case, reason):
         with session.update() as current:
             session.archive_result(current, case, f"coordinator diagnosis: {reason}")
             current["results"].pop(case, None)
+            session._reconcile_dependencies(current)
             if current["phase"] == "REPORT":
                 session._enter(current, "EXECUTE", f"{case} reopened after the coordinator's diagnosis")
         events.append(session.dir, "repair", case=case, attempt=attempt,
@@ -567,7 +606,43 @@ def shot(session, case, n, target, from_pre=False, caption=None):
     return {"case": case, "n": n}, f"Picture of step {n} taken before the action (element framed). Now act, then: oqa live step {case} --n {n} --status PASS|FAIL --actual \"...\""
 
 
-def step(session, case, n, status, actual, target=None, verified_code=None, shows=None):
+def _step_actions(log, case, attempt, n, verified_code):
+    code = [line.strip() for line in expand_vars(verified_code).splitlines() if line.strip()]
+    setup = {}
+    recorded_actions = []
+    recorded_path = []
+    profile = None
+    for event in log:
+        if event.get("case") != case or event.get("attempt") != attempt:
+            continue
+        if event["kind"] == "step":
+            setup.clear()
+            recorded_actions.clear()
+            recorded_path.clear()
+        elif event["kind"] == "fixture_prepared":
+            if event["key"] not in setup:
+                setup[event["key"]] = event["code"]
+                recorded_path.extend(event["code"].splitlines())
+        elif event["kind"] == "action_recorded":
+            fragment = [line.strip() for line in event["code"].splitlines() if line.strip()]
+            recorded_actions.extend(fragment)
+            recorded_path.extend(fragment)
+        elif event["kind"] == "profile_selected":
+            profile = event["profile"]
+    if code:
+        submitted = iter(line.rstrip(";") for line in code)
+        for action in recorded_actions:
+            if not any(line == action.rstrip(";") for line in submitted):
+                raise GateError(f"Verified code omitted or reordered a recorded action ({action[:120]}). Include recorded actions in order, or omit --verified-code to use them directly.")
+        setup_code = [line for fragment in setup.values() for line in fragment.splitlines() if line not in code]
+        offset = 1 if n == 1 and code[0].startswith("await page.goto(") else 0
+        code[offset:offset] = setup_code
+    else:
+        code = recorded_path
+    return code, profile
+
+
+def step(session, case, n, status, actual, target=None, verified_code=None, shows=None, assertion_code=None, *, require_checks=False):
     session.require("EXECUTE")
     attempt = _attempt(session, case)
     item = _strategy_case(session, case)
@@ -588,49 +663,51 @@ def step(session, case, n, status, actual, target=None, verified_code=None, show
         raise GateError("--actual says what the page SHOWED for this step (a value, a message, a count), in a few words: it is compared with the expected result.")
     spec = steps[n - 1]
     folder = session.dir / "evidence" / re.sub(r"[^\w.-]+", "_", case) / f"a{attempt}"
+    log = events.read(session.dir)
+    captured = [event for event in log if event["kind"] == "evidence_captured" and event.get("case") == case
+                and event.get("attempt") == attempt and event.get("n") == n]
+    db = next((event.get("pgadmin_result") for event in reversed(captured) if event.get("source") == "pgadmin"), None)
+    if status == "PASS" and db and db["error"]:
+        raise GateError("The PgAdmin query failed. Capture a successful query before recording PASS.")
+    if status == "PASS" and require_checks and spec.get("evidence") and not shows:
+        raise GateError("Give --shows with the observed outcome for this step. Use --assert-code for a calculated value or an absence.")
+    browser_id = browser_case(session, case)
     script_step = None
-    if verified_code is not None or shows is not None:
+    checks = 0
+    found = None
+    if verified_code is not None or shows is not None or assertion_code is not None:
         if not target or not shows or "\n" in shows or "\n" in target:
             raise GateError("A replayable step needs a stable target and a single-line expected page text.")
-        code = [line.strip() for line in (verified_code or "").splitlines() if line.strip()]
-        setup = {}
-        recorded_actions = []
-        profile = None
-        for event in events.read(session.dir):
-            if event.get("case") != case or event.get("attempt") != attempt:
-                continue
-            if event["kind"] == "step":
-                setup.clear()
-                recorded_actions.clear()
-            elif event["kind"] == "fixture_prepared":
-                setup.setdefault(event["key"], event["code"])
-            elif event["kind"] == "action_recorded":
-                recorded_actions.extend(line.strip() for line in event["code"].splitlines() if line.strip())
-            elif event["kind"] == "profile_selected":
-                profile = event["profile"]
-        if recorded_actions and not code:
-            code = recorded_actions
-        setup_code = [line for line in setup.values() if line not in code]
-        offset = 1 if n == 1 and code and code[0].startswith("await page.goto(") else 0
-        code[offset:offset] = setup_code
-        script_step = [f"// step {n}", f"// frame: {target}", f"// shows: {shows}", *code]
+        code, profile = _step_actions(log, case, attempt, n, verified_code)
+        assertions = [line.strip() for line in expand_vars(assertion_code).splitlines() if line.strip()]
+        values = specific_values(spec.get("expected"))
+        if db and status == "PASS":
+            check_database_values(db, values)
+        found = _box(browser_id, target)
+        script_step = [f"// step {n}", f"// frame: {target}", f"// shows: {shows}"]
+        if found:
+            script_step.append("// check-target: yes")
+        if values and not assertions and not db:
+            script_step.append("// check-values: " + json.dumps(values, ensure_ascii=False))
+        script_step.extend(f"// assert: {line}" for line in assertions)
+        script_step.extend(code)
         if profile:
             script_step.insert(2, f"// profile: {profile}")
-        _, problems = parse_script("\n".join(script_step), [spec], check_search=True)
+        blocks, problems = parse_script("\n".join(script_step), [spec], check_search=True)
         if problems:
             raise GateError("\n".join(problems))
         if status == "PASS":
-            check_specific(spec, shows, actual, "\n".join(code))
-        if status == "PASS":                                  # every mode: a `shows` the page does not carry (a placeholder, an attribute) would only fail later, in the replay
+            commands = replay_checks(blocks[0], 1000 * (item.get("timeout_s") or 8))
             try:
-                run_actions(browser_case(session, case), [SETTLE, literal_check(shows, 1500)])
+                run_actions(browser_id, commands)
             except GateError as error:
-                raise GateError("The replay check could not find 'shows' verbatim on the page. Use a short visible label or value for shows, keep the observation in actual, and put specific checks in the Playwright code. The step has not been recorded.") from error
+                raise GateError(f"The replay check could not find 'shows' verbatim or verify the expected outcome: {error}") from error
+            checks = len(commands) - 1 + len(blocks[0].get("check_values", [])) + (1 if db else 0)
     raw, annotated = folder / f"s{n}_raw.png", folder / f"s{n}_annotated.png"
-    browser_id = browser_case(session, case)
     boxes, how = None, ""
     if target:
-        found = _box(browser_id, target)
+        if not script_step:
+            found = _box(browser_id, target)
         if found:
             _shot(browser_id, raw)
             boxes, how = [_scale(found[0], found[1], raw)], "now"
@@ -651,31 +728,46 @@ def step(session, case, n, status, actual, target=None, verified_code=None, show
     label = captions.text(spec, language, total=len(steps), status=status)
     evidence.annotate(raw, boxes, label, annotated, ok=status == "PASS")
     rel = lambda p: Path(p).relative_to(session.dir).as_posix()
-    images = [image for event in events.read(session.dir)
-              if event["kind"] == "evidence_captured" and event.get("case") == case
-              and event.get("attempt") == attempt and event.get("n") == n
-              for image in event["images"]]
+    images = [image for event in captured for image in event["images"]]
     if how != "before" or not images:
         images.append({"raw": rel(raw), "annotated": rel(annotated),
                        "caption": label, "target": target, "box": boxes[0]})
     if script_step and how == "before":
         script_step.insert(2, "// frame-before: yes")
     events.append(session.dir, "step", case=case, attempt=attempt, n=n, status=status, caption=spec["action"], expected=spec["expected"], actual=actual.strip(),
-                  checks=1, images=images,
+                  checks=checks, images=images,
                   **({"verified_script": script_step} if script_step else {}))
     return {"case": case, "n": n, "status": status, "frame": how}, f"Step {n} recorded as {status} (frame drawn by oqa, {how or 'whole screen'}). " + (
         f"Next: step {n + 1}." if status == "PASS" and n < len(steps) else f"Next: oqa live end {case} --status {'PASS' if status == 'PASS' else 'FAIL'} --reason \"...\"")
 
 
-def script_file(session, case):
-    """Where the case's script is kept: scripts/<workbook>/<case>.spec.js, beside what earlier sessions of the same workbook left."""
+def script_file(session, case, *, for_write=False):
+    """Find the case script. Older workspace scripts can be read when their workbook and case are unambiguous."""
     state = session.state()
     name = re.sub(r"[^\w.-]+", "_", case)
     if state.get("channel"):
         fingerprint = hashlib.sha256(case.encode("utf-8")).hexdigest()[:8]
         return session.dir / "scripts" / f"{name}-{fingerprint}.spec.js"
-    folder = paths.workspace_dir(session.ws) / "scripts" / memory.stem_of(state["file"])
-    return folder / (name + ".spec.js")
+    from . import regression
+
+    base = paths.workspace_dir(session.ws) / "scripts"
+    target = base / (regression.key_of(state["file"], case) + ".spec.js")
+    if for_write or target.is_file():
+        return target
+    old_key = regression.legacy_key(state["file"], case)
+    old = base / (old_key + ".spec.js")
+    if old.is_file():
+        for sid in paths.session_ids(session.ws):
+            other = Session(session.ws, sid)
+            other_state = other.state()
+            if other_state.get("channel") or memory.stem_of(other_state["file"]) != memory.stem_of(state["file"]):
+                continue
+            if any(regression.legacy_key(other_state["file"], c["id"]) == old_key
+                   and regression.key_of(other_state["file"], c["id"]) != regression.key_of(state["file"], case)
+                   for c in other.cases()["cases"]):
+                return target
+        return old
+    return target
 
 
 SCRIPT_HELP = ("Script format, one block per planned step, in order:\n"
@@ -703,11 +795,26 @@ def parse_script(text, steps, *, check_search=False):
             continue
         if current is None or not line:
             continue
-        meta = re.match(r"//\s*(frame-before|frame|shows|profile)\s*:\s*(.*)$", line, re.I)
+        meta = re.match(r"//\s*(frame-before|frame|shows|profile|check-target|check-values|assert)\s*:\s*(.*)$", line, re.I)
         if meta:
             key, value = meta.group(1).lower(), meta.group(2).strip()
             if key == "frame-before":
                 current["before"] = value.lower() in ("yes", "true", "1")
+            elif key == "check-target":
+                current["check_target"] = value == "yes"
+            elif key == "check-values":
+                try:
+                    values = json.loads(value)
+                    if not isinstance(values, list) or any(not isinstance(v, str) or not v.strip() for v in values):
+                        raise ValueError
+                    current["check_values"] = values
+                except ValueError:
+                    problems.append(f"step {current['n']}: check-values must be a JSON list of visible values")
+            elif key == "assert":
+                if value.startswith("await page.waitForFunction("):
+                    current.setdefault("assertions", []).append(value)
+                else:
+                    problems.append(f"step {current['n']}: assert must be an await page.waitForFunction(...) check")
             else:
                 current[key] = value
         elif line.startswith(ACTION_PREFIXES):
@@ -737,6 +844,18 @@ def parse_script(text, steps, *, check_search=False):
     if first and first["n"] == 1 and not (first["code"] and first["code"][0].startswith("await page.goto(")):
         problems.append("step 1 must start with `await page.goto('<url of the screen>');`: a replay starts on a blank page and cannot rely on where your browser happened to be")
     return [blocks[s_["n"]] for s_ in steps if s_["n"] in blocks], problems
+
+
+def preserved_checks(original, replacement):
+    problems = []
+    for before, after in zip(original, replacement):
+        if before.get("check_target") and not after.get("check_target"):
+            problems.append(f"step {before['n']}: keep the outcome check scoped to the result target")
+        if not set(before.get("check_values", ())) <= set(after.get("check_values", ())):
+            problems.append(f"step {before['n']}: keep all checked outcome values")
+        if len(after.get("assertions", ())) < len(before.get("assertions", ())):
+            problems.append(f"step {before['n']}: keep the explicit outcome assertions")
+    return problems
 
 
 def clone_for_replay(src, cases):
@@ -856,10 +975,9 @@ def _visible_replay(session, ws, item, path, blocks, problems, run, movie, video
         timeout = 1000 * (item.get("timeout_s") or 8)
         prepared = []
         for block in blocks:
-            shows = fresh(block["shows"])
             prepared.append({**block, "code": [fresh(line) for line in block["code"]],
                              "frame_locator": _locator(fresh(block["frame"])),
-                             "check": [SETTLE, literal_check(shows, timeout)],
+                             "check": [fresh(line) for line in replay_checks(block, timeout)],
                              "label": captions.text(actions[block["n"]], run["caption_language"], total=len(blocks))})
         initial = item.get("profile") or ws["profiles"][0]["name"]
         with tempfile.TemporaryDirectory(prefix="oqa-replay-") as temp:
@@ -891,13 +1009,29 @@ def _visible_replay(session, ws, item, path, blocks, problems, run, movie, video
             "timing": timing, **({"reason": reason} if reason else {})}
 
 
+def replay_text(session, config, target_url, refresh_keys):
+    connected = session.state().get("connect") or {}
+    original_urls = [connected.get("url"), config["url"],
+                     *(profile.get("landing_url") for profile in connected.get("profiles", {}).values())]
+    origins = set()
+    for url in filter(None, original_urls):
+        original = urlsplit(url)
+        if original.scheme and original.netloc:
+            origins.add(f"{original.scheme}://{original.netloc}")
+    target = urlsplit(target_url)
+    new_origin = f"{target.scheme}://{target.netloc}"
+    origin = re.compile("(?:" + "|".join(map(re.escape, sorted(origins))) + r")(?=$|[/#?\s'\"\x60])", re.I)
+    return lambda text: refresh_keys(origin.sub(lambda _match: new_origin, text))
+
+
 def replay(session, case, headed=True, action_delay_ms=DEFAULT_ACTION_DELAY_MS,
            step_delay_ms=DEFAULT_STEP_DELAY_MS, fast=False, env=None, video="off", caption_language=None):
     """Open the saved script in a separate browser, keeping the original test session. The outcome goes to replay.json (Replay PASS/FAIL); the live result is not touched."""
     action_delay_ms, step_delay_ms = replay_delays(action_delay_ms, step_delay_ms, fast)
     if video not in VIDEO_MODES:
         raise GateError(f"video must be one of {', '.join(VIDEO_MODES)}.")
-    ws = workspace.for_env(workspace.load(session.ws), env)
+    config = workspace.load(session.ws)
+    ws = workspace.for_env(config, env)
     env = ws["env"]
     language = caption_language or ws.get("replay_caption_language", "vi")
     if language not in captions.LANGUAGES:
@@ -915,7 +1049,7 @@ def replay(session, case, headed=True, action_delay_ms=DEFAULT_ACTION_DELAY_MS,
     stamp = uuid.uuid4().hex[:10]
     replay_prefix = record_names.replay_stem(prefix, name) + f"r{stamp}_"
     sources = record_names.replay_sources(session, case, prefix, name=name)
-    fresh = record_names.rewriter(sources, replay_prefix)
+    fresh = replay_text(session, config, ws["url"], record_names.rewriter(sources, replay_prefix))
     run = {"run_id": f"r{stamp}", "env": env, "prefix": replay_prefix, "headed": headed, "fast": bool(fast),
            "action_delay_ms": action_delay_ms, "step_delay_ms": step_delay_ms, "caption_language": language,
            "fixture_sources": sources}
@@ -969,14 +1103,13 @@ def replay(session, case, headed=True, action_delay_ms=DEFAULT_ACTION_DELAY_MS,
                     profile = open_browser(session, case, headed=headed, profile_override=block["profile"],
                                            browser_id=browser_id, env=env)
                 code = [fresh(line) for line in block["code"]]
-                shows = fresh(block["shows"])
                 if action_delay_ms:
                     for line in code:
                         clock.run(browser_id, [line])
                         clock.pause(action_delay_ms)
                 else:
                     clock.run(browser_id, code)
-                clock.run(browser_id, [SETTLE, literal_check(shows, timeout)], "check_s")
+                clock.run(browser_id, [fresh(line) for line in replay_checks(block, timeout)], "check_s")
                 clock.pause(step_delay_ms)
             except GateError as error:
                 failed = block["n"]
@@ -1055,8 +1188,8 @@ def verify_replay(src, case, headed=False):
                 except GateError:
                     pass                                              # not there yet: the frame is taken after the step instead
                 code = code[-1:]
-            wait = literal_check(shows, 1000 * (item.get("timeout_s") or 8))
-            run_actions(browser_id, [*code, SETTLE, wait])
+            checks = [fresh(line) for line in replay_checks(b, 1000 * (item.get("timeout_s") or 8))]
+            run_actions(browser_id, [*code, *checks])
             step(new, case, b["n"], "PASS", f"Trang hiển thị «{shows}».", frame)
         except GateError as error:
             failed = f"step {b['n']}: {str(error)[:200]}"
@@ -1086,10 +1219,14 @@ def keep_script(session, case, script):
     source = Path(script).expanduser()
     if not source.is_file():
         raise GateError(f"{script} is not a file.")
-    _blocks, problems = parse_script(source.read_text(encoding="utf-8"), steps)
+    blocks, problems = parse_script(source.read_text(encoding="utf-8"), steps)
+    previous = script_file(session, case)
+    if previous.is_file() and not problems:
+        original, _ = parse_script(previous.read_text(encoding="utf-8"), steps)
+        problems.extend(preserved_checks(original, blocks))
     if problems:
         raise GateError("The script cannot be replayed:\n  " + "\n  ".join(problems) + "\n" + SCRIPT_HELP)
-    target = script_file(session, case)
+    target = script_file(session, case, for_write=True)
     target.parent.mkdir(parents=True, exist_ok=True)
     if source.resolve() != target.resolve():
         shutil.copyfile(source, target)
@@ -1118,34 +1255,28 @@ def diagnose(session, case, category, detail, tried="", need=""):
     return {"case": case, "category": category}, f"Diagnosis recorded and sent to the coordinator. Fix what you can; close as BLOCKED/PENDING only if it cannot be done: oqa live end {case} --status BLOCKED --category {category} --reason \"...\""
 
 
-_NUMBER = re.compile(r"\d[\d.,/:\-]*\d|\d{2,}")
+_NUMBER = re.compile(r"[+-]?\d+(?:[.,/:\-]\d+)*")
 _QUOTED = re.compile(r"[\"'“‘「『]([^\"'”’」』]{2,60})[\"'”’」』]")
 _DOC_CODE = re.compile(r"\bERR[_-]?\d+\b", re.I)
 
 
-def _norm(text):
-    return re.sub(r"[\s\u00a0\u202f]+", " ", str(text)).strip().casefold()
-
-
 def specific_values(expected):
-    """What an expected result names concretely and independent of the UI language: numbers, counts, dates and quoted values that contain a digit. Message codes
+    """The exact numbers, dates and quoted values named in the expected result. Message codes
     that exist only in the design document (ERR_xxx) are not UI text and are never required to appear."""
     text = _DOC_CODE.sub(" ", expected or "")
     values = [m.group(0) for m in _NUMBER.finditer(text)]
-    values += [q for q in _QUOTED.findall(text) if any(c.isdigit() for c in q)]
-    return [v for v in dict.fromkeys(values) if len(v.strip()) >= 2 or v.isdigit() and len(v) >= 2]
+    values += [q for q in _QUOTED.findall(text) if not _NUMBER.fullmatch(q)]
+    return list(dict.fromkeys(values))
 
 
-def check_specific(spec, shows, actual, code=""):
-    """A PASS must show the value the expectation names, not only that some generic label is on the page. When the expected result names a number, count, date or
-    quoted value, one of them has to be in the replay text, the observation or the saved assertion code."""
-    wanted = specific_values(spec.get("expected"))
-    if not wanted:
-        return
-    haystack = _norm(" ".join([shows or "", actual or "", code or ""]))
-    if not any(_norm(value) in haystack for value in wanted):
-        raise GateError(f"The expected result names specific values ({', '.join(wanted[:4])}) but neither `shows`, the observation nor the assertion code contains one. "
-                        "A label that is always on the page does not prove the outcome: assert the actual value (a count, a date, a field's content) and put it in --actual.")
+def check_database_values(result, values):
+    observed = " ".join(str(value) for row in result["rows"] for value in row)
+    numbers = set(_NUMBER.findall(observed))
+    if result["total"] is not None:
+        numbers.add(str(result["total"]))
+    missing = [v for v in values if (v not in numbers if _NUMBER.fullmatch(v) else v not in observed)]
+    if missing:
+        raise GateError("The PgAdmin result is missing expected values: " + ", ".join(missing))
 
 
 def end(session, case, status, reason, script=None, category=None, control=None):
@@ -1190,10 +1321,13 @@ def end(session, case, status, reason, script=None, category=None, control=None)
                               encoding="utf-8")
         if not source or not source.is_file() or "await page" not in source.read_text(encoding="utf-8"):
             raise GateError("A PASS keeps the script of the case: --script <file> with the Playwright code playwright-cli printed for your actions. The next run replays it without an agent.\n" + SCRIPT_HELP)
-        _blocks, problems = parse_script(source.read_text(encoding="utf-8"), steps)
+        blocks, problems = parse_script(source.read_text(encoding="utf-8"), steps)
+        if complete and not problems:
+            original, _ = parse_script("\n".join("\n".join(done[n]["verified_script"]) for n in sorted(done)), steps)
+            problems.extend(preserved_checks(original, blocks))
         if problems:
             raise GateError("The script cannot be replayed:\n  " + "\n  ".join(problems) + "\n" + SCRIPT_HELP)
-        target_file = script_file(session, case)
+        target_file = script_file(session, case, for_write=True)
         target_file.parent.mkdir(parents=True, exist_ok=True)
         if source.resolve() != target_file.resolve():
             shutil.copyfile(source, target_file)

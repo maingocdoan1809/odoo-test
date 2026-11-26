@@ -186,7 +186,7 @@ def test_a_shows_text_the_page_does_not_carry_is_refused_when_the_step_is_record
     monkeypatch.setattr(live, "_shot", lambda browser, path: (path.parent.mkdir(parents=True, exist_ok=True), Image.new("RGB", (600, 400), (240, 200, 180)).save(path)))
 
     def run(browser, command, *args, **kwargs):
-        if command == "run-code" and "waitForFunction" in " ".join(map(str, args)) and "e.g. Lumber Inc" in " ".join(map(str, args)):
+        if command == "run-code" and "e.g. Lumber Inc" in " ".join(map(str, args)):
             raise GateError("TimeoutError: page.waitForFunction: Timeout 1500ms exceeded.")
         return ""
 

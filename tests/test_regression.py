@@ -30,6 +30,26 @@ def test_a_replay_on_an_environment_is_recorded_for_that_environment_only(sessio
     assert saved[key]["staging"]["latest"]["env"] == "staging" and saved[key]["main"]["latest"]["status"] == "PASS"
 
 
+@pytest.mark.parametrize("headed", [False, True])
+def test_replay_rewrites_saved_main_urls_for_the_selected_environment(session, staged, monkeypatch, headed):
+    path = live.script_file(session, "ORD-001")
+    path.write_text(path.read_text(encoding="utf-8").replace("http://localhost", "http://localhost:8069"), encoding="utf-8")
+    lines = []
+    monkeypatch.setattr(live, "_run", lambda *args: "")
+    monkeypatch.setattr(live, "run_actions", lambda browser, code: lines.extend(code))
+
+    def visible(session, ws, item, path, blocks, problems, run, movie, video, fresh):
+        lines.extend(fresh(line) for block in blocks for line in block["code"])
+        return {"replay": "PASS"}
+
+    monkeypatch.setattr(live, "_visible_replay", visible)
+    live.replay(session, "ORD-001", headed=headed, fast=True, env="staging")
+
+    assert any("http://stg:8069" in line for line in lines)
+    assert all("http://localhost:8069" not in line for line in lines)
+    assert "http://localhost:8069" in path.read_text(encoding="utf-8")
+
+
 def test_an_unknown_environment_is_refused_before_a_browser_opens(session, staged):
     with pytest.raises(Exception, match="does not exist"):
         live.replay(session, "ORD-001", action_delay_ms=0, step_delay_ms=0, env="prod")
@@ -55,6 +75,7 @@ def test_regression_runs_every_script_on_the_environment_and_shows_a_matrix(sess
 def test_the_command_fails_when_a_script_fails_so_a_pipeline_can_stop(session, staged, monkeypatch, capsys):
     monkeypatch.setattr(live, "run_actions", lambda browser, lines: (_ for _ in ()).throw(GateError("boom")) if any("includes" in l for l in lines) else "")
     assert cli.main(["regress", "--ws", "demo", "--env", "staging", "--json"]) == 1
+    assert cli.main(["live", "replay", "all", "--ws", "demo", "--session", session.id, "--headless", "--fast"]) == 1
     assert cli.main(["regress", "--ws", "demo", "--matrix"]) == 0
     assert "FAIL" in capsys.readouterr().out
 
@@ -75,6 +96,29 @@ def test_path_run_scripts_are_listed_and_can_run_from_the_workspace(session, sta
     assert (run["case"], run["replay"]) == ("ORD-001", "PASS")
     assert regression.load(session.ws)[row["key"]]["main"]["latest"]["status"] == "PASS"
     assert regression.matrix(session.ws)["scripts"][0]["results"]["main"]["status"] == "PASS"
+
+
+def test_workbooks_with_the_same_name_have_independent_scripts_and_results(session, ws, tmp_path):
+    from pathlib import Path
+    from shutil import copyfile
+
+    from oqa import intake
+    from oqa.state import Session
+
+    approved(session, ws)
+    _saved_script(session)
+    file = tmp_path / "another" / Path(session.state()["file"]).name
+    file.parent.mkdir()
+    copyfile(session.state()["file"], file)
+    other = Session.create(session.ws, file, intake.build(file))
+    approved(other, ws)
+    _saved_script(other)
+    assert live.script_file(session, "ORD-001") != live.script_file(other, "ORD-001")
+
+    replays.record(session, "ORD-001", "PASS")
+    rows = {row["session"]: row for row in regression.matrix(session.ws)["scripts"]}
+    assert rows[session.id]["results"]["main"]["status"] == "PASS"
+    assert rows[other.id]["results"]["main"]["status"] == "NOT RUN"
 
 
 def _manual_result(folder, **over):
@@ -105,9 +149,14 @@ def test_a_result_that_cannot_be_placed_is_refused_and_nothing_is_imported(sessi
     assert regression.load("demo") == {}
 
 
-def test_the_scripts_zip_tells_the_runner_which_script_and_the_runner_writes_result_json(session, staged):
+@pytest.mark.parametrize("channel", [None, "path", "addin"])
+def test_the_scripts_zip_tells_the_runner_which_script_and_the_runner_writes_result_json(session, ws, tmp_path, channel):
     import io, json, zipfile
     from oqa import script_bundle
+    with session.update() as state:
+        state["channel"] = channel
+    approved(session, ws)
+    _saved_script(session)
     archive = zipfile.ZipFile(io.BytesIO(script_bundle.build(session)))
     manifest = json.loads(archive.read("cases.json"))
     assert manifest["workspace"] == "demo" and manifest["cases"]["ORD-001"]["script"] == regression.scripts("demo")[0]["key"]
@@ -115,6 +164,9 @@ def test_the_scripts_zip_tells_the_runner_which_script_and_the_runner_writes_res
     assert "ZZ_AUTOTEST_" in manifest["cases"]["ORD-001"]["fixtureSources"]
     runner = archive.read("replay.mjs").decode()
     assert "result.json" in runner and "process.exitCode = 1" in runner and "OQA_ENV" in runner
+    key = manifest["cases"]["ORD-001"]["script"]
+    file = _manual_result(tmp_path / "manual", script=key, env="main")
+    assert regression.import_results(session.ws, file) == [{"script": key, "env": "main", "status": "FAIL"}]
 
 
 def _fake_browser(monkeypatch):

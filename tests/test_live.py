@@ -303,14 +303,43 @@ def test_handover_keeps_the_open_attempt_its_steps_and_the_recovery_budget(live,
     assert [e["n"] for e in events.read(session.dir) if e["kind"] == "step"] == [1, 2]
 
 
-def test_a_pass_must_show_the_specific_value_the_expectation_names():
-    spec = {"expected": "Pager shows 1-1 / 1 and ERR_092 is raised; date 2026/01/01"}
-    assert livemod.specific_values(spec["expected"]) == ["1-1", "2026/01/01"]
-    with pytest.raises(GateError, match="specific values"):
-        livemod.check_specific(spec, "Ledger", "the list is visible")
-    livemod.check_specific(spec, "1-1 / 1", "")
-    livemod.check_specific(spec, "Ledger", "the date shows 2026/01/01")
-    livemod.check_specific({"expected": "ERR_092 message is shown"}, "warning", "")        # a code that exists only in the design document is not required on screen
+def test_a_pass_checks_each_value_in_the_result_target():
+    from playwright.sync_api import Error
+
+    from oqa.browser import launch
+
+    assert livemod.specific_values("Pager shows 1-1 / 1; date 2026/01/01; see ERR_092") == ["1-1", "1", "2026/01/01"]
+    values = livemod.specific_values("Hiển thị số lượng 5 và tổng tiền 100")
+    command = livemod.outcome_check("Orders", values, 1000, "#result")
+    execute = """source => new (Object.getPrototypeOf(async function() {}).constructor)('page', source)({
+        locator: selector => ({evaluate: (fn, arg) => fn(document.querySelector(selector), arg)})
+    })"""
+    with launch(headless=True) as new_page:
+        _, page = new_page()
+        page.set_content("<h1>Orders 5 100</h1><section id='result'>Orders 1000</section>")
+        with pytest.raises(Error, match="5, 100"):
+            page.evaluate(execute, command)
+        page.set_content("<section id='result'>Orders 100 <input value='5'></section>")
+        page.evaluate(execute, command)
+        page.set_content("<section id='result'>Orders 100 <input value='5' hidden></section>")
+        with pytest.raises(Error, match="missing"):
+            page.evaluate(execute, command)
+
+
+def test_the_saved_step_never_drops_recorded_helper_actions(live, pw):
+    session, ws, store = live
+    approve(session, ws, store)
+    livemod.start(session, "T-1")
+    goto = "await page.goto('http://x/web');"
+    capture = livemod.capture_id_code("record")
+    for code in (goto, capture):
+        livemod.act(session, "T-1", "run-code", [], code, record=True)
+    with pytest.raises(GateError, match="omitted or reordered"):
+        livemod.step(session, "T-1", 1, "PASS", "The order is visible", "body", goto, "Orders")
+    livemod.step(session, "T-1", 1, "PASS", "The order is visible", "body", shows="Orders")
+    recorded = next(e for e in events.read(session.dir) if e["kind"] == "step")
+    assert recorded["verified_script"][-2:] == [goto, capture]
+    assert "// check-target: yes" in recorded["verified_script"]
 
 
 def test_literal_check_compares_text_after_normalising_whitespace():

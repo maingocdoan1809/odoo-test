@@ -7,35 +7,20 @@ from . import events, live, record_names, replays, sitemap, workspace
 from .state import GateError
 
 
-CREATE = """async spec => {
-  const rpc = async (method, args, kwargs = {}) => {
-    const response = await fetch('/web/dataset/call_kw/' + spec.model + '/' + method, {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({jsonrpc: '2.0', method: 'call', params: {model: spec.model, method, args, kwargs}})
-    });
-    const result = await response.json();
-    if (!response.ok || result.error) throw new Error(result.error?.data?.message || response.statusText);
-    return result.result;
-  };
-  const remember = id => {
-    sessionStorage.setItem('oqa:fixture:' + spec.values[spec.key], String(id));
-    return id;
-  };
-  const resolve = value => {
-    if (Array.isArray(value)) return value.map(resolve);
-    if (!value || typeof value !== 'object') return value;
-    if (typeof value.$fixture === 'string') {
-      const id = sessionStorage.getItem('oqa:fixture:' + value.$fixture);
-      if (!id) throw new Error('Prepare fixture first: ' + value.$fixture);
-      return Number(id);
-    }
-    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, resolve(entry)]));
-  };
-  const find = () => rpc('search_read', [[[spec.key, '=', spec.values[spec.key]]]], {fields: ['id', spec.key], limit: 2});
-  const records = await find();
-  if (records.length > 1) throw new Error('Fixture key is ambiguous: ' + spec.values[spec.key]);
-  if (records.length) return remember(records[0].id);
-  return remember(await rpc('create', [resolve(spec.values)]));
+REMEMBER = """async spec => {
+  const response = await fetch('/web/dataset/call_kw/' + spec.model + '/search_read', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({jsonrpc: '2.0', method: 'call', params: {
+      model: spec.model, method: 'search_read', args: [[[spec.field, '=', spec.key]]],
+      kwargs: {fields: ['id', 'display_name'], limit: 2, context: {active_test: false}}
+    }})
+  });
+  const result = await response.json();
+  if (!response.ok || result.error) throw new Error(result.error?.data?.message || response.statusText);
+  if (result.result.length !== 1) throw new Error('Expected one saved fixture with key ' + spec.key);
+  const record = result.result[0];
+  sessionStorage.setItem('oqa:fixture:' + spec.key, String(record.id));
+  sessionStorage.setItem('oqa:fixture-label:' + spec.key, record.display_name);
 }"""
 
 
@@ -62,53 +47,10 @@ def require_run_key(session, value, key_field, case):
                         f"(`oqa fixture key CASE --label NAME`). A fixed name would reuse a record an earlier run left, with its old links and extra rows.")
 
 
-def fixture_spec(session, case, screen, key_field, values):
-    session.require("EXECUTE")
-    live._strategy_case(session, case)
-    attempt = live._attempt(session, case)
-    _, form = form_for(sitemap.load(session.ws), screen)
-    writable = {field["name"] for field in form.get("fields", []) if not field.get("readonly")}
-    if not isinstance(values, dict) or not values or values.keys() - writable:
-        unexpected = sorted(values.keys() - writable) if isinstance(values, dict) else []
-        detail = f" Unexpected: {', '.join(unexpected)}." if unexpected else ""
-        raise GateError(f"Supply writable field values for {form['model']}: {', '.join(sorted(writable))}.{detail}")
-    value = values.get(key_field)
-    if key_field not in values:
-        raise GateError("The key argument is the technical field name, for example code. Include that field in values.")
-    require_run_key(session, value, key_field, case)
-    prepared = [event for event in events.read(session.dir) if event["kind"] == "fixture_prepared"
-                and event.get("case") == case and event.get("attempt") == attempt]
-    normalized = dict(values)
-    for field in form.get("fields", []):
-        name = field["name"]
-        relation = values.get(name)
-        if field.get("type") != "many2one" or relation in (None, False) or isinstance(relation, dict):
-            continue
-        match = next((event for event in prepared if event.get("model") == field.get("relation")
-                      and relation in (event["key"], event.get("record_id"))), None)
-        if not match:
-            raise GateError(f"{name} needs a portable relation. Prepare a {field.get('relation')} fixture and use {{\"$fixture\": \"its key\"}}.")
-        normalized[name] = {"$fixture": match["key"]}
-    return {"model": form["model"], "key": key_field, "values": normalized}
-
-
-def expression(spec):
-    return "page.evaluate(" + " ".join(CREATE.split()) + ", " + json.dumps(spec, ensure_ascii=True) + ")"
-
-
-def make_code(session, case, screen, key_field, values):
-    return expression(fixture_spec(session, case, screen, key_field, values))
-
-
 def apply(session, case, screen, key_field, values):
-    spec = fixture_spec(session, case, screen, key_field, values)
-    call = expression(spec)
-    result = live._run(live.browser_case(session, case), "--raw", "run-code", "async page => " + call).strip()
-    code = f"await {call};"
-    attempt = live._attempt(session, case)
-    events.append(session.dir, "fixture_prepared", case=case, attempt=attempt, key=values[key_field],
-                  code=code, model=spec["model"], record_id=int(result) if result.isdecimal() else None)
-    return {"id": result, "key": values[key_field], "code": code}
+    """Compatibility entry point for fixture creation through the form."""
+    result = ui_create(session, case, screen, key_field, values)
+    return {"id": str(result["id"]), "key": result["key"], "code": result["code"]}
 
 
 # --- reusable UI fixtures -------------------------------------------------------------------------------------------------------------
@@ -191,17 +133,22 @@ def ui_lines(session, case, form, route, values, check=None):
         kind = field.get("type")
         if kind == "many2one":
             if isinstance(value, dict) and "$fixture" in value:
-                if not any(e["key"] == value["$fixture"] for e in prepared):
+                if not any(e["key"] == value["$fixture"] and e["model"] == field.get("relation") for e in prepared):
                     raise GateError(f"{name}: no fixture {value['$fixture']!r} was created by this case; create it first.")
                 text = value["$fixture"]
+                label = f"await page.evaluate(key => sessionStorage.getItem('oqa:fixture-label:' + key) || key, {json.dumps(text)})"
             elif isinstance(value, dict) and "$ref" in value:
                 text = value["$ref"]
                 if check:
                     check(field["relation"], text)
+                label = json.dumps(text)
+            elif value is None or value is False:
+                lines.append(f"await page.locator({json.dumps(widget + ' input')}).fill('');")
+                continue
             else:
                 raise GateError(f"{name} is a relation: use {{\"$ref\": \"existing record\"}} or {{\"$fixture\": \"key of a record this case created\"}}.")
             lines.append(f"await page.locator({json.dumps(widget + ' input')}).fill({json.dumps(text)});")
-            lines.append(f"await page.getByRole('option', {{name: {json.dumps(text)}, exact: true}}).click();")
+            lines.append(f"await page.getByRole('option', {{name: {label}, exact: true}}).click();")
         elif kind in ("date", "datetime"):
             amount = value.get("$date") if isinstance(value, dict) else None
             if isinstance(value, dict) and not isinstance(amount, int):
@@ -225,17 +172,38 @@ def ui_create(session, case, screen, key_field, values):
     attempt = live._attempt(session, case)
     data = sitemap.load(session.ws)
     key, form = form_for(data, preset_model(session, screen))
+    if not isinstance(values, dict) or key_field not in values:
+        raise GateError("Supply a field-value object that includes the technical key field.")
     value = values.get(key_field)
     require_run_key(session, value, key_field, case)
-    if any(e["kind"] == "data_created" and e.get("case") == case and e["key"] == value for e in events.read(session.dir)):
+    created = [e for e in events.read(session.dir) if e["kind"] == "data_created" and e.get("case") == case]
+    if any(e["key"] == value for e in created):
         raise GateError(f"{value} was already created by this case.")
+    values = dict(values)
+    for field in form["fields"]:
+        name = field["name"]
+        relation = values.get(name)
+        if field.get("type") == "many2one" and relation is not None and relation is not False and not isinstance(relation, dict):
+            match = next((e for e in created if e.get("attempt") == attempt and e["model"] == field.get("relation")
+                          and relation in (e["key"], e.get("record_id"), str(e.get("record_id")))), None)
+            if match:
+                values[name] = {"$fixture": match["key"]}
+    browser_id = live.browser_case(session, case)
     lines = ui_lines(session, case, form, _route(session, data, key), values,
                      check=lambda model, text: check_reference(session, case, model, text))
-    live.run_actions(live.browser_case(session, case), lines)
+    live.run_actions(browser_id, lines)
+    spec = json.dumps({"model": form["model"], "field": key_field, "key": value})
+    remember = "await page.evaluate(" + " ".join(REMEMBER.split()) + f", {spec});"
+    lookup = "async page => { " + remember + " return page.evaluate(key => sessionStorage.getItem('oqa:fixture:' + key), " + json.dumps(value) + "); }"
+    result = live._run(browser_id, "--raw", "run-code", lookup).strip().strip('"')
+    if not result.isdecimal():
+        raise GateError(f"The form did not return the ID of saved fixture {value}.")
+    record_id = int(result)
+    lines.append(remember)
     code = "\n".join(lines)
-    events.append(session.dir, "data_created", case=case, attempt=attempt, model=form["model"], field=key_field, key=value, via="ui")
-    events.append(session.dir, "fixture_prepared", case=case, attempt=attempt, key=value, code=code, model=form["model"], record_id=None)
-    return {"model": form["model"], "key": value, "code": code}
+    events.append(session.dir, "data_created", case=case, attempt=attempt, model=form["model"], field=key_field, key=value, via="ui", record_id=record_id)
+    events.append(session.dir, "fixture_prepared", case=case, attempt=attempt, key=value, code=code, model=form["model"], record_id=record_id)
+    return {"model": form["model"], "key": value, "code": code, "id": record_id}
 
 
 def created(session, run=None, case=None):
@@ -276,7 +244,8 @@ def cleanup(session, case, run=None, apply=False):
         probe = ("async spec => { const call = async (method, args, kwargs) => { const response = await fetch('/web/dataset/call_kw/' + spec.model + '/' + method, {method: 'POST', "
                  "headers: {'Content-Type': 'application/json'}, body: JSON.stringify({jsonrpc: '2.0', method: 'call', params: {model: spec.model, method, args, kwargs}})}); "
                  "const result = await response.json(); if (result.error) throw new Error(result.error.data.message); return result.result; }; "
-                 "const ids = await call('search', [[[spec.field, '=like', spec.key + '%']]], {context: {active_test: false}}); "
+                 "const ids = await call('search', [[[spec.field, '=', spec.key]]], {context: {active_test: false}, limit: 2}); "
+                 "if (ids.length > 1) throw new Error('Fixture key matched more than one record: ' + spec.key); "
                  "if (spec.apply && ids.length) await call('unlink', [ids], {}); return JSON.stringify(ids); }")
         spec = {**item, "apply": bool(apply)}
         try:

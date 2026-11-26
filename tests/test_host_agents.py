@@ -24,6 +24,31 @@ def test_plan_respects_the_limit(session, ws):
     assert len(dispatch.plan(session, limit=1)["workers"]) == 1
 
 
+def test_dispatch_reassigns_a_stale_worker_and_resumes_its_attempt(session, ws, monkeypatch):
+    from oqa import cli, dispatch_requests
+
+    with session.update() as state:
+        state["channel"] = "path"
+    approved(session, ws)
+    assert claims.claim(session, "previous", "ORD-001")[0] == "ORD-001"
+    monkeypatch.setattr(live, "open_browser", lambda *args: "Admin")
+    monkeypatch.setattr(live, "_run", lambda *args: "")
+    first, _ = live.start(session, "ORD-001")
+    now = claims._now()
+    monkeypatch.setattr(claims, "_now", lambda: now + claims.LEASE_S + 1)
+    assert dispatch_requests.submit(session, "ORD-001")[0]["kind"] == "reassign"
+
+    worker = dispatch.plan(session, limit=1)["workers"][0]
+    assert worker["case"] == "ORD-001"
+    assert dispatch_requests.of_case(session, "ORD-001")["worker"] == worker["agent"]
+    with pytest.raises(GateError, match="does not hold"):
+        cli.cmd_live(cli.build_parser().parse_args(["live", "start", "ORD-001", "--agent", "previous",
+                                                    "--ws", session.ws, "--session", session.id]))
+    resumed, _ = live.start(session, "ORD-001")
+    assert resumed["resumed"] and resumed["attempt"] == first["attempt"]
+    assert session.state()["attempts"]["ORD-001"] == 1
+
+
 def test_plan_needs_the_execute_phase(session, ws):
     with pytest.raises(GateError):
         dispatch.plan(session)

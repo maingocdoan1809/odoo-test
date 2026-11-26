@@ -264,6 +264,8 @@ def shot(run, ws, store: SecretStore, case, n, sql, caption=None, headless=True)
     from . import evidence, events, live
     run.require("EXECUTE")
     attempt = live._attempt(run, case)
+    if not isinstance(n, int) or not 1 <= n <= len(live._strategy_case(run, case)["steps"]):
+        raise GateError("Choose a planned step number for the database evidence.")
     done = live._recorded(run, case, attempt)
     if n not in done and n != len(done) + 1:
         raise GateError(f"Record the steps in order: the next step of {case} is {len(done) + 1}, not {n}.")
@@ -284,6 +286,7 @@ def shot(run, ws, store: SecretStore, case, n, sql, caption=None, headless=True)
         events.append(run.dir, "step_evidence", case=case, attempt=attempt, n=n, source="pgadmin", sql=sql, images=[image])
     else:
         events.append(run.dir, "evidence_captured", case=case, attempt=attempt, n=n, source="pgadmin", sql=sql,
+                      pgadmin_result={key: result[key] for key in ("rows", "total", "error")},
                       images=[{**image, "caption": label, "target": "PgAdmin", "box": list(result["box"] or [])}])
     return result, annotated
 

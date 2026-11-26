@@ -33,7 +33,7 @@ TOOLS = [
                            "Use this run's fixture key in the SQL, never a fixed name. Do not open PgAdmin yourself.",
            (*strings("sql", "caption"), ("n", "integer", {})), ("n", "sql")),
     schema("step", "Record observed PASS/FAIL and a screenshot for a planned step. Include code and shows for replay.",
-           (*strings("status", "actual", "target", "code", "shows"), ("n", "integer", {})),
+           (*strings("status", "actual", "target", "code", "shows", "assertions"), ("n", "integer", {})),
            ("n", "status", "actual", "target", "code", "shows")),
     schema("end", "Close the case. FAIL = the application differs from the expectation: give reason and control (which element you operated and how you verified it is the intended one). "
                   "BLOCKED/PENDING need a prior diagnose and a reason.",
@@ -43,12 +43,12 @@ TOOLS = [
            strings("category", "detail", "tried", "need"), ("category", "detail")),
     schema("context", "Read refreshed case context, or just sitemap navigation or validation and troubleshooting knowledge.",
            (*strings("screen", "issue", "profile", "state"), ("only", "string", {"enum": ["sitemap", "knowledge"]}))),
-    schema("fixture", "Find fixture fields (plan), create a prefixed record (apply), create it through the form (ui; screen may be ledger, license_user or contract), "
+    schema("fixture", "Find fixture fields (plan), create a prefixed record through the form (ui or apply; screen may be ledger, license_user or contract), "
                       "get this run's unique key (key, with a short business label for the record), or check an existing record to use read-only (ref, with value). For apply and ui, key is the field name and values_json maps fields to values; "
                       "a many2one value is {\"$ref\": \"existing name\"} or {\"$fixture\": \"key\"}, a relative date {\"$date\": -180}.",
            (*strings("action", "screen", "key", "need", "values_json", "label", "value"),
             ("values", "object", {"additionalProperties": True})), ("action", "screen")),
-    schema("goto_fixture", "Open a record created by fixture apply, by its stable key value. Returns the replay action.",
+    schema("goto_fixture", "Open a record created through the fixture form by its stable key value. Returns the replay action.",
            strings("action_url", "key"), ("action_url", "key")),
     schema("search", "Apply an observed Odoo search suggestion and record the action. Pass the value and the exact suggestion label from the snapshot.",
            strings("value", "suggestion"), ("value", "suggestion")),
@@ -157,7 +157,7 @@ def _call(session, case, agent, name, args):
         return pgadmin.summary(result, f"attached to step {args['n']}")
     if name == "step":
         return live.step(session, case, args["n"], args["status"], args["actual"], args["target"],
-                         args["code"], args["shows"])[1]
+                         args["code"], args["shows"], args.get("assertions"))[1]
     if name == "end":
         if args["status"] not in ("PASS", "FAIL", "BLOCKED", "PENDING"):
             raise GateError("Choose PASS, FAIL, BLOCKED or PENDING.")

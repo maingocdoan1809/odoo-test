@@ -125,15 +125,13 @@ def smoke(root):
     live._run(live.browser_case(session, case), "run-code", "async page => {\n" + code + "\n}")
     live.step(session, case, 1, "PASS", "Cost column is visible", locator, code, "Cost")
     if mapper:
-        from uuid import uuid4
-
-        prefix = ws["test_prefix"] + uuid4().hex[:8]
-        site_code = prefix + "_site"
-        item_code = prefix + "_item"
-        fixtures.apply(session, case, "oqa.harness.site", "code",
+        prefix = fixtures.run_key(session, case, "csv")
+        site_code = fixtures.run_key(session, case, "site")
+        item_code = fixtures.run_key(session, case, "item")
+        fixtures.ui_create(session, case, "oqa.harness.site", "code",
                        {"name": site_code, "code": site_code})
-        fixtures.apply(session, case, "oqa.harness.item", "code", {
-            "name": item_code, "code": item_code, "site_id": site_code, "cost": 7,
+        fixtures.ui_create(session, case, "oqa.harness.item", "code", {
+            "name": item_code, "code": item_code, "site_id": {"$fixture": site_code}, "cost": 7,
         })
         code = "\n".join([f"await page.goto('/odoo/action-{action}');",
                           f"await page.getByRole('searchbox').fill('{item_code}');",

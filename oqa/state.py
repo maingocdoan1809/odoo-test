@@ -144,20 +144,25 @@ class Session:
     def confirm(self, by, sha, has_cases=True):
         """The user's approval. `sha` must be the digest of the strategy on disk now, so what they approved is what runs."""
         with self.update() as state:
-            if state["waiting"]:
-                raise GateError("The session is waiting for the user to answer; run `oqa answer` first.")
-            if state["phase"] != "CONFIRM":
-                raise GateError(f"Nothing to confirm in phase {state['phase']}. Next: {NEXT[state['phase']]}")
-            if not state["strategy_sha"] or state["strategy_sha"] != sha:
-                raise GateError("The strategy changed or was never built; run `oqa strategy` and ask the user to review it again.")
-            undecided = analysis.pending_conflicts(read_json(self.dir / "analysis.json"), state.get("conflict_choices"))
-            if undecided:
-                raise GateError(f"Còn {len(undecided)} chỗ testcase lệch BD chưa chọn theo BD hay theo testcase ("
-                                + ", ".join(f"{c['case']} bước {c['step']}" for c in undecided[:5]) + "). Chọn trên dashboard trước khi duyệt.")
-            state["confirmation"] = {"by": by, "at": time.strftime("%Y-%m-%d %H:%M:%S"), "strategy_sha": sha}
-            events.append(self.dir, "confirmed", by=by, strategy_sha=sha)
-            self._enter(state, "EXECUTE" if has_cases else "REPORT",
-                        "Confirmed; ready to run the approved cases" if has_cases else "Confirmed; there are no approved cases to run")
+            self._confirm(state, by, sha, has_cases)
+
+    def _confirm(self, state, by, sha, has_cases):
+        if state["stopped"]:
+            raise GateError("The test is stopped. Resume it before confirming.")
+        if state["waiting"]:
+            raise GateError("The session is waiting for the user to answer; run `oqa answer` first.")
+        if state["phase"] != "CONFIRM":
+            raise GateError(f"Nothing to confirm in phase {state['phase']}. Next: {NEXT[state['phase']]}")
+        if not state["strategy_sha"] or state["strategy_sha"] != sha:
+            raise GateError("The strategy changed or was never built. Review the latest strategy before confirming.")
+        undecided = analysis.pending_conflicts(read_json(self.dir / "analysis.json"), state.get("conflict_choices"))
+        if undecided:
+            raise GateError(f"Còn {len(undecided)} chỗ testcase lệch BD chưa chọn theo BD hay theo testcase ("
+                            + ", ".join(f"{c['case']} bước {c['step']}" for c in undecided[:5]) + "). Chọn trên dashboard trước khi duyệt.")
+        state["confirmation"] = {"by": by, "at": time.strftime("%Y-%m-%d %H:%M:%S"), "strategy_sha": sha}
+        events.append(self.dir, "confirmed", by=by, strategy_sha=sha)
+        self._enter(state, "EXECUTE" if has_cases else "REPORT",
+                    "Confirmed; ready to run the approved cases" if has_cases else "Confirmed; there are no approved cases to run")
 
     def _write_strategy(self, state, selected):
         """Build the strategy for the chosen cases (None = every ready case), write it and remember its digest. Called with the state open."""
@@ -227,13 +232,17 @@ class Session:
                 self._enter(state, "EXECUTE", f"{', '.join(new)} added to the run by the user")
         return {"added": new, "deferred": data.get("deferred", [])}
 
-    def confirm_current(self, by):
+    def confirm_current(self, by, expected_sha=None):
         """The user approves the strategy that is on disk now (the terminal and the dashboard both come here). Refuses a strategy that was
         edited or no longer matches the analysis."""
-        strategy_doc = read_json(self.dir / "strategy.json")
-        if not strategy_doc or not analysis.verify_strategy(strategy_doc, read_json(self.dir / "analysis.json")):
-            raise GateError("strategy.json is missing or no longer matches the analysis; run `oqa strategy` again.")
-        self.confirm(by, strategy_doc["sha"], has_cases=bool(strategy_doc["order"]))
+        with self.update() as state:
+            strategy_doc = read_json(self.dir / "strategy.json")
+            if not strategy_doc or not analysis.verify_strategy(strategy_doc, read_json(self.dir / "analysis.json")):
+                raise GateError("strategy.json is missing or no longer matches the analysis; run `oqa strategy` again.")
+            sha = strategy_doc["sha"]
+            if expected_sha is not None and expected_sha != sha:
+                raise GateError("The strategy changed since you opened it. Review the latest strategy before confirming.")
+            self._confirm(state, by, sha, has_cases=bool(strategy_doc["order"]))
         return strategy_doc
 
     # --- asking the user ----------------------------------------------------------
@@ -278,6 +287,7 @@ class Session:
                 state.setdefault("progress", {}).pop(case, None)
                 if state["results"].get(case, {}).get("status") in ("PENDING", "BLOCKED"):
                     del state["results"][case]
+                    self._reconcile_dependencies(state)
                     if state["phase"] == "REPORT":
                         self._enter(state, "EXECUTE", f"{case} can run again after the answer")
             shared = [i["path"] for i in refs.register_from_text(self, text, by="answer", case=case)]          # a path in the answer is a reference: nothing to learn, nothing to upload
@@ -455,6 +465,7 @@ class Session:
             state.setdefault("hints", {}).setdefault(case, []).append({"text": text, "at": time.strftime("%Y-%m-%d %H:%M:%S"), "by": by})
             self.archive_result(state, case, f"reopened by the user's hint: {text}")
             existing_result = state["results"].pop(case, None)
+            self._reconcile_dependencies(state)
             last = self._log(case)["last"]
             if not state.get("channel") or existing_result or (last and last["attempt"] == state.get("runs", {}).get(case)):
                 from . import claims
@@ -495,6 +506,40 @@ class Session:
         if old:
             state.setdefault("history", {}).setdefault(case, []).append({**old, "at": time.strftime("%Y-%m-%d %H:%M:%S"), "superseded_by": (why or "")[:300]})
 
+    def _reconcile_dependencies(self, state, order=None):
+        """Close cases whose prerequisites ended unsuccessfully, and queue them again when the prerequisites reopen."""
+        if order is None:
+            order = (read_json(self.dir / "strategy.json") or {"order": []})["order"]
+        if not order:
+            return
+        document = read_json(self.dir / "analysis.json") or {"cases": []}
+        dependencies = {c["id"]: c.get("depends_on") or [] for c in document["cases"]}
+        results = state["results"]
+        for case in order:
+            current = results.get(case)
+            if current and "blocked_by" not in current:
+                continue
+            blocked_by = {parent: results[parent]["status"] for parent in dependencies.get(case, [])
+                          if parent in results and results[parent]["status"] != "PASS"}
+            if current and current["blocked_by"] == blocked_by:
+                continue
+            if current:
+                self.archive_result(state, case, "prerequisite results changed")
+                del results[case]
+            if blocked_by:
+                reason = "Prerequisite did not pass: " + ", ".join(f"{c} ({status})" for c, status in blocked_by.items())
+                results[case] = {"status": "NOT EXECUTED", "attempts": 0, "category": "precondition", "reason": reason, "blocked_by": blocked_by}
+                events.append(self.dir, "case_finished", case=case, status="NOT EXECUTED", attempts=0, reason=reason, category="precondition")
+
+    def reconcile_queue(self):
+        """Settle dependency results in sessions started before automatic dependency handling."""
+        with self.update() as state:
+            if state["phase"] == "EXECUTE" and not (state.get("stopped") or state["waiting"]):
+                order = read_json(self.dir / "strategy.json")["order"]
+                self._reconcile_dependencies(state, order)
+                if all(case in state["results"] for case in order):
+                    self._enter(state, "REPORT", "Every case has a result; building the report")
+
     def finish_case(self, case, status, reason="", category="", basis=""):
         """Record the end of a case. When every case of the strategy has a result, the session moves to REPORT.
         `category` says what kind of conclusion it is (see events.CATEGORIES): an application defect, an automation issue, or a missing test precondition."""
@@ -520,6 +565,7 @@ class Session:
                 claims.release(self, case, missing_ok=True)
             events.append(self.dir, "case_finished", case=case, status=status, attempts=attempts, **({"reason": reason} if reason else {}), **({"category": category} if category else {}))
             memory.remember_result(self.ws, memory.stem_of(state["file"]), case, status, reason, self.id)
+            self._reconcile_dependencies(state, order)
             if all(c in state["results"] for c in order):
                 self._enter(state, "REPORT", "Every case has a result; building the report")
 

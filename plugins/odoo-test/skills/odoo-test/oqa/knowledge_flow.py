@@ -8,7 +8,7 @@ session/knowledge_picks.json  = {case: [fact id]}
 session/knowledge_draft.json  = {status: drafting|ready|empty|saved|skipped, items: [{screen, kind, fact, action, condition, profile, state, evidence, ref, scope, case}], at}"""
 import time
 
-from . import claims, events, knowledge
+from . import analysis, claims, events, knowledge
 from .store import read_json, write_json
 
 NEEDS = knowledge.BUSINESS_KINDS
@@ -118,15 +118,41 @@ def materials(session):
     return [line for line in dict.fromkeys(" ".join(l.split()) for l in lines) if line.strip(": ")]
 
 
+def _revision(session):
+    return (session.state().get("confirmation") or {}).get("strategy_sha")
+
+
+def _unreviewed_materials(session):
+    prior = read_json(_draft_file(session), {}) or {}
+    reviewed = set(prior.get("reviewed", []))
+    return [line for line in materials(session) if analysis.digest(line) not in reviewed]
+
+
+def _write_draft(session, status, items, **fields):
+    prior = read_json(_draft_file(session), {}) or {}
+    review_keys = set(prior.get("reviewed", []))
+    if status in SETTLED:
+        review_keys.update(analysis.digest(line) for line in materials(session))
+    write_json(_draft_file(session), {"status": status, "items": items, "at": _now(), "strategy_sha": _revision(session),
+                                     "reviewed": sorted(review_keys), **fields})
+
+
 def current(session):
-    return read_json(_draft_file(session), None)
+    draft_ = read_json(_draft_file(session), None)
+    if draft_ is None:
+        return None
+    if "strategy_sha" in draft_:
+        return draft_ if draft_["strategy_sha"] == _revision(session) else None
+    last = next((e["kind"] for e in reversed(events.read(session.dir))
+                 if e["kind"] in ("cases_added", "knowledge_drafted", "knowledge_saved", "knowledge_skipped")), None)
+    return None if last == "cases_added" else draft_
 
 
 def pending(session):
     """Why the session must stay open for the knowledge summary, or '' when nothing is owed."""
     draft = current(session)
     if draft is None:
-        return "The knowledge summary was not made: run oqa knowledge digest, give its brief to one cheap agent, then oqa knowledge draft." if materials(session) else ""
+        return "The knowledge summary was not made: run oqa knowledge digest, give its brief to one cheap agent, then oqa knowledge draft." if _unreviewed_materials(session) else ""
     if draft["status"] in SETTLED:
         return ""
     if draft["status"] == "drafting":
@@ -136,14 +162,14 @@ def pending(session):
 
 def digest(session):
     """The brief for ONE cheap agent that drafts the lessons of this run. None (and the summary is settled as empty) when the run left nothing to learn from."""
-    lines = materials(session)
+    lines = _unreviewed_materials(session)
     if not lines:
-        write_json(_draft_file(session), {"status": "empty", "items": [], "at": _now()})
+        _write_draft(session, "empty", [])
         events.append(session.dir, "knowledge_drafted", count=0)
         return None
     from .dispatch import _oqa_preamble
 
-    write_json(_draft_file(session), {"status": "drafting", "items": [], "at": _now()})
+    _write_draft(session, "drafting", [])
     target = session.dir / "knowledge_draft_request.json"
     return (f"You write the knowledge summary of a finished Odoo test run (oqa session {session.id}, workspace {session.ws}). Keep only what a FUTURE run on this Odoo would need and could not guess: "
             "how a control really behaves, a rule the design states, data a case needs, an error and the fix that worked, a locator that worked. evidence (optional) = what a run should observe or capture to check the fact, NOT where it came from (that is ref). Do NOT write results (PASS or FAIL of a case), "
@@ -179,7 +205,7 @@ def draft(session, items):
     if problems:
         raise knowledge.KnowledgeError("; ".join(problems))
     status = "ready" if clean else "empty"
-    write_json(_draft_file(session), {"status": status, "items": clean, "at": _now()})
+    _write_draft(session, status, clean)
     events.append(session.dir, "knowledge_drafted", count=len(clean))
     return {"status": status, "count": len(clean)}
 
@@ -201,12 +227,12 @@ def save(session, items, by="dashboard"):
         result = knowledge.learn(session.ws, item["screen"], item["kind"], item["fact"], item["tag"], source, action=item["action"], condition=item["condition"],
                                  profile=item["profile"], state=item["state"], evidence=item["evidence"], scope=item["scope"])
         counts[result] = counts.get(result, 0) + 1
-    write_json(_draft_file(session), {"status": "saved", "items": [], "saved": counts, "at": _now()})
+    _write_draft(session, "saved", [], saved=counts)
     events.append(session.dir, "knowledge_saved", saved=counts["added"] + counts["updated"], duplicate=counts["duplicate"], by=by)
     return counts
 
 
 def skip(session, by="dashboard"):
     draft_ = current(session) or {}
-    write_json(_draft_file(session), {"status": "skipped", "items": [], "at": _now()})
+    _write_draft(session, "skipped", [])
     events.append(session.dir, "knowledge_skipped", count=len(draft_.get("items", [])), by=by)

@@ -25,7 +25,7 @@ HERE = Path(__file__).resolve().parent
 HARNESS_NOTES = """Plan every Odoo testcase below for real browser execution. Use concise English.
 Preserve each testcase's complete intent. Consolidate into four to six meaningful evidence steps.
 The expected text must describe a specific observable state, value or error. Testcases run independently.
-Create fixture records for mutations with the keys fixture(action=key) returns; never write a literal record name or code in a step, say "a site with this run's own key". fixture apply can prepare related records
+Create fixture records for mutations with the keys fixture(action=key) returns; never write a literal record name or code in a step, say "a site with this run's own key". fixture ui can prepare related records
 using {"$fixture":"<key>"}; verify the application under test through the UI. Do not skip steps.
 For import cases use the native wizard and provided CSV templates. Include any failure/recovery specified.
 H12 uses Operator and Manager, and must re-find the case's own record after switching accounts.
@@ -228,7 +228,7 @@ def run(suite=None):
     pause("OQA_MATRIX_PAUSE", "before the harness persona approves (tick or untick on the dashboard now)")
     strategy = read_json(session.dir / "strategy.json")          # what is on disk now: the user may have changed the ticks
     dashboard = dashboard_server.Dashboard((session.ws, session.id))
-    result = dashboard.handle("POST", "/api/confirm", {}, {"ws": session.ws, "id": session.id})
+    result = dashboard.handle("POST", "/api/confirm", {}, {"ws": session.ws, "id": session.id, "strategy_sha": strategy["sha"]})
     assert result == (200, {"ok": True}), result
     print("Harness persona approved:", ", ".join(strategy["order"]), flush=True)
     outcome = cli_agents.run(session, "haiku", "sonnet", suite.get("timeout", 420)) if strategy["order"] else {"results": {}}

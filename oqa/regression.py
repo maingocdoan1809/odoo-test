@@ -5,7 +5,10 @@ A script belongs to the workspace (scripts/<workbook>/<case>.spec.js), not to a 
 regression.json = {schema_version, scripts: {"<workbook>/<case>": {<environment>: {latest: {...}, runs: [{...}]}}}}
 Each run is a replay run (status PASS|FAIL, at, reason, failed_step, run_id, timing, ...) plus the environment it ran on.
 A script never run on an environment is NOT RUN there, never an implied pass."""
+import hashlib
+import os
 import re
+from pathlib import Path
 
 from . import SCHEMA_VERSION, captions, memory, paths, record_names, replays, workspace
 from .state import GateError
@@ -19,8 +22,15 @@ def _file(ws):
     return paths.workspace_dir(ws) / "regression.json"
 
 
-def key_of(workbook_file, case):
+def legacy_key(workbook_file, case):
     return f"{memory.stem_of(workbook_file)}/{re.sub(r'[^\w.-]+', '_', case)}"
+
+
+def key_of(workbook_file, case):
+    workbook, case_name = legacy_key(workbook_file, case).split("/", 1)
+    path_id = hashlib.sha256(os.path.normcase(str(Path(workbook_file).resolve())).encode("utf-8")).hexdigest()[:16]
+    case_id = hashlib.sha256(case.encode("utf-8")).hexdigest()[:12]
+    return f"{workbook[:64]}-{path_id}/{case_name[:64]}-{case_id}"
 
 
 def record(ws, key, env, entry):
@@ -47,7 +57,12 @@ def scripts(ws):
     from . import live
     by_key = {item["key"]: item for item in out}
     for key, (session, case) in sources(ws).items():
-        by_key[key] = {"key": key, "workbook": key.rsplit("/", 1)[0], "case": case, "file": live.script_file(session, case)}
+        workbook_file = session.state()["file"]
+        file = live.script_file(session, case)
+        for old_key in (legacy_key(workbook_file, case), key):
+            if old_key in by_key and by_key[old_key]["file"] == file:
+                del by_key[old_key]
+        by_key[key] = {"key": key, "workbook": Path(workbook_file).name, "case": case, "file": file}
     return [by_key[key] for key in sorted(by_key)]
 
 
@@ -143,6 +158,10 @@ def import_results(ws, target):
     config = workspace.load(ws)
     envs = {e["name"].lower(): e["name"] for e in workspace.environments(config)}
     known = {item["key"] for item in scripts(ws)}
+    legacy, by_case = {}, {}
+    for key, (session, case) in sources(ws).items():
+        legacy.setdefault(legacy_key(session.state()["file"], case), set()).add(key)
+        by_case.setdefault(case, set()).add(key)
     entries = []
     for file in files:
         try:
@@ -156,10 +175,16 @@ def import_results(ws, target):
         env = envs.get(str(data.get("env", "main")).lower())
         if not env:
             raise GateError(f"{file}: environment '{data.get('env')}' is not one of {', '.join(envs.values())}.")
-        if data.get("script") not in known:
-            raise GateError(f"{file}: script '{data.get('script')}' is not a saved script of workspace '{ws}'.")
+        key = data.get("script")
+        if not isinstance(key, str) or key not in known:
+            matches = legacy.get(key, set()) if isinstance(key, str) else set()
+            if key is None and isinstance(data.get("case"), str):
+                matches = by_case.get(data["case"], set())
+            if len(matches) != 1:
+                raise GateError(f"{file}: script '{key}' is not a saved script uniquely identified in workspace '{ws}'.")
+            key = next(iter(matches))
         keep = ("status", "at", "run_id", "failed_step", "reason", "total_s", "base_url", "source", "video")
-        entries.append((data["script"], env, {k: data[k] for k in keep if k in data}))
+        entries.append((key, env, {k: data[k] for k in keep if k in data}))
     done = load(ws)
     for key, env, entry in entries:
         if entry.get("run_id") and any(run.get("run_id") == entry["run_id"] for run in done.get(key, {}).get(env, {}).get("runs", [])):

@@ -25,7 +25,7 @@ def _now():
 def _last_activity(log, case):
     """Epoch seconds of the last event of the case (0 when none)."""
     for e in reversed(log):
-        if e.get("case") == case and e.get("kind") in ("case_started", "step", "explore", "repair"):
+        if e.get("case") == case and e.get("kind") in ("case_started", "step", "explore", "repair", "action_recorded", "evidence_captured", "fixture_prepared"):
             try:
                 return time.mktime(time.strptime(e["ts"], "%Y-%m-%d %H:%M:%S"))
             except (ValueError, KeyError):
@@ -56,6 +56,13 @@ def table(session):
         if case not in state["results"]:
             out[case] = {**entry, "fresh": _fresh(entry, log, case)}
     return out
+
+
+def require_owner(session, case, agent):
+    if agent:
+        claim = table(session).get(case, {})
+        if claim.get("agent") != agent or not claim.get("fresh"):
+            raise GateError(f"{agent} does not hold a current claim for {case}.")
 
 
 def free_cases(session):

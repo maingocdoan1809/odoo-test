@@ -65,7 +65,15 @@ def _reopen(session, case, note, reason=None):
 def _lease(session, case, agent):
     """Hold `case` for `agent`; a dispatch request for the case is accepted at the same time. True when the case was leased."""
     leased, _ = claims.claim(session, agent, case)
-    if leased and case in dispatch_requests.pending(session):
+    if not leased:
+        return None
+    if live._open_attempt(session, case):
+        try:
+            live.handover(session, case, "The previous worker's claim expired or was released.", to=agent)
+        except GateError:
+            claims.release(session, case, missing_ok=True)
+            raise
+    if case in dispatch_requests.pending(session):
         dispatch_requests.resolve(session, case, "accepted", worker=agent)
     return leased
 
@@ -79,14 +87,15 @@ def _oqa_preamble(session):
 def _host_brief(session, case, agent):
     return f"""You are case worker {agent} for case {case} in oqa session {session.id} (workspace {session.ws}). You already hold this case: work on it and nothing else.
 {_oqa_preamble(session)} Follow the "Case worker" section of references/agents.md and references/evidence.md of the odoo-test skill: `oqa live start {case}`, act in the case browser, record every planned step with `oqa live step`, close with `oqa live end {case} --status PASS|FAIL|BLOCKED|PENDING`.
+Pass `--agent {agent}` on each live, fixture, pgadmin and tool command for this case.
 Rules that never bend:
 - Write observations in Vietnamese. Quote exact Odoo text in the language shown.
 - Every record this case creates takes its name and code from `oqa fixture key --case {case} --label "<short Vietnamese label>"`; never type a fixed record name, never write a record id into saved code (use capture_id / $OQA_ID).
 - Judge each step only against its own planned expected result. The packet's `authority` and user_decisions are final.
 - A step that confirms on the database: run `oqa pgadmin shot {case} --n N --sql "SELECT ..."` FIRST (N is the next step; the picture becomes part of it) with ONE read-only SQL using this run's key, then `oqa live step {case} --n N ... --actual "<what the rows showed>"`, both before `oqa live end`. Judge PASS or FAIL from the rows it prints. Do not open PgAdmin yourself.
 - Act in the case browser with `oqa live act {case} --browser-command snapshot` (read the page) and `oqa live act {case} --browser-command run-code --code "await page.getByRole('button', {{ name: 'New' }}).click();"` (one `await page...` statement per line). Call `oqa live start {case}` BEFORE `oqa fixture key`.
-- `--shows` must be text the page shows as visible text (a heading, a value, a label): not a placeholder, a tooltip or a button's hidden name; a `shows` the page does not carry is refused.
-- Saved script: pass `--target "<locator>" --verified-code FILE --shows "<exact visible text>"` on every `oqa live step` (FILE holds that step's `await page...` lines; step 1 starts with `await page.goto(...)`). EVERY step needs this, the database step too (a replay cannot run PgAdmin, so give it a short assertion that the record is still on the Odoo screen, with --shows = a visible text of that record). `oqa live end` then assembles the script by itself: never hand-write a script file.
+- Saved script: use `oqa live act ... --record` to run and keep the final path, including the initial `await page.goto(...)`. Helpers keep their own actions. At `oqa live step`, give `--target "<result locator>" --shows "<visible outcome>"`. For a path written in `--verified-code FILE`, include recorded actions in order.
+- Use the result target and its exact visible text or value. Oqa checks the named numbers and quoted values there. For absence, a calculated value or comparisons, use `--assert-code FILE` with read-only `await page.waitForFunction(...)` assertions. On a database step, the replay checks the visible Odoo record and the Live step checks the captured PgAdmin result. `oqa live end` assembles the script from the steps.
 - The browser may open on the public website: go to the backend (the Contacts / menu named in the plan) by its menu or by the action URL in the sitemap (`oqa case context {case} --only sitemap`).
 - Tools that have no `oqa live` command (read a file the application exports, import a CSV, keep a record id for the script, open a prepared record, read a reference or the sitemap): `oqa tool {case} NAME --args '<json>'` with NAME one of save_download, open_import, upload_csv, capture_id, goto_fixture, reference, context, search, sitemap_find, sitemap_buttons, sitemap_fields, sitemap_path (`oqa tool {case} --list` shows each one's arguments). Those that act in the browser are recorded for the saved script like `oqa live act`.
 - Before `oqa live end`, share every lesson a future run on this Odoo would need with `oqa note --case {case} --agent <your worker id> "<one sentence>"`: an action that was refused and what worked instead, a control that behaves unexpectedly, a message that disappears, data the case needed. The knowledge summary at the end is written from these notes; a lesson that is only in your final reply is lost.
@@ -103,6 +112,7 @@ def plan(session, limit=None, skip_knowledge=False):
     import uuid
 
     session.require("EXECUTE")
+    session.reconcile_queue()
     order = (read_json(session.dir / "strategy.json", {}) or {})["order"]
     workers = []
     free = claims.free_cases(session)
