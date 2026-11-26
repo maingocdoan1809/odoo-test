@@ -22,7 +22,7 @@ NEXT = {
     "ANALYZE": "oqa analyze --template > analysis.json, fill it in, then oqa analyze --submit analysis.json",
     "CONNECT": "oqa connect",
     "CONFIRM": "oqa strategy, then ask the user to approve it (the user runs oqa confirm, or presses Confirm in the dashboard)",
-    "EXECUTE": "oqa live start <case id> (one worker and one browser per case), then oqa live step / oqa live end",
+    "EXECUTE": "oqa dispatch --plan, then start ONE sub-agent per brief with the host's own agent tool (Claude Code Agent tool, Copilot CLI agent), all in one message; the agent runs oqa live start / step / end for its case only. Never run a case yourself and never use oqa dispatch without --plan. When an agent finishes: oqa dispatch --settle <case>",
     "REPORT": "oqa report",
     "DONE": "nothing: the session is finished",
 }

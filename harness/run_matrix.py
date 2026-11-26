@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tempfile import mkdtemp
@@ -146,6 +147,25 @@ def seed_conflict(session, document, cases, ws, choice):
     print(f"Harness persona chose to follow the {choice} for H18 step 3", flush=True)
 
 
+def pause(variable, why):
+    seconds = int(os.environ.get(variable) or 0)
+    if seconds:
+        print(f"Waiting {seconds}s {why}", flush=True)
+        time.sleep(seconds)
+
+
+def show_dashboard(session, root):
+    """OQA_MATRIX_LIVE=1: a real dashboard server on this run's home, so the run can be watched (and ticked) in a browser."""
+    subprocess.Popen([sys.executable, str(HERE.parent / "oqa.py"), "dashboard", "--ws", session.ws, "--session", session.id, "--no-open"],
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    pointer = root / "dashboard.json"
+    for _ in range(40):
+        if pointer.exists():
+            print("Dashboard:", read_json(pointer)["url"] + f"#{session.ws}/{session.id}", flush=True)
+            return
+        time.sleep(0.5)
+
+
 def run(suite=None):
     """`suite` (harness/run_complex.py) swaps the workbook, reference folder, workspace name and planner notes, and makes a non-PASS a reported result instead of an assertion."""
     suite = suite or {}
@@ -182,6 +202,7 @@ def run(suite=None):
         item.update(profile=original["role"].split(",")[0].strip(),   # a case that uses two roles starts as the first
                      verdict="ready", clarity={"score": 4, "notes": "Harness specification"},
                     sufficiency={"score": 4, "missing": []}, edge_cases=plan["edges"] or ["Data from previous runs"],
+                    replay_records=[{"record": "every record this case creates or uses", "how": "run_key", "detail": ""}],      # the harness cases make their own data with this run's key
                     steps=[dict(step, n=index) for index, step in enumerate(drafted, 1)])
     if suite:
         analysis.validate(document, cases, ws)
@@ -192,16 +213,36 @@ def run(suite=None):
     if conflict_choice:
         seed_conflict(session, document, cases, ws, conflict_choice)
     connect.connect(session, ws, store)
-    strategy, markdown = analysis.strategy(read_json(session.dir / "analysis.json"), cases, ws)      # the saved analysis (retrieval context stripped), as `oqa strategy` reads it
-    write_json(session.dir / "strategy.json", strategy)
-    (session.dir / "strategy.md").write_text(markdown, encoding="utf-8")
-    session.strategy_ready(strategy["sha"])
+    if os.environ.get("OQA_MATRIX_LIVE"):
+        show_dashboard(session, root)
+    pick = [c.strip() for c in os.environ.get("OQA_MATRIX_SELECT", "").split(",") if c.strip()]
+    if pick:                                     # OQA_MATRIX_SELECT=A,B: only these are ticked; the others wait as "left out" and are added after the first run
+        session.select_cases(pick, by="dashboard")
+        print("Cases ticked:", ", ".join(pick), flush=True)
+    else:
+        strategy, markdown = analysis.strategy(read_json(session.dir / "analysis.json"), cases, ws)      # the saved analysis (retrieval context stripped), as `oqa strategy` reads it
+        write_json(session.dir / "strategy.json", strategy)
+        (session.dir / "strategy.md").write_text(markdown, encoding="utf-8")
+        session.strategy_ready(strategy["sha"])
+    pause("OQA_MATRIX_PAUSE", "before the harness persona approves (tick or untick on the dashboard now)")
+    strategy = read_json(session.dir / "strategy.json")          # what is on disk now: the user may have changed the ticks
     dashboard = dashboard_server.Dashboard((session.ws, session.id))
     result = dashboard.handle("POST", "/api/confirm", {}, {"ws": session.ws, "id": session.id})
     assert result == (200, {"ok": True}), result
     print("Harness persona approved:", ", ".join(strategy["order"]), flush=True)
     outcome = dispatch.run(session, "haiku", "sonnet", suite.get("timeout", 420)) if strategy["order"] else {"results": {}}
     print(json.dumps(outcome, ensure_ascii=False, indent=2), flush=True)
+    left = (read_json(session.dir / "strategy.json") or {}).get("deferred", [])
+    if left and os.environ.get("OQA_MATRIX_ADD"):          # the cases that were left out join the same session, as the "run more" box does
+        pause("OQA_MATRIX_PAUSE2", f"before the harness persona adds {', '.join(left)} (press the run-more button now if you want)")
+        left = (read_json(session.dir / "strategy.json") or {}).get("deferred", [])
+        if left:
+            code, answer = dashboard.handle("POST", "/api/run_more", {}, {"ws": session.ws, "id": session.id, "cases": left})
+            assert code == 200 and answer.get("ok"), answer
+        print("Cases added to the run:", ", ".join(left), flush=True)
+        outcome = dispatch.run(session, "haiku", "sonnet", suite.get("timeout", 420))
+        print(json.dumps(outcome, ensure_ascii=False, indent=2), flush=True)
+        strategy = read_json(session.dir / "strategy.json")
     result = report.finish(session, ws) if session.state()["phase"] == "REPORT" else report.build(session, ws)
     output = Path(os.environ.get("OQA_SMOKE_OUT") or root).resolve()
     output.mkdir(parents=True, exist_ok=True)

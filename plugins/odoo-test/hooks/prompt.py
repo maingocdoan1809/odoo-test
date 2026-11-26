@@ -34,6 +34,8 @@ def note(prompt):
                 lines.append("The dashboard was not running: it has just been started for the user.")
             elif opened == "opened":
                 lines.append("The dashboard was running but no tab was open: a tab has just been opened for the user.")
+            if state["phase"] == "EXECUTE" and not state.get("waiting"):
+                lines.append("Cases are done by sub-agents, one per case: run `oqa dispatch --plan`, give each brief to one agent of the host (Agent tool, all in one message), then `oqa dispatch --settle <case>` as each finishes. Do not run a case yourself.")
             news = session.news()
             if news:
                 lines.append("The user acted on the dashboard since you were last told (run `oqa wait` to read and clear it): " + "; ".join(e["kind"] for e in news) + ".")

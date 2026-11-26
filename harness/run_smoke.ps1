@@ -51,7 +51,11 @@ for role in ("manager", "mapper", "operator"):
     existing.write(values) if existing else users.create(values)
 env.cr.commit()
 print(env.ref("oqa_harness.item_action").id)
-'@ | & $OdooPython $OdooBin shell -c $Config --addons-path $addons -d oqa_harness --no-http --log-level error
+'@
+    $accountScript = [IO.Path]::GetTempFileName()
+    [IO.File]::WriteAllText($accountScript, $result, [Text.UTF8Encoding]::new($false))      # a pipe from Windows PowerShell 5.1 starts with a byte-order mark that Odoo's shell rejects
+    $result = cmd.exe /c "`"$OdooPython`" `"$OdooBin`" shell -c `"$Config`" --addons-path `"$addons`" -d oqa_harness --no-http --log-level error < `"$accountScript`""
+    Remove-Item -LiteralPath $accountScript -ErrorAction SilentlyContinue
     if ($LASTEXITCODE) { throw 'Could not prepare the smoke accounts in oqa_harness.' }
     $env:OQA_SMOKE_ITEM_ACTION = $result | Where-Object { $_ -match '^\d+$' } | Select-Object -Last 1
     if (-not $env:OQA_SMOKE_ITEM_ACTION) { throw 'Install oqa_harness before running the browser smoke.' }
