@@ -1,12 +1,12 @@
 """Make a case's saved script independent of the run that recorded it.
 
-The worker (a small model) writes its script during one live run, so the script is only right at that moment: a record id in an address, a click that depended on where the
-previous step left the page, a position in a list. This asks a stronger model to rewrite it as a generic script (run variables for ids, names from this run's own key, explicit
-navigation, no positions or fixed dates), then replays the result on a fresh run, twice, and keeps it only if both replays pass. Otherwise the failure goes back to the model
-for another attempt, and when the attempts are used up the original script is restored."""
+The worker writes its script during one live run, so the script is only right at that moment: a record id in an address, a click that depended on where the
+previous step left the page, a position in a list. A second agent rewrites it as a generic script (run variables for ids, names from this run's own key, explicit
+navigation, no positions or fixed dates), then replays the result on a fresh run, twice, and keeps it only if both replays pass. Otherwise the failure goes back to the agent
+for another attempt, and when the attempts are used up the original script is restored.
+
+oqa asks no model itself: `brief` gives the host's sub-agent its work, `submit` takes the script it wrote and checks it. The attempts are counted in the session's events."""
 import re
-import shutil
-import subprocess
 import time
 
 from . import events, live, record_names, workspace
@@ -70,14 +70,6 @@ def build_prompt(session, case, original, steps, prefix, failure=""):
             f"\n\nThe test case's planned steps (the script must keep doing these):\n{plan}\n{again}\nThe script to rewrite:\n{original}\n")
 
 
-def _ask(executable, model, prompt, timeout=420):
-    result = subprocess.run([executable, "--print", "--model", model, "--tools", ""], input=prompt, capture_output=True, text=True,
-                            encoding="utf-8", timeout=timeout, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    if result.returncode:
-        raise GateError(f"The model call failed: {(result.stderr or result.stdout).strip()[:300]}")
-    return result.stdout
-
-
 def _clean(text):
     text = re.sub(r"^\s*```[a-zA-Z]*\s*$", "", text, flags=re.M)         # a fence the model added anyway
     text = re.sub(r"^\s*\$OQA_CAPTURE\((\w+)\)\s*;?\s*$", lambda m: live.capture_id_code(m.group(1)), text, flags=re.M)
@@ -114,62 +106,102 @@ def check(session, case, text, steps, prefix, original=""):
     return problems
 
 
-def regenerate(session, case, model="sonnet", attempts=3, replays=2, executable=None, ask=None):
-    """Rewrite the saved script of `case` generically and keep it only when `replays` fresh replays in a row pass. Returns a summary; raises GateError when it could not."""
-    ask = ask or _ask
-    if ask is _ask:
-        executable = executable or shutil.which("claude")
-        if not executable:
-            raise GateError("The Claude CLI is unavailable: the rewrite needs it.")
+def _log(session):
+    return [e for e in events.read(session.dir) if e["kind"] == "script_generalized"]
+
+
+def _open_attempt(session, case):
+    """The attempt a rewrite of `case` is waiting for, or None: the latest event of the case says RUNNING (or has gone STALE)."""
+    last = next((e for e in reversed(_log(session)) if e.get("case") == case), None)
+    return last if last and last.get("status") == "RUNNING" else None
+
+
+def candidate_file(session, case):
+    return session.dir / "generalize" / f"{re.sub(r'[^A-Za-z0-9._-]+', '_', case)}.candidate.js"
+
+
+def _ready(session, case):
+    """The case, its saved script and its steps, or a GateError that says why a rewrite cannot start."""
     item = live._strategy_case(session, case)
     path = live.script_file(session, case)
     if not path.is_file():
         raise GateError(f"{case} has no saved script to rewrite (a PASS keeps one).")
     if (session.state()["results"].get(case) or {}).get("status") != "PASS":
         raise GateError(f"{case} has no PASS result: its script may still be in use or be unfinished.")
+    return item, path
+
+
+def _agent_brief(session, case, text):
+    from .dispatch import _oqa_preamble
+
+    target = candidate_file(session, case)
+    return (f"You rewrite the saved script of case {case} (oqa session {session.id}, workspace {session.ws}) so that it works on every run. The live result and the pictures are final: "
+            f"do not run the case again and do not touch them.\n{_oqa_preamble(session)}\n"
+            f"Write the complete rewritten script to {target} (create the folder if needed), then run: oqa live regenerate {case} --candidate {target}\n"
+            "That command checks the script, replays it on a fresh run (twice) and prints PASS, or RETRY with what failed and a new brief: fix exactly that, write the file again and submit again. "
+            "Stop when it says PASS or FAIL. Reply in Vietnamese with the final result and what you changed.\n\n" + text)
+
+
+def brief(session, case, attempts=3):
+    """Start a rewrite of `case`: the brief for ONE host agent. The first script stays recoverable whatever happens next."""
+    item, path = _ready(session, case)
     if running(session, case):
         raise GateError(f"{case}: a rewrite of this script is already running.")
     original = path.read_text(encoding="utf-8")
     backup = path.with_name(path.stem + ".original.js")
     if not backup.exists():
-        backup.write_text(original, encoding="utf-8")                       # the first script stays recoverable whatever happens next
+        backup.write_text(original, encoding="utf-8")
     prefix = workspace.load(session.ws)["test_prefix"]
-    failure, kept = "", False
+    events.append(session.dir, "script_generalized", case=case, status="RUNNING", attempt=1, attempts=attempts, note=f"attempt 1 of {attempts}: waiting for the agent's script")
+    return _agent_brief(session, case, build_prompt(session, case, original, item["steps"], prefix))
+
+
+def submit(session, case, text, replays=2):
+    """The script an agent wrote for `case`: kept only when the static checks and `replays` fresh replays in a row pass. Returns a summary; a failed attempt returns status RETRY with the
+    reason and a new brief, and the original script stays in place; the last failed attempt raises GateError."""
+    item, path = _ready(session, case)
+    open_ = _open_attempt(session, case)
+    if not open_:
+        raise GateError(f"{case}: no rewrite is open. Start one with: oqa live regenerate {case} --brief")
+    attempt, attempts = open_.get("attempt") or 1, open_.get("attempts") or 3
+    original = path.read_text(encoding="utf-8")
+    backup = path.with_name(path.stem + ".original.js")
+    prefix = workspace.load(session.ws)["test_prefix"]
+    started, kept = time.time(), False
+    candidate = _clean(text)
+    failure = "; ".join(check(session, case, candidate, item["steps"], prefix, original))[:700]
     try:
-        for attempt in range(1, attempts + 1):
-            started = time.time()
-            events.append(session.dir, "script_generalized", case=case, status="RUNNING", attempt=attempt, note=f"attempt {attempt} of {attempts}")
-            try:
-                candidate = _clean(ask(executable, model, build_prompt(session, case, original, item["steps"], prefix, failure)))
-            except (GateError, OSError, subprocess.TimeoutExpired) as error:
-                failure = f"the model did not answer: {str(error)[:200]}"
-                continue
-            problems = check(session, case, candidate, item["steps"], prefix, original)
-            if problems:
-                failure = "; ".join(problems)[:700]
-                continue
+        if not failure:
             path.write_text(candidate, encoding="utf-8")
-            if replays == 0:                                                 # the user chose not to run anything: only the static checks stand behind this script
+            if replays == 0:
                 kept = True
                 events.append(session.dir, "script_generalized", case=case, status="UNVERIFIED", attempt=attempt, note="rewritten, not replayed")
                 return {"case": case, "status": "UNVERIFIED", "attempts": attempt, "replays": 0, "backup": str(backup)}
-            passed = True
             for round_ in range(1, replays + 1):
                 try:
                     live.replay(session, case, headed=False, fast=True)
                 except GateError as error:
                     failure = f"replay {round_} of {replays} failed: {str(error)[:600]}"
-                    passed = False
                     break
-            if passed:
+            else:
                 kept = True
                 events.append(session.dir, "script_generalized", case=case, status="PASS", attempt=attempt, replays=replays, seconds=round(time.time() - started),
                               note=f"generic script kept after {replays} fresh replays")
                 return {"case": case, "status": "PASS", "attempts": attempt, "replays": replays, "backup": str(backup)}
-    except Exception as error:                                               # anything unforeseen: the original comes back below, and the user is told
+    except Exception as error:                                               # anything unforeseen: the original comes back below
         failure = f"unexpected {type(error).__name__}: {str(error)[:300]}"
     finally:
         if not kept:
             path.write_text(original, encoding="utf-8")
-            events.append(session.dir, "script_generalized", case=case, status="FAIL", attempt=attempts, note="original script restored: " + failure[:300])
-    raise GateError(f"{case}: no generic script passed {replays} fresh replays in {attempts} attempt(s); the original is restored. Last problem: {failure}")
+    if attempt >= attempts:
+        events.append(session.dir, "script_generalized", case=case, status="FAIL", attempt=attempt, note="original script restored: " + failure[:300])
+        raise GateError(f"{case}: no generic script passed {replays} fresh replays in {attempts} attempt(s); the original is restored. Last problem: {failure}")
+    events.append(session.dir, "script_generalized", case=case, status="RUNNING", attempt=attempt + 1, attempts=attempts, note=f"attempt {attempt + 1} of {attempts}: {failure[:200]}")
+    again = build_prompt(session, case, original, item["steps"], prefix, failure)
+    return {"case": case, "status": "RETRY", "attempt": attempt, "failure": failure, "brief": _agent_brief(session, case, again)}
+
+
+def cancel(session, case):
+    """Close an open rewrite nobody finishes (the agent died): the original script is in place already."""
+    if _open_attempt(session, case):
+        events.append(session.dir, "script_generalized", case=case, status="FAIL", attempt=(_open_attempt(session, case).get("attempt") or 1), note="cancelled: original script kept")

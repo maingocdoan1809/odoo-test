@@ -14,7 +14,8 @@ from openpyxl import Workbook
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from oqa import analysis, claims, connect, dispatch, fixtures, intake, live, report, script_bundle, sitemap, worker_mcp, workspace
+from oqa import analysis, claims, connect, fixtures, intake, live, report, script_bundle, sitemap, worker_mcp, workspace
+import cli_agents
 from oqa.browser import launch
 from oqa.odoo_ui import Odoo
 from oqa.secrets import MemoryStore
@@ -109,10 +110,10 @@ def smoke(root):
     session.strategy_ready("harness-smoke")
     session.confirm("harness-smoke", "harness-smoke")
     if os.environ.get("OQA_SMOKE_DISPATCH") == "1":
-        outcome = dispatch.run(session, "haiku", "sonnet", 150)
+        outcome = cli_agents.run(session, "haiku", "sonnet", 150)
         print(outcome, flush=True)
         if outcome["results"].get(case, {}).get("status") != "PASS":
-            for log in session.dir.glob("logs/dispatch-*/worker.log"):
+            for log in session.dir.glob("logs/host-*/worker.log"):
                 print(log.read_text(encoding="utf-8"))
             raise AssertionError("Claude worker did not complete the case.")
         print("Claude worker produced a live result and evidence.", flush=True)

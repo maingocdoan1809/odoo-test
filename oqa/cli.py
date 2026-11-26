@@ -439,10 +439,6 @@ def cmd_fixture(args):
         "fields": fields, "route": sitemap.text_path(data, "", key),
         "playwright": sitemap.codegen(data, key),
     }
-    if args.action == "advise":
-        if not args.case or not args.need:
-            raise GateError("Advise needs --case and --need.")
-        plan["proposal"] = fixtures.advise(session, args.case, plan, args.need)
     return plan, json.dumps(plan, ensure_ascii=False, indent=2)
 
 
@@ -474,20 +470,37 @@ def cmd_dispatch(args):
         text = dispatch.settle(session, args.settle, reopen=args.reopen)
         return {"case": args.settle, "settled": text}, text
     if args.plan:
-        result = dispatch.plan(session, args.limit)
+        result = dispatch.plan(session, args.limit, skip_knowledge=args.skip_knowledge)
+        if result.get("knowledge_brief"):
+            return result, ("===== knowledge pick · cases " + ", ".join(result["knowledge_cases"]) + " =====\n" + result["knowledge_brief"] +
+                            "\n\nGive this brief to ONE cheap agent of your own host (Claude Code: model haiku; Copilot CLI: its cheapest model). When it has run `oqa knowledge pick`, run `oqa dispatch --plan` again: "
+                            "the facts it chose go into each worker's brief. (--skip-knowledge hands out the workers without this step.)")
         if not result["workers"]:
             return result, "No case is free now. Held: " + (", ".join(result["held"]) or "none") + ". Waiting for a result: " + (", ".join(result["pending"]) or "none") + "."
         text = "\n\n".join(f"===== worker {w['agent']} · case {w['case']} =====\n{w['brief']}" for w in result["workers"])
         return result, text + f"\n\nStart one of your own agents per brief above (up to {len(result['workers'])} at once). When an agent finishes, run: oqa dispatch --settle <case>."
-    result = dispatch.run(session, args.worker_model, args.coordinator_model, args.worker_timeout)
-    return result, json.dumps(result, ensure_ascii=False, indent=2)
+    raise GateError("oqa starts no agent of its own: use --plan (the free cases, one brief each), --settle CASE or --repair CASE, and give each brief to one sub-agent of your own host.")
 
 
-def cmd_worker_mcp(args):
+def cmd_tool(args):
     from . import worker_mcp
 
-    worker_mcp.serve(Session.open(args.ws, args.session), args.case, args.agent)
-    return {}, ""
+    session = Session.open(args.ws, args.session)
+    if args.list or not args.name:
+        rows = [{"name": t["name"], "arguments": t["inputSchema"]["properties"], "required": t["inputSchema"]["required"], "about": t["description"]} for t in worker_mcp.TOOLS]
+        lines = [f"{r['name']}: {r['about']}\n    arguments {json.dumps(r['arguments'], ensure_ascii=False)} (required: {', '.join(r['required']) or 'none'})" for r in rows]
+        return {"tools": rows}, "\n".join(lines)
+    claim = claims.table(session).get(args.case) or {}
+    if args.agent and claim.get("agent") != args.agent:
+        raise GateError(f"{args.agent} does not hold {args.case}.")
+    try:
+        arguments = json.loads(args.args) if args.args else {}
+    except ValueError as error:
+        raise GateError(f"--args must be a JSON object: {error}") from error
+    if not isinstance(arguments, dict):
+        raise GateError("--args must be a JSON object.")
+    text = worker_mcp.call(session, args.case, args.agent or claim.get("agent", ""), args.name, arguments)
+    return {"tool": args.name, "result": text}, text
 
 
 def cmd_note(args):
@@ -603,16 +616,29 @@ def cmd_live(args):
     if args.action == "regenerate":
         from . import generalize
 
+        if args.candidate or args.cancel:
+            if args.case == "all":
+                raise GateError("--candidate and --cancel name one case.")
+            if args.cancel:
+                generalize.cancel(session, args.case)
+                return {"case": args.case, "cancelled": True}, f"{args.case}: the open rewrite was closed; the saved script is the original."
+            try:
+                text = Path(args.candidate).read_text(encoding="utf-8")
+            except OSError as error:
+                raise GateError(str(error)) from error
+            result = generalize.submit(session, args.case, text, replays=0 if args.no_verify else 2)
+            if result["status"] == "RETRY":
+                return result, f"RETRY {args.case} (attempt {result['attempt']}): {result['failure']}\nThe original script is in place. Fix exactly that and submit again.\n\n{result['brief']}"
+            return result, f"{args.case}: generic script {result['status']} after {result['attempts']} attempt(s)."
         cases = [c for c in read_json(session.dir / "strategy.json")["order"] if live.script_file(session, c).is_file() and (session.state()["results"].get(c) or {}).get("status") == "PASS"] if args.case == "all" else [args.case]
         rows = []
         for case in cases:
             try:
-                rows.append(generalize.regenerate(session, case, model=args.model, attempts=args.attempts, replays=0 if args.no_verify else 2))
+                rows.append({"case": case, "brief": generalize.brief(session, case, attempts=args.attempts)})
             except GateError as error:
-                rows.append({"case": case, "status": "FAIL", "reason": str(error)})
-        bad = [r for r in rows if r["status"] not in ("PASS", "UNVERIFIED")]
-        lines = [f"{r['case']}: generic script {r['status']}" + (f" after {r['attempts']} attempt(s)" if r["status"] in ("PASS", "UNVERIFIED") else f" - {r['reason']}") for r in rows]
-        return {"regenerated": rows, "failed": len(bad)}, "\n".join(lines)
+                rows.append({"case": case, "problem": str(error)})
+        parts = [f"===== script rewrite · case {r['case']} =====\n{r['brief']}" if "brief" in r else f"{r['case']}: {r['problem']}" for r in rows]
+        return {"rewrites": rows}, "\n\n".join(parts) + "\n\nGive each brief to one sub-agent of your own host; each ends with PASS or FAIL by itself."
     if args.action == "replay":
         if args.case == "all":
             rows = live.replay_all(session, headed=not args.headless, action_delay_ms=args.action_delay_ms,
@@ -673,6 +699,8 @@ def cmd_report(args):
     text = [f"Result: {result['main']}" + (" (the testcase file itself: each case's status is in its own row, the evidence is in the new sheets)" if back.get("in_place") else "") + (" (opened on the user's screen)" if opened else ""),
             *([back["note"]] if back.get("note") else []), f"The original file was copied to {back['backup']} first." if back.get("backup") else "",
             ", ".join(f"{k} {v}" for k, v in sorted(result["counts"].items()))]
+    if result.get("knowledge_pending"):
+        text.append("The session stays in REPORT: " + result["knowledge_pending"] + " Then run oqa report again.")
     return result, "\n".join(text)
 
 
@@ -940,8 +968,17 @@ def _describe(event):
         return f"The user chose the cases of this run: {', '.join(event['cases'])}. The strategy was rebuilt for them: wait for the confirmation."
     if kind == "cases_added":
         return f"The user added {', '.join(event['cases'])} to this session. The session is back in EXECUTE: hand them to workers (oqa dispatch --plan), then run oqa report again when every case has a result."
+    if kind == "knowledge_saved":
+        return f"The user saved the knowledge summary ({event.get('saved')} fact(s) kept). Run oqa report again to close the session."
+    if kind == "knowledge_skipped":
+        return "The user skipped the knowledge summary. Run oqa report again to close the session."
+    if kind == "dispatch_requested":
+        return f"The user asks the coordinator to take {case} ({event.get('request')}): run oqa dispatch --plan, give each brief to one sub-agent of your host, then oqa dispatch --settle <case> as each finishes."
+    if kind == "regenerate_requested":
+        return (f"The user asks for a generic script for {'every case that has a saved script' if case == 'all' else case}: run oqa live regenerate {case} --brief, give each brief to one sub-agent of your host "
+                "(it submits its own script with --candidate and ends with PASS or FAIL).")
     if kind == "stopped":
-        return "The user stopped the test. Do nothing until they resume it: run `oqa wait` again."
+        return "The user stopped the test. Stop the sub-agents you started (oqa already refuses their new work and gave back their claims) and do nothing until the user resumes it: run `oqa wait` again."
     return "The user resumed the test. Check the execution queue with oqa status."
 
 
@@ -1009,13 +1046,40 @@ def cmd_status(args):
 
 
 def cmd_knowledge(args):
+    from . import knowledge_flow
+
     ws = paths.resolve_workspace(args.ws)
     if args.what == "learn":
         result = knowledge.learn(ws, args.screen, args.kind, args.fact, args.tag, args.ref,
                                  action=args.action, condition=args.condition, profile=args.profile,
-                                 state=args.state, evidence=args.evidence)
-        return {"result": result}, f"Knowledge {result}."
-    found = knowledge.search(ws, args.screen, args.kind, args.text)
+                                 state=args.state, evidence=args.evidence, scope=args.scope)
+        return {"result": result}, f"Knowledge {result} ({args.scope})."
+    if args.what in ("brief", "pick", "digest", "draft", "status"):
+        session = Session.open(args.ws, args.session)
+        if args.what == "brief":
+            order = (read_json(session.dir / "strategy.json", {}) or {}).get("order", [])
+            cases = [c.strip() for c in (args.cases or "").split(",") if c.strip()] or order
+            text = knowledge_flow.brief(session, cases)
+            return {"brief": text}, text or "The workspace knows nothing worth choosing from yet."
+        if args.what == "digest":
+            text = knowledge_flow.digest(session)
+            return {"brief": text}, text or "This run left nothing to learn from: the knowledge summary is settled (empty)."
+        if args.what == "status":
+            owed = knowledge_flow.pending(session)
+            return {"pending": owed, "draft": knowledge_flow.review(session)}, owed or "Nothing is owed for the knowledge summary."
+        if not args.file:
+            raise GateError(f"{args.what} needs --file FILE (JSON written by the agent).")
+        try:
+            data = json.loads(Path(args.file).read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            raise GateError(f"Cannot read {args.file} as JSON: {error}") from error
+        if args.what == "pick":
+            done = knowledge_flow.pick(session, data)
+            return {"picked": done}, "Picked: " + "; ".join(f"{c}: {len(v)} fact(s)" for c, v in done.items()) + ". Run oqa dispatch --plan again."
+        done = knowledge_flow.draft(session, data)
+        return done, (f"Draft saved: {done['count']} item(s). The user reviews them on the dashboard (Tổng kết knowledge); run oqa wait." if done["count"]
+                      else "Nothing worth keeping: the knowledge summary is settled (empty).")
+    found = knowledge.search(ws, args.screen, args.kind, args.text, scope=args.scope_filter)
     return {"items": found}, "\n".join(knowledge.describe(item) for item in found) or "Nothing known yet."
 
 
@@ -1061,7 +1125,7 @@ def build_parser():
     p.add_argument("--profile", default="", help="look up knowledge for this role")
     p.add_argument("--state", default="", help="look up knowledge for this initial state")
     p = add("fixture", cmd_fixture, "plan and create approved test records")
-    p.add_argument("action", choices=["plan", "apply", "advise", "ui", "ref", "key", "cleanup"])
+    p.add_argument("action", choices=["plan", "apply", "ui", "ref", "key", "cleanup"])
     p.add_argument("screen", nargs="?", default="", help="a screen/model, or ledger | license_user | contract; not needed for key and cleanup")
     p.add_argument("--case")
     p.add_argument("--label", help="key: a short name for the record within the case")
@@ -1072,7 +1136,6 @@ def build_parser():
     p.add_argument("--values-json", help="apply: inline JSON object of model values")
     p.add_argument("--key", help="apply: unique writable field with the workspace test prefix")
     p.add_argument("--out", help="apply: reusable Playwright setup fragment")
-    p.add_argument("--need", help="advise: describe the data the case needs")
     p = add("run", cmd_run, "choose a workspace before starting a workbook run")
     p.add_argument("action", choices=["start"])
     p.add_argument("--file", required=True)
@@ -1105,18 +1168,19 @@ def build_parser():
     p.add_argument("--all", action="store_true", help="run every ready case")
     p = add("run-more", cmd_run_more, "the USER adds cases that were left out to the same session (needs a real terminal)")
     p.add_argument("--cases", help="the cases to add, comma-separated")
-    p = add("dispatch", cmd_dispatch, "run the approved queue: with --plan the host's own agents do the cases; without it oqa spawns Claude CLI workers")
+    p = add("dispatch", cmd_dispatch, "hand the approved queue to the host's own sub-agents: --plan (one brief per free case), --settle CASE, --repair CASE; oqa starts no agent itself")
     p.add_argument("--plan", action="store_true", help="claim the free cases and print one brief per case for the host's own agents (Claude Code Agent tool, Copilot CLI agents, ...)")
     p.add_argument("--limit", type=int, help="--plan: at most this many cases")
+    p.add_argument("--skip-knowledge", action="store_true", help="--plan: do not ask a cheap agent to choose the known facts each case needs")
     p.add_argument("--settle", metavar="CASE", help="a host agent finished CASE: replay its script and check the conclusion against the facts")
     p.add_argument("--repair", metavar="CASE", help="CASE passed live but its saved script does not replay: print a brief for one agent that fixes only the script (no live rerun)")
     p.add_argument("--reopen", action="store_true", help="--settle: when the script of a PASS does not replay, reopen the whole case instead of repairing only the script")
-    p.add_argument("--worker-model", default="haiku")
-    p.add_argument("--coordinator-model", default="sonnet")
-    p.add_argument("--worker-timeout", type=int, default=480)
-    p = add("worker-mcp", cmd_worker_mcp, "serve only the assigned case tools over stdio")
-    p.add_argument("case")
-    p.add_argument("--agent", required=True)
+    p = add("tool", cmd_tool, "a case tool that has no 'oqa live' command (save_download, upload_csv, open_import, capture_id, goto_fixture, reference, sitemap_*, ...); --list shows them")
+    p.add_argument("case", nargs="?", default="")
+    p.add_argument("name", nargs="?", default="")
+    p.add_argument("--args", help="the tool's arguments as one JSON object")
+    p.add_argument("--agent", default="", help="your worker id: refused when another agent holds the case")
+    p.add_argument("--list", action="store_true")
     p = add("note", cmd_note, "share something every agent of this session must know (data you made, a name, a trap)")
     p.add_argument("text", nargs="+")
     p.add_argument("--agent", default="")
@@ -1166,9 +1230,11 @@ def build_parser():
     p.add_argument("--to", help="handover: the worker that takes the running case")
     p.add_argument("--env", help="replay: the environment to run on (default main); see `oqa ws show`")
     p.add_argument("--video", choices=list(live.VIDEO_MODES), help="replay: video with a note of each step: off (default) | on | fail (keep it only if the replay fails)")
-    p.add_argument("--model", default="sonnet", help="regenerate: the model that rewrites the script (default sonnet)")
+    p.add_argument("--brief", action="store_true", help="regenerate: print the brief for one agent (the default); --candidate FILE submits the script it wrote; --cancel closes an open rewrite")
+    p.add_argument("--candidate", metavar="FILE", help="regenerate: the rewritten script an agent wrote: checked, replayed twice, kept or refused")
+    p.add_argument("--cancel", action="store_true", help="regenerate: close a rewrite nobody finishes (the original script stays)")
     p.add_argument("--no-verify", action="store_true", help="regenerate: do not replay the new script (only the static checks)")
-    p.add_argument("--attempts", type=int, default=3, help="regenerate: how many rewrites to try before restoring the original script")
+    p.add_argument("--attempts", type=int, default=3, help="regenerate: how many submissions the agent gets before the original script is restored")
     p.add_argument("--fast", action="store_true", help="replay: fast mode, both viewing pauses 0 (application waits are unchanged)")
     p.add_argument("--caption", help="shot: describe the checkpoint shown in this evidence picture")
     p.add_argument("--caption-language", choices=["vi", "en", "ja"], help="replay: override the workspace caption language")
@@ -1244,8 +1310,12 @@ def build_parser():
     p.add_argument("--sheet", help="show: one sheet of a workbook")
     p.add_argument("--max", type=int, default=6000, help="show: most characters to print")
     add("status", cmd_status, "phase, progress and the next command")
-    p = add("knowledge", cmd_knowledge, "search or add what was learned about this Odoo")
-    p.add_argument("what", choices=["search", "learn"])
+    p = add("knowledge", cmd_knowledge, "search or add what was learned about this Odoo (workspace or shared); brief|pick before the workers, digest|draft after the last case")
+    p.add_argument("what", choices=["search", "learn", "brief", "pick", "digest", "draft", "status"])
+    p.add_argument("--scope", choices=["workspace", "shared"], default="workspace", help="learn: workspace (this Odoo only) or shared (every workspace)")
+    p.add_argument("--scope-filter", choices=["workspace", "shared"], default=None, help="search: only this scope (default both)")
+    p.add_argument("--file", help="pick | draft: the JSON the agent wrote")
+    p.add_argument("--cases", help="brief: the cases to choose facts for, comma-separated (default all)")
     p.add_argument("--screen")
     p.add_argument("--kind")
     p.add_argument("--text")

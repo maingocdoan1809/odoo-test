@@ -23,7 +23,7 @@ NEXT = {
     "CONNECT": "oqa connect",
     "CONFIRM": "oqa strategy, then ask the user to approve it (the user runs oqa confirm, or presses Confirm in the dashboard)",
     "EXECUTE": "oqa dispatch --plan, then start ONE sub-agent per brief with the host's own agent tool (Claude Code Agent tool, Copilot CLI agent), all in one message; the agent runs oqa live start / step / end for its case only. Never run a case yourself and never use oqa dispatch without --plan. When an agent finishes: oqa dispatch --settle <case>",
-    "REPORT": "oqa report",
+    "REPORT": "first oqa note --case CASE for every lesson in the sub-agents' final reports that a future run needs (a refused action and its workaround, a surprising control) if they did not note it themselves; then oqa report; if it says the knowledge summary is owed: oqa knowledge digest, give its brief to ONE cheap agent (haiku), the agent runs oqa knowledge draft, the user edits and saves it on the dashboard (oqa wait), then oqa report again",
     "DONE": "nothing: the session is finished",
 }
 

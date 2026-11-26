@@ -304,3 +304,60 @@ def test_the_page_has_record_buttons_and_no_leftover_of_the_removed_video_select
     page = (dashboard_server.PAGE).read_text(encoding="utf-8")
     assert page.count('data-record="1"') >= 4 and "Quay video tất cả" in page
     assert "videoControl" not in page and "data-video-mode" not in page            # a call to a removed function would blank the Scripts tab
+
+
+def test_the_dashboard_buttons_only_leave_a_request_for_the_coordinators_sub_agents(session, up, tmp_path, monkeypatch):
+    """Dispatch, hand over and generic script: the dashboard starts no process and no model; `oqa wait` tells the host, which gives the work to a sub-agent of its own."""
+    from oqa import cli, live
+
+    at_confirm(session, tmp_path)
+    session.confirm_current("t")
+    monkeypatch.setattr(dashboard_server.subprocess, "Popen", lambda *a, **k: pytest.fail("the dashboard must not start a process for this"))
+    sid = {"ws": "demo", "id": session.id}
+    assert up.call("/api/dispatch-request", {**sid, "case": "ORD-001"})[1]["ok"] is True
+    path = live.script_file(session, "ORD-001")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("// step 1\n", encoding="utf-8")
+    with session.update() as state:
+        state["results"]["ORD-001"] = {"status": "PASS", "attempts": 1}
+    answer = up.call("/api/regenerate", {**sid, "case": "ORD-001"})[1]
+    assert answer["ok"] is True and "sub-agent" in answer["message"]
+    kinds = [e["kind"] for e in session.news()]
+    assert "dispatch_requested" in kinds and "regenerate_requested" in kinds
+    sentences = " ".join(cli._describe(e) for e in session.news())
+    assert "oqa dispatch --plan" in sentences and "oqa live regenerate ORD-001 --brief" in sentences and "sub-agent" in sentences
+
+
+def test_the_dashboard_shows_edits_moves_and_deletes_knowledge_and_saves_the_summary(session, up, tmp_path, ws):
+    from oqa import claims, knowledge, knowledge_flow
+
+    sid = {"ws": "demo", "id": session.id}
+    assert up.call("/api/knowledge", {"ws": "demo", "op": "add", "scope": "workspace", "item": {"screen": "res.partner", "kind": "rule", "fact": "Save needs a Name"}})[1]["ok"]
+    listed = up.call("/api/knowledge?ws=demo")[1]
+    assert [(i["scope"], i["fact"]) for i in listed["items"]] == [("workspace", "Save needs a Name")] and "shared" in listed["scopes"]
+    item = listed["items"][0]
+    moved = up.call("/api/knowledge", {"ws": "demo", "op": "edit", "id": item["id"], "scope": "workspace", "item": {"fact": "Save needs a Name"}, "to": "shared"})[1]
+    assert moved["scope"] == "shared"
+    refused = up.call("/api/knowledge", {"ws": "demo", "op": "edit", "id": moved["id"], "scope": "shared", "item": {"fact": "password: x"}})[1]
+    assert "password" in refused["error"]
+    assert up.call("/api/knowledge", {"ws": "demo", "op": "delete", "id": moved["id"], "scope": "shared"})[1]["ok"]
+    assert up.call("/api/knowledge?ws=demo")[1]["items"] == []
+    assert up.call("/api/knowledge", {"ws": "demo", "op": "nonsense"})[0] == 400
+
+    assert "sau khi mọi case" in up.call("/api/knowledge-review", {**sid, "op": "skip"})[1]["error"]          # not before the cases are done
+    at_confirm(session, tmp_path)
+    session.confirm_current("t")
+    with session.update() as state:
+        state["phase"] = "REPORT"
+        state["results"] = {c["id"]: {"status": "PASS", "attempts": 1} for c in session.cases()["cases"]}
+    claims.add_note(session, "worker", "A thing the next run should know", "ORD-001")
+    knowledge_flow.digest(session)
+    knowledge_flow.draft(session, [{"screen": "res.partner", "kind": "quirk", "fact": "Một điều nên nhớ", "scope": "shared"}])
+    view_ = up.call(f"/api/session?ws=demo&id={session.id}")[1]
+    assert view_["knowledge_review"]["status"] == "ready" and view_["knowledge_review"]["items"][0]["scope"] == "shared" and view_["knowledge_owed"]
+    bad = up.call("/api/knowledge-review", {**sid, "op": "save", "items": [{"screen": "", "kind": "rule", "fact": "x"}]})[1]
+    assert "error" in bad and knowledge_flow.review(session)["status"] == "ready"                                # a refused item saves nothing
+    saved = up.call("/api/knowledge-review", {**sid, "op": "save", "items": [{**view_["knowledge_review"]["items"][0], "fact": "Một điều nên nhớ (đã sửa)", "scope": "workspace"}]})[1]
+    assert saved["saved"]["added"] == 1
+    assert [(i["scope"], i["fact"]) for i in knowledge.everything("demo")] == [("workspace", "Một điều nên nhớ (đã sửa)")]
+    assert up.call(f"/api/session?ws=demo&id={session.id}")[1]["knowledge_owed"] == ""

@@ -10,7 +10,7 @@ import unicodedata
 from pathlib import Path
 from urllib.parse import quote
 
-from . import autostart, captions, conflicts, dispatch_requests, generalize, live, paths, refs, regression, report, script_bundle, sitemap, view, workspace
+from . import autostart, captions, claims, conflicts, dispatch_requests, events, generalize, knowledge, knowledge_flow, live, paths, refs, regression, report, script_bundle, sitemap, view, workspace
 from .localserver import LocalApp, font_faces
 from .state import GateError, Session
 from .store import SchemaError, read_json
@@ -194,6 +194,37 @@ class Dashboard(LocalApp):
                                  "problems": problems}
                 headers = {"Content-Disposition": _attachment(f"{re.sub(r'[^A-Za-z0-9._-]+', '_', case)}.js")} if query.get("download") == "1" else {}
                 return 200, script.read_bytes(), "text/javascript; charset=utf-8", headers
+            if method == "GET" and path == "/api/knowledge":
+                ws = paths.resolve_workspace(query.get("ws"))
+                return 200, {"ws": ws, "kinds": list(knowledge.KINDS), "scopes": list(knowledge.SCOPES), "items": knowledge.everything(ws)}
+            if method == "POST" and path == "/api/knowledge":
+                ws = paths.resolve_workspace(body.get("ws"))
+                op, scope, item_id = body.get("op"), body.get("scope") or knowledge.WORKSPACE, str(body.get("id", ""))
+                item = body.get("item") if isinstance(body.get("item"), dict) else {}
+                try:
+                    if op == "add":
+                        result = knowledge.learn(ws, item.get("screen"), item.get("kind"), item.get("fact"), item.get("tag", ""), item.get("ref") or "-", action=item.get("action"),
+                                                 condition=item.get("condition"), profile=item.get("profile"), state=item.get("state"), evidence=item.get("evidence"), scope=scope)
+                        return 200, {"ok": True, "result": result}
+                    if op == "edit":
+                        return 200, {"ok": True, **knowledge.edit(ws, scope, item_id, item, to_scope=body.get("to") or None)}
+                    if op == "delete":
+                        knowledge.remove(ws, scope, item_id)
+                        return 200, {"ok": True}
+                except knowledge.KnowledgeError as error:
+                    return 200, {"error": str(error)}
+                return 400, {"error": "op must be add, edit or delete"}
+            if method == "POST" and path == "/api/knowledge-review":
+                session = self._session(body)
+                if session.state()["phase"] not in ("REPORT", "DONE"):
+                    return 200, {"error": "Tổng kết knowledge chỉ có sau khi mọi case đã có kết quả."}
+                try:
+                    if body.get("op") == "skip":
+                        knowledge_flow.skip(session)
+                        return 200, {"ok": True}
+                    return 200, {"ok": True, "saved": knowledge_flow.save(session, body.get("items"))}
+                except knowledge.KnowledgeError as error:
+                    return 200, {"error": str(error)}
             if method == "GET" and path == "/api/regression":
                 return 200, regression.matrix(paths.resolve_workspace(query.get("ws")))
             if method == "GET" and path == "/api/video":
@@ -237,14 +268,9 @@ class Dashboard(LocalApp):
                     return 200, {"error": "Case này chưa có script đã lưu để tạo lại (chỉ case PASS mới lưu script)."}
                 if case != "all" and generalize.running(session, case):
                     return 200, {"error": "Script của case này đang được viết lại, đợi lượt hiện tại xong."}
-                log = session.dir / "logs" / f"regenerate-{re.sub(r'[^A-Za-z0-9._-]+', '_', case)}.log"
-                log.parent.mkdir(exist_ok=True)
-                entry = Path(__file__).resolve().parent.parent / "oqa.py"
-                with log.open("ab") as out:
-                    subprocess.Popen([sys.executable, str(entry), "live", "regenerate", case, "--ws", session.ws, "--session", session.id],
-                                     stdout=out, stderr=out, stdin=subprocess.DEVNULL, start_new_session=True,
-                                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
-                return 200, {"ok": True, "message": "Đang nhờ AI viết lại script cho " + ("tất cả case có script" if case == "all" else "case này") + ", rồi chạy lại 2 lần để kiểm. Mất vài phút."}
+                events.append(session.dir, "regenerate_requested", case=case, by="dashboard")
+                claims.add_note(session, "user", f"Rewrite the saved script of {'every case that has one' if case == 'all' else 'case ' + case} as a generic script: oqa live regenerate {case} --brief, then give the brief to a sub-agent.", case="" if case == "all" else case)
+                return 200, {"ok": True, "message": "Đã gửi yêu cầu viết lại script cho " + ("tất cả case có script" if case == "all" else "case này") + ". Agent đang điều phối sẽ giao cho sub-agent, rồi chạy lại 2 lần để kiểm. Mất vài phút."}
             if method == "POST" and path == "/api/replay":
                 video = body.get("video", "off")
                 if video not in live.VIDEO_MODES:

@@ -3,7 +3,7 @@ they can never disagree about a case, a step or a picture."""
 import time
 
 from . import analysis as analysis_mod
-from . import captions, claims, dispatch_requests, events, generalize, knowledge, live, paths, record_names, refs, replays, workspace
+from . import captions, claims, dispatch_requests, events, generalize, knowledge, knowledge_flow, live, paths, record_names, refs, replays, workspace
 from .state import MAX_REPAIRS, PHASES, Session
 from .store import read_json
 
@@ -281,7 +281,7 @@ def session_view(session: Session):
     strategy_md = session.dir / "strategy.md"
     conflict_list = analysis_mod.conflicts(read_json(session.dir / "analysis.json"), state.get("conflict_choices"))
     selection = selection_view(session, state, current)
-    return {"selection": selection, "conflicts": conflict_list, "conflicts_pending": sum(1 for c in conflict_list if not c["choice"]), "workspace": session.ws, "session": session.id, "replay_caption_language": replay_language, "file": state["file"], "phase": current, "phases": phases, "waiting": state["waiting"], "stopped": state.get("stopped"), "can_stop": current != "DONE" and not state.get("stopped"),
+    return {"selection": selection, "knowledge_review": knowledge_flow.review(session) if current in ("REPORT", "DONE") else None, "knowledge_owed": knowledge_flow.pending(session) if current == "REPORT" else "", "conflicts": conflict_list, "conflicts_pending": sum(1 for c in conflict_list if not c["choice"]), "workspace": session.ws, "session": session.id, "replay_caption_language": replay_language, "file": state["file"], "phase": current, "phases": phases, "waiting": state["waiting"], "stopped": state.get("stopped"), "can_stop": current != "DONE" and not state.get("stopped"),
             "confirmed": bool(state["confirmation"]), "created": state["created"], "updated": log[-1]["ts"] if log else state["created"], "idle_hours": round(hours, 1), "idle": hours >= IDLE_HOURS, "now": latest["text"] if latest else "",
             "counts": counts(records), "workers": worker_load(records), "replay_counts": replay_counts(records), "total": len(records), "cases": records, "activity": activity(log), "free_cases": claims.free_cases(session) if current == "EXECUTE" else [], "notes": claims.notes(session, 12), "connect": state.get("connect"),
             "reports": reports(session), "strategy": strategy_md.read_text(encoding="utf-8") if strategy_md.exists() else "", "can_confirm": current == "CONFIRM" and bool(state.get("strategy_sha")) and (session.dir / "strategy.json").exists()

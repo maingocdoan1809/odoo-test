@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 
 from . import analysis as analysis_mod
-from . import captions, claims, events, memory, record_names, refs, retrieval, workspace
+from . import captions, claims, events, knowledge, knowledge_flow, memory, record_names, refs, retrieval, workspace
 from .state import GateError
 from .store import read_json
 
@@ -64,6 +64,12 @@ def messages(session, texts, references):
     return [{"code": code, **found.get(code, {"source": "", "text": "not found in the shared references: ask the coordinator, do not guess"})} for code in codes]
 
 
+def with_picks(session, case_id, lines):
+    """The facts a cheap agent chose for this case (by meaning) come first, then what keyword matching found; the same fact is told once."""
+    first = [knowledge.describe(item, 550) for item in knowledge_flow.picked(session, case_id)]
+    return first + [line for line in lines if line not in first]
+
+
 def build(session, case_id, screen="", issue="", *, only="", profile="", state=""):
     if only not in ("", "sitemap", "knowledge"):
         raise GateError("Case context section must be sitemap or knowledge.")
@@ -80,7 +86,7 @@ def build(session, case_id, screen="", issue="", *, only="", profile="", state="
         or (config["profiles"][0]["name"] if len(config["profiles"]) == 1 else ""),
         state=state, only=only, detail=bool(only or screen or issue))
     if only:
-        result = {"case": case_id, only: context.get(only, [])}
+        result = {"case": case_id, only: with_picks(session, case_id, context.get(only, [])) if only == "knowledge" else context.get(only, [])}
         if only in retriever.unavailable:
             result["unavailable"] = retriever.unavailable[only]
         return result
@@ -110,7 +116,7 @@ def build(session, case_id, screen="", issue="", *, only="", profile="", state="
         "conclusions": {"result_history": (state.get("history") or {}).get(case_id, []),
                         "rule": "FAIL = the application differs from the expectation (verify the operated control first). Automation problems and missing preconditions are BLOCKED/PENDING after `diagnose`."},
         "sitemap": context.get("sitemap", []),
-        "knowledge": context.get("knowledge", []),
+        "knowledge": with_picks(session, case_id, context.get("knowledge", [])),
         **({"context_unavailable": retriever.unavailable} if retriever.unavailable else {}),
         "previous": memory.recall(session.ws, memory.stem_of(state["file"]), case_id),
         "notes": [note for note in claims.notes(session) if note["case"] in ("", case_id)][-8:],

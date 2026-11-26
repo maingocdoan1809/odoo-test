@@ -1,7 +1,6 @@
 """What "Stop" really does: end the work of ONE session, and nothing else of the user's machine.
 
-The flag in state.json only refuses new work. This module also stops what already runs: the case workers (the Claude CLI and its `worker-mcp` server), the
-Playwright daemon of each case with its Chromium, and it gives every claim back. A process belongs to the session only when its command line holds the session
+The flag in state.json only refuses new work. This module also stops what already runs: the Playwright daemon of each case with its Chromium, and it gives every claim back. A process belongs to the session only when its command line holds the session
 folder or an `oqa-<session id>-` browser name, so another session's browser, or one the user opened, is never touched.
 
 Every case that started a run and has not finished it gets `attempt_finished` with status STOPPED. The run counters are not changed, so a resume queues the

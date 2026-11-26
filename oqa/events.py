@@ -68,10 +68,15 @@ KINDS = {
     "handover": ("case", "attempt", "reason"),
     "data_created": ("case", "attempt", "model", "field", "key"),
     "dispatch_requested": ("case", "request"),
+    "regenerate_requested": ("case", "by"),
+    "knowledge_picked": ("cases",),
+    "knowledge_drafted": ("count",),
+    "knowledge_saved": ("saved",),
+    "knowledge_skipped": ("count",),
     "dispatch_resolved": ("case", "status"),
     "session_finished": ("counts",),
 }
-USER_KINDS = ("confirmed", "conflict_decided", "answered", "ref_added", "hint", "stopped", "resumed", "cases_selected", "cases_added")        # what only the user does: the assistant waits for these
+USER_KINDS = ("confirmed", "conflict_decided", "answered", "ref_added", "hint", "stopped", "resumed", "cases_selected", "cases_added", "dispatch_requested", "regenerate_requested", "knowledge_saved", "knowledge_skipped")        # what only the user does: the assistant waits for these
 STEP_STATUSES = ("PASS", "FAIL", "SKIPPED")
 CATEGORIES = ("application", "automation", "precondition")    # what a non-PASS conclusion means: the application is wrong, our automation is, or the test lacks what it needs
 CASE_STATUSES = ("PASS", "FAIL", "PENDING", "BLOCKED", "NOT EXECUTED")

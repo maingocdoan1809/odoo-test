@@ -363,17 +363,30 @@
     .menu-panel { position:fixed; left:12px; right:12px; top:auto; width:auto; }
     .sbar-meta span:not(:first-child):not(.now) { display:none; }
   }
+
+  .scripts-bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; }
+  #knowledgeMain { display:block; overflow:auto; padding:20px 24px 32px; }
+  #knowledgeMain > .panel > header { display:grid; gap:4px; margin-bottom:16px; }
+  #knowledgeMain > .panel > header h2 { font:600 17px/1.4 var(--display); } #knowledgeMain > .panel > header span { color:var(--muted); font-size:13px; }
+  .ktable td { vertical-align:top; } .ktable small { display:block; margin-top:2px; } .kact { white-space:nowrap; }
+  .kform { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px 12px; margin:8px 0; }
+  .kform .kf { display:grid; gap:3px; font-size:12.5px; } .kform .kf.wide { grid-column:1 / -1; } .kform .kf span { color:var(--muted); }
+  .kform input[type=text], .kform select { height:32px; padding:0 8px; border:1px solid var(--line); border-radius:6px; background:var(--surface); width:100%; }
+  .kadd, .kcard { padding:12px 14px; margin:8px 0; } .kcard.off { opacity:.55; }
+  .khead { display:flex; flex-wrap:wrap; gap:10px; align-items:center; } .khead select { height:30px; width:auto; }
 </style>
 </head>
 <body>
 <div class="top"><b>Odoo Test</b><nav class="tabs workspace-tabs" role="tablist" aria-label="Workspace">
   <button id="tab-progress" role="tab" data-workspace-tab="progress" aria-selected="true" aria-controls="main">Danh sách phiên</button>
   <button id="tab-scripts" role="tab" data-workspace-tab="scripts" aria-selected="false" aria-controls="scriptsMain" tabindex="-1">Scripts</button>
+  <button id="tab-knowledge" role="tab" data-workspace-tab="knowledge" aria-selected="false" aria-controls="knowledgeMain" tabindex="-1">Knowledge</button>
   <button id="tab-site-map" role="tab" data-workspace-tab="site_map" aria-selected="false" aria-controls="siteMapMain" tabindex="-1">Sơ đồ màn hình</button>
 </nav><div class="live" aria-live="polite"><span class="dot" id="dot"></span><span id="liveText">đang tải…</span></div></div>
 <div class="layout">
   <main id="main" role="tabpanel" aria-labelledby="tab-progress"></main>
   <main id="scriptsMain" role="tabpanel" aria-labelledby="tab-scripts" hidden></main>
+  <main id="knowledgeMain" role="tabpanel" aria-labelledby="tab-knowledge" hidden></main>
   <main id="siteMapMain" role="tabpanel" aria-labelledby="tab-site-map" hidden></main>
 </div>
 <div class="lightbox" id="lb" role="dialog" aria-modal="true" aria-label="Ảnh bằng chứng">
@@ -603,6 +616,8 @@ function inboxItems(v) {
       <div class="ask-actions"><button class="btn primary" id="confirm" ${S.busy || v.conflicts_pending > 0 ? "disabled" : ""}>Xác nhận và bắt đầu test</button></div>${err}</section>`);
   if (["ANALYZE", "CONNECT", "CONFIRM"].includes(v.phase) && (v.conflicts || []).length) items.unshift(conflictPanel(v));
   if (v.selection && v.selection.can_add && !v.stopped && !v.waiting) items.push(moreBox(v));
+  const summary = knowledgePanel(v);
+  if (summary) items.push(summary);
   const hint = v.cases.filter(needsHint);
   if (hint.length) items.push(`<section class="ask"><h3>AI cần gợi ý của bạn (${hint.length} case)</h3><p class="muted">Các case này đã hết số lần tự sửa.</p>${caseJump(hint)}</section>`);
   const broken = v.cases.filter(workerFailed);
@@ -826,7 +841,7 @@ function replayBar(k) {
   return `<div class="dtools replaybar">
     <button class="btn sm" data-replay="${esc(k.id)}" ${k.can_replay ? "" : "disabled"} title="${esc(note)}">Chạy lại testcase</button>
     <button class="btn sm primary" data-replay="${esc(k.id)}" data-record="1" ${k.can_replay ? "" : "disabled"} title="${k.can_replay ? "Chạy lại testcase và quay video có chú thích từng bước" : "Chưa có script đã lưu."}">Quay video</button>
-    <button class="btn sm" data-regenerate="${esc(k.id)}" ${k.can_replay && !(k.generalized && k.generalized.status === "RUNNING") ? "" : "disabled"} title="AI viết lại script để không phụ thuộc id, dữ liệu hay trạng thái của lần chạy này, rồi tự chạy lại 2 lần để kiểm">Tạo lại script (generic)</button>
+    <button class="btn sm" data-regenerate="${esc(k.id)}" ${k.can_replay && !(k.generalized && k.generalized.status === "RUNNING") ? "" : "disabled"} title="Agent điều phối giao cho sub-agent viết lại script để không phụ thuộc id, dữ liệu hay trạng thái của lần chạy này, rồi tự chạy lại 2 lần để kiểm">Tạo lại script (generic)</button>
     ${k.generalized ? `<span class="muted" style="font-size:12px">Script generic: ${esc(k.generalized.status === "RUNNING" ? "đang viết lại và kiểm tra…" : k.generalized.status === "PASS" ? "đã tạo, replay 2 lần đạt" : k.generalized.status === "STALE" ? "lần viết lại trước bị gián đoạn, có thể tạo lại" : k.generalized.status === "UNVERIFIED" ? "đã viết lại, chưa replay kiểm" : "không đạt, đã giữ script cũ")}</span>` : ""}
     ${videos.map((file, i) => `<a class="btn sm" href="${videoUrl(S.sel.ws, file)}" target="_blank" rel="noopener">Xem video${videos.length > 1 ? ` ${i + 1}` : ""}</a>`).join("")}
     <span class="muted" id="replayMsg" style="font-size:12px">${k.can_replay ? "Kết quả chạy lại hiển thị riêng (Replay), không đổi kết quả Live." : "Chưa có script đã lưu."}</span>
@@ -874,13 +889,14 @@ const mapGet = params => get("/api/sitemap?" + new URLSearchParams({ ws: M.ws, l
   return data;
 });
 
-const TABS = ["progress", "scripts", "site_map"];
+const TABS = ["progress", "scripts", "knowledge", "site_map"];
 function workspaceTab(tab) {
   S.tab = tab;
   document.body.classList.toggle("site-map-active", tab === "site_map");
   $("main").hidden = tab !== "progress";
   $("siteMapMain").hidden = tab !== "site_map";
   $("scriptsMain").hidden = tab !== "scripts";
+  $("knowledgeMain").hidden = tab !== "knowledge";
   document.querySelectorAll("[data-workspace-tab]").forEach(button => {
     const selected = button.dataset.workspaceTab === tab;
     button.setAttribute("aria-selected", selected); button.tabIndex = selected ? 0 : -1;
@@ -891,6 +907,7 @@ function workspaceTab(tab) {
   history.replaceState(null, "", url);
   if (tab === "site_map") loadMap();
   if (tab === "scripts") loadScripts();
+  if (tab === "knowledge") loadKnowledge();
 }
 
 const R = { ws: "", data: null, msg: "", busy: false, detail: null };
@@ -956,6 +973,157 @@ function renderScripts() {
     <div class="scripts-bar"><select id="scriptsWs" aria-label="Workspace" style="width:auto">${wsOptions}</select>${captionSelect(captionLanguage(d.replay_caption_language || "vi"))}${runAll}<button class="btn" id="scriptsReload">Tải lại</button><span class="muted">${esc(R.msg)}</span></div>
     ${d.scripts.length ? `<div class="case-table-scroll card" style="overflow:auto"><table class="scripts-table"><thead><tr><th>Script / testcase</th>${d.environments.map(e => `<th>${esc(e)}</th>`).join("")}<th>Chạy lại</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">Workspace này chưa có script nào được lưu (chỉ case PASS mới lưu script).</p>'}</section>`;
 }
+
+
+/* ---- Knowledge: the workspace's own and the shared one, and the summary of a finished run ---- */
+const K = { ws: "", data: null, q: "", kind: "", scope: "", edit: null, add: false, msg: "", review: null, reviewAt: "", reviewMsg: "" };
+const SCOPE_LABEL = { workspace: "Riêng workspace", shared: "Chung mọi workspace" };
+const KIND_LABEL = { login: "Đăng nhập", navigation: "Điều hướng", locator: "Cách tìm control", data: "Dữ liệu", error: "Lỗi", fix: "Cách sửa", quirk: "Hành vi lạ", rule: "Quy tắc" };
+const kName = id => (id && id.indexOf("{") === 0) ? id : id;
+function knowledgeWorkspace() {
+  const names = (S.workspaces || []).map(w => w.name);
+  return K.ws && names.includes(K.ws) ? K.ws : (S.sel && S.sel.ws) || S.ws || names[0] || "";
+}
+async function loadKnowledge() {
+  K.ws = knowledgeWorkspace();
+  if (!K.ws) { $("knowledgeMain").innerHTML = '<section class="panel"><p class="muted">Chưa có workspace nào.</p></section>'; return; }
+  const ws = K.ws, data = await get("/api/knowledge?ws=" + encodeURIComponent(ws));
+  if (ws !== K.ws) return;
+  K.data = data.error ? null : data; K.msg = data.error || K.msg;
+  renderKnowledge();
+}
+const kOptions = (values, current, labels) => values.map(v => `<option value="${esc(v)}" ${v === current ? "selected" : ""}>${esc((labels || {})[v] || v)}</option>`).join("");
+const kInput = (name, label, value, wide) => `<label class="kf${wide ? " wide" : ""}"><span>${esc(label)}</span><input type="text" data-kf="${name}" value="${esc(value || "")}"></label>`;
+const kText = (name, label, value) => `<label class="kf wide"><span>${esc(label)}</span><textarea data-kf="${name}" rows="2">${esc(value || "")}</textarea></label>`;
+function kForm(item, scope, withMove) {
+  const d = K.data;
+  return `<div class="kform">
+    ${kInput("screen", "Màn hình / model", item.screen)}<label class="kf"><span>Loại</span><select data-kf="kind">${kOptions(d.kinds, item.kind || "rule", KIND_LABEL)}</select></label>
+    ${kText("fact", "Nội dung (một câu)", item.fact)}
+    ${kInput("condition", "Điều kiện áp dụng", item.condition)}${kInput("action", "Thao tác", item.action)}${kInput("profile", "Vai trò", item.profile)}${kInput("state", "Trạng thái", item.state)}
+    ${kInput("evidence", "Bằng chứng cần chụp", item.evidence, true)}${kInput("ref", "Nguồn", item.ref === "-" ? "" : item.ref, true)}
+    <label class="kf"><span>${withMove ? "Phạm vi (đổi để chuyển)" : "Phạm vi"}</span><select data-kf-scope>${kOptions(d.scopes, scope, SCOPE_LABEL)}</select></label></div>`;
+}
+function kRead(box) {
+  const out = {};
+  box.querySelectorAll("[data-kf]").forEach(el => { out[el.dataset.kf] = el.value.trim(); });
+  return { item: out, scope: box.querySelector("[data-kf-scope]")?.value };
+}
+function kRows() {
+  const d = K.data; if (!d) return "";
+  const q = K.q.trim().toLowerCase();
+  const rows = d.items.filter(i => (!K.kind || i.kind === K.kind) && (!K.scope || i.scope === K.scope)
+    && (!q || [i.screen, i.fact, i.condition, i.action, i.evidence, i.ref].join(" ").toLowerCase().includes(q)));
+  if (!rows.length) return `<tr><td colspan="5" class="muted">Không có mục nào khớp.</td></tr>`;
+  return rows.map(i => {
+    const editing = K.edit && K.edit.id === i.id && K.edit.scope === i.scope;
+    const scopeTag = `<span class="tag ${i.scope === "shared" ? "attn" : ""}">${esc(SCOPE_LABEL[i.scope])}</span>`;
+    const where = [i.condition && "khi " + i.condition, i.action && "thao tác " + i.action, i.profile && "vai trò " + i.profile, i.state && "trạng thái " + i.state].filter(Boolean).join(" · ");
+    if (editing) return `<tr class="kedit"><td colspan="5" data-kbox="${esc(i.id)}" data-kscope="${esc(i.scope)}">${kForm(i, i.scope, true)}
+      <div class="ask-actions"><button class="btn primary" data-k-save>Lưu thay đổi</button><button class="btn" data-k-cancel>Hủy</button></div></td></tr>`;
+    return `<tr><td><b>${esc(i.screen)}</b><small class="muted">${esc(KIND_LABEL[i.kind] || i.kind)}</small></td>
+      <td>${esc(i.fact)}${where ? `<small class="muted">${esc(where)}</small>` : ""}${i.evidence ? `<small class="muted">Bằng chứng: ${esc(i.evidence)}</small>` : ""}</td>
+      <td><small>${esc(i.ref === "-" ? "" : i.ref)}</small></td><td>${scopeTag}</td>
+      <td class="kact"><button class="btn sm" data-k-edit="${esc(i.id)}" data-kscope="${esc(i.scope)}">Sửa</button>
+      <button class="btn sm" data-k-move="${esc(i.id)}" data-kscope="${esc(i.scope)}" title="${i.scope === "shared" ? "Chuyển về riêng workspace này" : "Chia sẻ cho mọi workspace"}">${i.scope === "shared" ? "Về riêng" : "Chia sẻ"}</button>
+      <button class="btn sm danger" data-k-del="${esc(i.id)}" data-kscope="${esc(i.scope)}">Xóa</button></td></tr>`;
+  }).join("");
+}
+function renderKnowledge() {
+  const box = $("knowledgeMain"), d = K.data;
+  if (!d) { box.innerHTML = `<section class="panel"><div class="err">${esc(K.msg || "Không tải được knowledge.")}</div></section>`; return; }
+  const wsOptions = (S.workspaces || []).map(w => `<option ${w.name === K.ws ? "selected" : ""}>${esc(w.name)}</option>`).join("");
+  const own = d.items.filter(i => i.scope === "workspace").length, shared = d.items.length - own;
+  box.innerHTML = `<section class="panel"><header><h2>Knowledge (${d.items.length})</h2><span>Điều AI đã học về Odoo này: ${own} mục riêng workspace, ${shared} mục chung cho mọi workspace. AI đọc cả hai khi chạy case; mục riêng được ưu tiên.</span></header>
+    <div class="scripts-bar"><select id="knowledgeWs" aria-label="Workspace" style="width:auto">${wsOptions}</select>
+      <input type="search" id="knowledgeQ" placeholder="Tìm trong knowledge" value="${esc(K.q)}" style="width:240px">
+      <select id="knowledgeKind" aria-label="Loại" style="width:auto"><option value="">Mọi loại</option>${kOptions(d.kinds, K.kind, KIND_LABEL)}</select>
+      <select id="knowledgeScope" aria-label="Phạm vi" style="width:auto"><option value="">Cả hai phạm vi</option>${kOptions(d.scopes, K.scope, SCOPE_LABEL)}</select>
+      <button class="btn primary" id="knowledgeAdd">Thêm mục</button><button class="btn" id="knowledgeReload">Tải lại</button><span class="muted" id="knowledgeMsg" role="status">${esc(K.msg)}</span></div>
+    ${K.add ? `<div class="card kadd" data-kbox="new">${kForm({}, "workspace", false)}<div class="ask-actions"><button class="btn primary" data-k-create>Lưu mục mới</button><button class="btn" data-k-cancel>Hủy</button></div></div>` : ""}
+    <div class="case-table-scroll card" style="overflow:auto"><table class="scripts-table ktable"><thead><tr><th>Màn hình</th><th>Nội dung</th><th>Nguồn</th><th>Phạm vi</th><th></th></tr></thead><tbody id="knowledgeRows">${kRows()}</tbody></table></div></section>`;
+}
+async function kPost(body) {
+  const r = await post("/api/knowledge", { ws: K.ws, ...body }).catch(() => ({ error: "Không gửi được yêu cầu." }));
+  K.msg = r.error || "Đã lưu."; if (!r.error) { K.edit = null; K.add = false; }
+  await loadKnowledge();
+  return r;
+}
+document.addEventListener("click", async e => {
+  const t = e.target;
+  if (t.closest("#knowledgeAdd")) { K.add = true; K.edit = null; renderKnowledge(); return; }
+  if (t.closest("#knowledgeReload")) { K.msg = ""; await loadKnowledge(); return; }
+  if (t.closest("[data-k-cancel]")) { K.add = false; K.edit = null; renderKnowledge(); return; }
+  const edit = t.closest("[data-k-edit]");
+  if (edit) { K.edit = { id: edit.dataset.kEdit, scope: edit.dataset.kscope }; K.add = false; renderKnowledge(); return; }
+  if (t.closest("[data-k-create]")) { const f = kRead(t.closest("[data-kbox]")); await kPost({ op: "add", scope: f.scope, item: f.item }); return; }
+  if (t.closest("[data-k-save]")) {
+    const box = t.closest("[data-kbox]"), f = kRead(box);
+    await kPost({ op: "edit", id: box.dataset.kbox, scope: box.dataset.kscope, item: f.item, to: f.scope !== box.dataset.kscope ? f.scope : "" }); return;
+  }
+  const move = t.closest("[data-k-move]");
+  if (move) { await kPost({ op: "edit", id: move.dataset.kMove, scope: move.dataset.kscope, item: {}, to: move.dataset.kscope === "shared" ? "workspace" : "shared" }); return; }
+  const del = t.closest("[data-k-del]");
+  if (del) { if (!confirm("Xóa mục knowledge này? Không khôi phục được.")) return; await kPost({ op: "delete", id: del.dataset.kDel, scope: del.dataset.kscope }); return; }
+});
+document.addEventListener("input", e => {
+  if (e.target.id === "knowledgeQ") { K.q = e.target.value; $("knowledgeRows").innerHTML = kRows(); }
+});
+document.addEventListener("change", e => {
+  if (e.target.id === "knowledgeWs") { K.ws = e.target.value; K.edit = null; K.add = false; K.msg = ""; loadKnowledge(); }
+  if (e.target.id === "knowledgeKind") { K.kind = e.target.value; $("knowledgeRows").innerHTML = kRows(); }
+  if (e.target.id === "knowledgeScope") { K.scope = e.target.value; $("knowledgeRows").innerHTML = kRows(); }
+});
+
+/** The lessons of a finished run: the user edits them, chooses where each one goes, and saves or skips. */
+function knowledgePanel(v) {
+  const r = v.knowledge_review;
+  if (v.phase !== "REPORT" && !(r && r.status === "ready")) return "";
+  if (!r) return v.knowledge_owed ? `<section class="ask"><h3>Tổng kết knowledge</h3><p class="muted">Các case đã xong. AI đang soạn bản tổng kết những điều đáng nhớ cho lần sau; khi xong sẽ hiện ở đây để bạn sửa và lưu.</p></section>` : "";
+  if (r.status === "drafting") return `<section class="ask"><h3>Tổng kết knowledge</h3><p class="muted">AI đang soạn bản tổng kết, vài phút nữa sẽ hiện ở đây.</p></section>`;
+  if (r.status !== "ready") return "";
+  const key = v.workspace + "/" + v.session + "/" + r.at;
+  if (K.reviewAt !== key) { K.reviewAt = key; K.review = r.items.map(i => ({ ...i, keep: true })); K.reviewMsg = ""; }
+  const scopeSel = (i, n) => `<select data-kr-i="${n}" data-kr="scope" aria-label="Phạm vi">${kOptions(["workspace", "shared"], i.scope, SCOPE_LABEL)}</select>`;
+  const cards = K.review.map((i, n) => `<div class="card kcard ${i.keep ? "" : "off"}">
+    <div class="khead"><label><input type="checkbox" data-kr-i="${n}" data-kr="keep" ${i.keep ? "checked" : ""}> Lưu mục này</label>${i.case ? `<span class="tag">${esc(i.case)}</span>` : ""}${scopeSel(i, n)}<button class="btn sm danger" data-kr-del="${n}">Bỏ</button></div>
+    <div class="kform">${["screen", "kind"].map(f => f === "kind" ? `<label class="kf"><span>Loại</span><select data-kr-i="${n}" data-kr="kind">${kOptions(["login", "navigation", "locator", "data", "error", "fix", "quirk", "rule"], i.kind, KIND_LABEL)}</select></label>`
+      : `<label class="kf"><span>Màn hình / model</span><input type="text" data-kr-i="${n}" data-kr="screen" value="${esc(i.screen)}"></label>`).join("")}
+      <label class="kf wide"><span>Nội dung</span><textarea data-kr-i="${n}" data-kr="fact" rows="2">${esc(i.fact)}</textarea></label>
+      ${[["condition", "Điều kiện áp dụng"], ["evidence", "Bằng chứng cần chụp"], ["ref", "Nguồn"]].map(([f, l]) => `<label class="kf"><span>${l}</span><input type="text" data-kr-i="${n}" data-kr="${f}" value="${esc(i[f] === "-" ? "" : i[f])}"></label>`).join("")}</div></div>`).join("");
+  const kept = K.review.filter(i => i.keep).length;
+  return `<section class="ask attn-panel"><h3>Tổng kết knowledge: ${K.review.length} điều AI rút ra từ lần chạy này</h3>
+    <p class="muted">Sửa lại cho đúng, bỏ chọn mục không cần, và chọn phạm vi: <b>Riêng workspace</b> (chỉ Odoo này) hay <b>Chung mọi workspace</b> (đúng với mọi Odoo). Lưu xong AI mới đóng phiên.</p>
+    ${cards || '<p class="muted">Bạn đã bỏ hết các mục.</p>'}
+    <div class="ask-actions"><button class="btn" data-kr-add>Thêm mục</button><button class="btn primary" data-kr-save ${S.busy ? "disabled" : ""}>Lưu ${kept} mục vào knowledge</button><button class="btn" data-kr-skip>Bỏ qua, không lưu gì</button></div>
+    ${K.reviewMsg ? `<div class="err" role="alert">${esc(K.reviewMsg)}</div>` : ""}</section>`;
+}
+document.addEventListener("input", e => {
+  const el = e.target.closest && e.target.closest("[data-kr]");
+  if (el && K.review) K.review[Number(el.dataset.krI)][el.dataset.kr] = el.type === "checkbox" ? el.checked : el.value;
+});
+document.addEventListener("change", e => {
+  const el = e.target.closest && e.target.closest("[data-kr]");
+  if (!el || !K.review) return;
+  K.review[Number(el.dataset.krI)][el.dataset.kr] = el.type === "checkbox" ? el.checked : el.value;
+  if (el.dataset.kr === "keep") renderMain();
+});
+document.addEventListener("click", async e => {
+  if (!S.sel) return;
+  const t = e.target, where = { ws: S.sel.ws, id: S.sel.id };
+  const del = t.closest("[data-kr-del]");
+  if (del && K.review) { K.review.splice(Number(del.dataset.krDel), 1); renderMain(); return; }
+  if (t.closest("[data-kr-add]") && K.review) { K.review.push({ screen: "", kind: "rule", fact: "", condition: "", evidence: "", ref: "", scope: "workspace", keep: true }); renderMain(); return; }
+  if (t.closest("[data-kr-skip]")) {
+    if (!confirm("Bỏ qua tổng kết? Những điều AI rút ra sẽ không được lưu.")) return;
+    const r = await post("/api/knowledge-review", { ...where, op: "skip" });
+    K.reviewMsg = r.error || ""; await refreshView(); renderMain(); return;
+  }
+  if (t.closest("[data-kr-save]")) {
+    const r = await post("/api/knowledge-review", { ...where, op: "save", items: K.review });
+    K.reviewMsg = r.error || ""; await refreshView(); renderMain(); return;
+  }
+});
 
 /*__SITE_MAP__*/
 

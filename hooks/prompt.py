@@ -35,7 +35,9 @@ def note(prompt):
             elif opened == "opened":
                 lines.append("The dashboard was running but no tab was open: a tab has just been opened for the user.")
             if state["phase"] == "EXECUTE" and not state.get("waiting"):
-                lines.append("Cases are done by sub-agents, one per case: run `oqa dispatch --plan`, give each brief to one agent of the host (Agent tool, all in one message), then `oqa dispatch --settle <case>` as each finishes. Do not run a case yourself.")
+                lines.append("Cases are done by sub-agents, one per case: run `oqa dispatch --plan`, give each brief to one agent of the host (Agent tool, all in one message), then `oqa dispatch --settle <case>` as each finishes. Do not run a case yourself. Whatever else needs a model (a generic script, a script repair) also goes to a sub-agent of the host, never to a CLI you start from oqa.")
+            if state["phase"] == "REPORT" and not state.get("waiting"):
+                lines.append("All cases have a result: run `oqa report`. If it says the knowledge summary is owed, run `oqa knowledge digest`, give the brief to ONE cheap agent (haiku), then `oqa wait` for the user to save or skip it on the dashboard.")
             news = session.news()
             if news:
                 lines.append("The user acted on the dashboard since you were last told (run `oqa wait` to read and clear it): " + "; ".join(e["kind"] for e in news) + ".")

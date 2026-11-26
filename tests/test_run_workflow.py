@@ -119,30 +119,7 @@ def test_dashboard_reviews_before_final_approval(ws, workbook, tmp_path):
         assert claims.claim(session, "approved", "ORD-001")[0] == "ORD-001"
 
 
-def test_dispatch_reassigns_once_after_a_worker_exits(ws, workbook, monkeypatch):
-    cases = intake.select(intake.build(workbook), "ORD-001")
-    session = Session.create(ws["name"], workbook, cases, channel="path")
-    session.analysis_submitted(document=filled(cases, ws))
-    session.connected({})
-    session.strategy_ready("approved")
-    session.confirm("test", "approved")
-    write_json(session.dir / "strategy.json", {"order": ["ORD-001"], "excluded": []})
-    called = []
-    monkeypatch.setattr(dispatch.shutil, "which", lambda name: "dummy")
-    monkeypatch.setattr(dispatch, "_advise", lambda *args: "Start again with the mapped form.")
-
-    def worker(session, case, agent, executable, model, timeout):
-        called.append(agent)
-        return "Worker exited before opening the browser."
-
-    monkeypatch.setattr(dispatch, "_worker", worker)
-    outcome = dispatch.run(session, "haiku", "sonnet", 5)
-    assert called == ["dispatch-1-1", "dispatch-1-2"]
-    assert outcome["phase"] == "REPORT"
-    assert outcome["results"]["ORD-001"]["status"] == "BLOCKED"
-
-
-def test_worker_mcp_only_serves_assigned_case(ws, workbook, monkeypatch):
+def test_oqa_tool_runs_a_case_tool_only_for_the_agent_that_holds_the_case(ws, workbook, capsys):
     cases = intake.select(intake.build(workbook), "ORD-001")
     session = Session.create(ws["name"], workbook, cases, channel="path")
     session.analysis_submitted(document=filled(cases, ws))
@@ -151,40 +128,48 @@ def test_worker_mcp_only_serves_assigned_case(ws, workbook, monkeypatch):
     session.confirm("test", "approved")
     write_json(session.dir / "strategy.json", {"order": ["ORD-001"], "excluded": []})
     claims.claim(session, "assigned", "ORD-001")
-    with pytest.raises(GateError, match="does not own"):
-        worker_mcp.serve(session, "ORD-001", "different")
+    context = ["--ws", session.ws, "--session", session.id]
+    parser = cli.build_parser()
+    listed, _ = cli.cmd_tool(parser.parse_args(["tool", "--list", *context]))
+    assert {"save_download", "upload_csv", "open_import", "capture_id", "goto_fixture"} <= {t["name"] for t in listed["tools"]}
+    with pytest.raises(GateError, match="does not hold"):
+        cli.cmd_tool(parser.parse_args(["tool", "ORD-001", "context", "--agent", "different", *context]))
+    with pytest.raises(GateError, match="JSON object"):
+        cli.cmd_tool(parser.parse_args(["tool", "ORD-001", "context", "--agent", "assigned", "--args", "[1]", *context]))
+    answer, text = cli.cmd_tool(parser.parse_args(["tool", "ORD-001", "context", "--agent", "assigned", *context]))
+    assert '"id": "ORD-001"' in text and '"id": "ORD-002"' not in text and answer["tool"] == "context"
 
-    def handle(tools, tool_call):
-        assert any(tool["name"] == "step" for tool in tools)
-        assert '"id": "ORD-001"' in tool_call("context", {})
-        assert '"id": "ORD-002"' not in tool_call("context", {})
 
-    monkeypatch.setattr(worker_mcp.mcp_server, "serve", handle)
-    worker_mcp.serve(session, "ORD-001", "assigned")
+def test_no_model_or_cli_is_started_by_oqa():
+    """The host's own sub-agents do every job that needs a model: no module of oqa starts one."""
+    import re as _re
+
+    root = Path(dispatch.__file__).parent
+    offenders = [f.name for f in root.glob("*.py") if _re.search(r"--print|which\(.claude.\)", f.read_text(encoding="utf-8")) and f.name != "cli.py"]
+    assert not offenders, offenders
+    assert not hasattr(dispatch, "run") and not hasattr(dispatch, "_worker")
 
 
-def test_the_worker_prompt_can_be_built_and_keeps_its_literal_braces(session, tmp_path):
-    """The prompt is an f-string: a literal brace pair left single makes every dispatched worker crash before its first step."""
-    from oqa import dispatch
+def test_the_host_brief_can_be_built_and_keeps_its_literal_braces(session, tmp_path):
+    """The brief is an f-string: a literal brace pair left single makes every handed-out brief crash."""
     from test_flow import executing
 
     executing(session, tmp_path)
-    prompt = dispatch._prompt(session, "ORD-001", "dispatch-1-1")
-    assert "Execute case ORD-001" in prompt and '{"$ref": ...}' in prompt and '{"name":"<the key>"' in prompt
+    brief = dispatch._host_brief(session, "ORD-001", "host-1-ab12")
+    assert "case worker host-1-ab12 for case ORD-001" in brief and "{ name: 'New' }" in brief and "oqa tool ORD-001 NAME" in brief
 
 
-def test_a_bad_conclusion_reached_on_leftover_data_is_reopened_instead_of_accepted(session, tmp_path, monkeypatch):
+def test_the_fact_checks_reopen_a_conclusion_that_rests_on_leftover_data(session, tmp_path):
     from oqa import dispatch, events
     from test_flow import executing
 
     executing(session, tmp_path)
-    monkeypatch.setattr(dispatch.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(OSError("no model in this test")))
     fail = {"status": "FAIL", "category": "application", "reason": "Site A was deleted without an error"}
-    assert dispatch.audit(session, "claude", "haiku", "ORD-001", fail) is None                        # nothing suspicious, the model cannot be reached: the conclusion stands
+    assert dispatch.audit_facts(session, "ORD-001", fail) is None                                       # nothing suspicious: the conclusion stands
     events.append(session.dir, "fixture_prepared", case="ORD-001", attempt=1, key="ZZ_AUTOTEST_ORD_ITEM", code="x", model="m", record_id=None)
-    assert "ZZ_AUTOTEST_ORD_ITEM" in dispatch.audit(session, "claude", "haiku", "ORD-001", fail)      # a fixed key: it may have found an earlier run's record
+    assert "ZZ_AUTOTEST_ORD_ITEM" in dispatch.audit_facts(session, "ORD-001", fail)                      # a fixed key: it may have found an earlier run's record
     blocked = {"status": "BLOCKED", "category": "precondition", "reason": "A stale pre-existing record shows a second row"}
-    assert "left in the environment" in dispatch.audit(session, "claude", "haiku", "ORD-002", blocked)
+    assert "left in the environment" in dispatch.audit_facts(session, "ORD-002", blocked)
 
 
 def test_a_csv_round_edits_single_cells_of_the_approved_file_and_keeps_the_placeholders(tmp_path):

@@ -1,12 +1,11 @@
-"""Expose only the assigned case's OQA actions to a CLI worker."""
+"""The case-scoped OQA actions a host agent calls with `oqa tool CASE NAME --args JSON`: the same tools whatever agent runs the case."""
 import json
 import csv
 import io
 import re
-from functools import partial
 from pathlib import Path
 
-from . import case_context, claims, fixtures, live, mcp_server, refs, sitemap, workspace
+from . import case_context, fixtures, live, mcp_server, refs, sitemap, workspace
 from .state import GateError
 
 
@@ -44,7 +43,7 @@ TOOLS = [
            strings("category", "detail", "tried", "need"), ("category", "detail")),
     schema("context", "Read refreshed case context, or just sitemap navigation or validation and troubleshooting knowledge.",
            (*strings("screen", "issue", "profile", "state"), ("only", "string", {"enum": ["sitemap", "knowledge"]}))),
-    schema("fixture", "Find fixture fields (plan), ask the data agent (advise), create a prefixed record (apply), create it through the form (ui; screen may be ledger, license_user or contract), "
+    schema("fixture", "Find fixture fields (plan), create a prefixed record (apply), create it through the form (ui; screen may be ledger, license_user or contract), "
                       "get this run's unique key (key, with a short business label for the record), or check an existing record to use read-only (ref, with value). For apply and ui, key is the field name and values_json maps fields to values; "
                       "a many2one value is {\"$ref\": \"existing name\"} or {\"$fixture\": \"key\"}, a relative date {\"$date\": -180}.",
            (*strings("action", "screen", "key", "need", "values_json", "label", "value"),
@@ -186,8 +185,6 @@ def _call(session, case, agent, name, args):
         key, form = fixtures.form_for(data, args["screen"])
         plan = {"model": form["model"], "fields": form["fields"], "screen": key,
                 "prefix": workspace.load(session.ws)["test_prefix"]}
-        if args["action"] == "advise":
-            plan["proposal"] = fixtures.advise(session, case, plan, args["need"])
         return json.dumps(plan, ensure_ascii=False)
     if name == "goto_fixture":
         key = json.dumps(args["key"])
@@ -246,8 +243,3 @@ def _call(session, case, agent, name, args):
         return json.dumps({"code": code, "output": observed}, ensure_ascii=False)
     return mcp_server.call(session.ws, name, args)
 
-
-def serve(session, case, agent):
-    if (claims.table(session).get(case) or {}).get("agent") != agent:
-        raise GateError("This worker does not own the case.")
-    mcp_server.serve(tools=TOOLS, tool_call=partial(call, session, case, agent))

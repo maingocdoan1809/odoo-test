@@ -3,12 +3,15 @@ selector, the page after login, an error and the fix that worked).
 
     - [screen:sale.order] [kind:quirk] [tag:save] The Save button only enables after a customer is chosen -> -
 """
+import hashlib
 import re
 import unicodedata
 
-from .paths import workspace_dir
+from .paths import home, workspace_dir
 from .store import locked
 
+WORKSPACE, SHARED = "workspace", "shared"
+SCOPES = (WORKSPACE, SHARED)       # workspace: only this Odoo; shared: every workspace of this computer
 KINDS = ("login", "navigation", "locator", "data", "error", "fix", "quirk", "rule")
 SCOPE = ("action", "condition", "profile", "state")
 DETAILS = (*SCOPE, "evidence")
@@ -34,7 +37,12 @@ class KnowledgeError(Exception):
     pass
 
 
-def file_of(ws):
+def file_of(ws, scope=WORKSPACE):
+    """The index of one scope: the workspace's own, or the one every workspace shares (<home>/knowledge/index.md)."""
+    if scope == SHARED:
+        return home() / "knowledge" / "index.md"
+    if scope != WORKSPACE:
+        raise KnowledgeError(f"scope must be one of {', '.join(SCOPES)}")
     return workspace_dir(ws) / "knowledge" / "index.md"
 
 
@@ -109,9 +117,26 @@ def parse(text):
     return [item for _, _, group in _entries(text.splitlines()) for item in group]
 
 
-def search(ws, screen=None, kind=None, text=None):
-    path = file_of(ws)
+def kid(item, scope):
+    """A short stable id for one fact: the same fact in the same scope always has the same id, so an agent can name it and the dashboard can edit it."""
+    basis = "|".join((scope, *_scope_key(item), _normalized(item.get("fact"))))
+    return hashlib.sha1(basis.encode("utf-8")).hexdigest()[:8]
+
+
+def load(ws, scope=WORKSPACE):
+    """Every fact of one scope, each with its scope and id."""
+    path = file_of(ws, scope)
     items = parse(path.read_text(encoding="utf-8")) if path.exists() else []
+    return [{**item, "scope": scope, "id": kid(item, scope)} for item in items]
+
+
+def everything(ws):
+    """The workspace's own facts first, then the shared ones."""
+    return [*load(ws, WORKSPACE), *load(ws, SHARED)]
+
+
+def search(ws, screen=None, kind=None, text=None, scope=None):
+    items = everything(ws) if scope is None else load(ws, scope)
     normalized = " ".join(words(text))
     return [i for i in items if (not screen or " ".join(words(screen)) in " ".join(words(i["screen"])))
             and (not kind or i["kind"] == kind)
@@ -157,7 +182,8 @@ def describe(item, limit=None):
     limits = (35, 65, 25, 25, 85) if limit else (None,) * len(DETAILS)
     scope = " ".join(f"[{key}:{compact(item[key], size)}]" for key, size in zip(DETAILS, limits) if item.get(key))
     head = f"[screen:{compact(item['screen'], 55 if limit else None)}] [kind:{item['kind']}]"
-    source = compact(item["ref"], 90 if limit else None) if item["ref"] != "-" else "knowledge/index.md:" + str(item["line"])
+    where = ("shared " if item.get("scope") == SHARED else "") + "knowledge/index.md:" + str(item["line"])
+    source = compact(item["ref"], 90 if limit else None) if item["ref"] != "-" else where
     return f"{head} {scope + ' ' if scope else ''}{compact(item['fact'], limit)} -> {source}"
 
 
@@ -194,8 +220,8 @@ def _merge_detail(existing, incoming):
     return changed
 
 
-def learn(ws, screen, kind, fact, tag="", ref="-", *, action="", condition="", profile="", state="", evidence=""):
-    """Add a scoped knowledge entry or update its facts, evidence and sources."""
+def _clean(screen, kind, fact, tag="", ref="-", *, action="", condition="", profile="", state="", evidence=""):
+    """The labels and the fact as they will be written, or a KnowledgeError that says what is wrong."""
     screen, fact, tag, ref = (str(x or "").strip() for x in (screen, fact, tag, ref))
     labels = {"screen": screen, "kind": kind, "tag": tag, **dict(zip(
         DETAILS, (str(x or "").strip() for x in (action, condition, profile, state, evidence))))}
@@ -207,8 +233,15 @@ def learn(ws, screen, kind, fact, tag="", ref="-", *, action="", condition="", p
         raise KnowledgeError("Use one line per fact. Scope labels cannot contain ']'.")
     if any(SECRETISH.search(value) for value in (*labels.values(), fact, ref)):
         raise KnowledgeError("that looks like a password, token or cookie; write what you learned without the secret")
-    path = file_of(ws)
-    incoming = {**labels, "fact": fact, "ref": ref or "-"}
+    return {**labels, "fact": fact, "ref": ref or "-"}
+
+
+def learn(ws, screen, kind, fact, tag="", ref="-", *, action="", condition="", profile="", state="", evidence="", scope=WORKSPACE):
+    """Add a scoped knowledge entry or update its facts, evidence and sources. scope: workspace (this Odoo only) or shared (every workspace)."""
+    incoming = _clean(screen, kind, fact, tag, ref, action=action, condition=condition, profile=profile, state=state, evidence=evidence)
+    fact = incoming["fact"]
+    path = file_of(ws, scope)
+    path.parent.mkdir(parents=True, exist_ok=True)
     with locked(path):
         text = path.read_text(encoding="utf-8") if path.exists() else HEADER
         lines = text.splitlines()
@@ -241,3 +274,64 @@ def learn(ws, screen, kind, fact, tag="", ref="-", *, action="", condition="", p
         finally:
             pending.unlink(missing_ok=True)
         return result
+
+
+
+def _write(path, lines):
+    pending = path.with_name("." + path.name + ".tmp")
+    try:
+        pending.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        pending.replace(path)
+    finally:
+        pending.unlink(missing_ok=True)
+
+
+def find(ws, item_id, scope=None):
+    """The fact with this id (in one scope, or in either), or None."""
+    return next((i for i in (everything(ws) if scope is None else load(ws, scope)) if i["id"] == item_id), None)
+
+
+def remove(ws, scope, item_id):
+    """Delete one fact from one scope's index."""
+    path = file_of(ws, scope)
+    if not path.exists():
+        raise KnowledgeError("no such knowledge entry")
+    with locked(path):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for start, end, items in _entries(lines):
+            keep = [item for item in items if kid(item, scope) != item_id]
+            if len(keep) != len(items):
+                lines[start:end] = _render(keep) if keep else []
+                _write(path, lines)
+                return True
+    raise KnowledgeError("no such knowledge entry")
+
+
+FIELDS = ("screen", "kind", "fact", "tag", "ref", *DETAILS)
+
+
+def edit(ws, scope, item_id, fields, to_scope=None):
+    """Change a fact (any field), and optionally move it to the other scope. The new text is checked first, so a refused edit leaves the old fact as it was.
+    Returns {result, id, scope} of the fact as it is now."""
+    old = find(ws, item_id, scope)
+    if old is None:
+        raise KnowledgeError("no such knowledge entry")
+    target = to_scope or scope
+    merged = {key: (fields[key] if key in fields else old.get(key, "")) for key in FIELDS}
+    clean = _clean(merged["screen"], merged["kind"], merged["fact"], merged["tag"], merged["ref"] or "-", action=merged["action"], condition=merged["condition"],
+                   profile=merged["profile"], state=merged["state"], evidence=merged["evidence"])
+    if target not in SCOPES:
+        raise KnowledgeError(f"scope must be one of {', '.join(SCOPES)}")
+    remove(ws, scope, item_id)
+    result = learn(ws, clean["screen"], clean["kind"], clean["fact"], clean["tag"], clean["ref"], action=clean["action"], condition=clean["condition"],
+                   profile=clean["profile"], state=clean["state"], evidence=clean["evidence"], scope=target)
+    return {"result": result, "id": kid(clean, target), "scope": target}
+
+
+def compact_index(ws, kinds=BUSINESS_KINDS, limit=240):
+    """What a cheap agent reads to pick the facts a case needs: one line per fact, its id first."""
+    def one(item):
+        where = " ".join(f"{key}={item[key]}" for key in SCOPE if item.get(key))
+        text = " ".join(item["fact"].split())
+        return f"{item['id']} | {item['scope']} | {item['screen']} | {item['kind']}{' | ' + where if where else ''} | {text if len(text) <= limit else text[:limit - 1] + '…'}"
+    return [one(item) for item in everything(ws) if item["kind"] in kinds]

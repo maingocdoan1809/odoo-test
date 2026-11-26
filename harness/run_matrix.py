@@ -11,7 +11,8 @@ from tempfile import mkdtemp
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from oqa import analysis, build_id, connect, dashboard_server, dispatch, intake, live, report, script_bundle, sitemap, workspace
+from oqa import analysis, build_id, connect, dashboard_server, intake, live, report, script_bundle, sitemap, workspace
+import cli_agents
 from oqa.browser import launch
 from oqa.odoo_ui import Odoo
 from oqa.secrets import MemoryStore
@@ -230,7 +231,7 @@ def run(suite=None):
     result = dashboard.handle("POST", "/api/confirm", {}, {"ws": session.ws, "id": session.id})
     assert result == (200, {"ok": True}), result
     print("Harness persona approved:", ", ".join(strategy["order"]), flush=True)
-    outcome = dispatch.run(session, "haiku", "sonnet", suite.get("timeout", 420)) if strategy["order"] else {"results": {}}
+    outcome = cli_agents.run(session, "haiku", "sonnet", suite.get("timeout", 420)) if strategy["order"] else {"results": {}}
     print(json.dumps(outcome, ensure_ascii=False, indent=2), flush=True)
     left = (read_json(session.dir / "strategy.json") or {}).get("deferred", [])
     if left and os.environ.get("OQA_MATRIX_ADD"):          # the cases that were left out join the same session, as the "run more" box does
@@ -240,7 +241,7 @@ def run(suite=None):
             code, answer = dashboard.handle("POST", "/api/run_more", {}, {"ws": session.ws, "id": session.id, "cases": left})
             assert code == 200 and answer.get("ok"), answer
         print("Cases added to the run:", ", ".join(left), flush=True)
-        outcome = dispatch.run(session, "haiku", "sonnet", suite.get("timeout", 420))
+        outcome = cli_agents.run(session, "haiku", "sonnet", suite.get("timeout", 420))
         print(json.dumps(outcome, ensure_ascii=False, indent=2), flush=True)
         strategy = read_json(session.dir / "strategy.json")
     result = report.finish(session, ws) if session.state()["phase"] == "REPORT" else report.build(session, ws)

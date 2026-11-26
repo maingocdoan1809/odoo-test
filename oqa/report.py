@@ -454,8 +454,14 @@ def write_back(session: Session, ws, records, t):
 
 def finish(session: Session, ws):
     """The report of a finished session: build it, then close the session."""
+    from . import knowledge_flow
+
     session.require("REPORT")
     result = build(session, ws)
+    owed = knowledge_flow.pending(session)
+    if owed:                                   # the report is written, but the session stays in REPORT until the user saved or skipped the knowledge summary
+        result["knowledge_pending"] = owed
+        return result
     session.done(result["counts"])
     return result
 
