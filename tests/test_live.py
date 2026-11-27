@@ -312,6 +312,7 @@ def test_a_pass_checks_each_value_in_the_result_target():
     values = livemod.specific_values("Hiển thị số lượng 5 và tổng tiền 100")
     command = livemod.outcome_check("Orders", values, 1000, "#result")
     execute = """source => new (Object.getPrototypeOf(async function() {}).constructor)('page', source)({
+        waitForTimeout: ms => new Promise(resolve => setTimeout(resolve, ms)),
         locator: selector => ({evaluate: (fn, arg) => fn(document.querySelector(selector), arg)})
     })"""
     with launch(headless=True) as new_page:

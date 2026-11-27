@@ -1,6 +1,6 @@
 {
   "name": "odoo-test",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Test an Odoo system from a testcase workbook: plan, run every case in a browser with red-framed screenshots, repair, and write the Excel evidence.",
   "author": {
     "name": "odoo-test"

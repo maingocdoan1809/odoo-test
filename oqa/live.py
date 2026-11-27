@@ -175,7 +175,8 @@ def outcome_check(shows, values, timeout, frame=None):
     )
     return (f"await (async () => {{ const deadline = Date.now() + {int(timeout)}; for (;;) {{ try {{ "
             f"return await {locator}.evaluate({' '.join(check.split())}, {expect}, {{timeout: Math.max(1, deadline - Date.now())}}); "
-            f"}} catch (error) {{ if (Date.now() >= deadline) throw error; await new Promise(resolve => setTimeout(resolve, 250)); }} }} }})();")
+            f"}} catch (error) {{ const remaining = deadline - Date.now(); if (remaining <= 0) throw error; "
+            f"await page.waitForTimeout(Math.min(250, remaining)); }} }} }})();")
 
 
 def replay_checks(block, timeout):

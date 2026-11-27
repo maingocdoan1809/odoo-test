@@ -125,7 +125,7 @@ def test_replay_assertion_rejects_a_grouped_number_that_could_mean_the_expected_
 global.getComputedStyle = () => ({visibility: 'visible', display: 'block'});
 const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
 const check = new AsyncFunction('page', CHECK);
-const page = text => ({ locator: () => ({evaluate: (fn, args) =>
+const page = text => ({ waitForTimeout: ms => new Promise(resolve => setTimeout(resolve, ms)), locator: () => ({evaluate: (fn, args) =>
     fn({innerText: text, getClientRects: () => [1], matches: () => false, querySelectorAll: () => []}, args)}) });
 (async () => {
     await check(page('Total 50.00'));
@@ -139,9 +139,24 @@ const page = text => ({ locator: () => ({evaluate: (fn, args) =>
     assert done.returncode == 0, done.stderr
 
 
-def test_the_outcome_check_retries_until_its_timeout():
-    line = live.outcome_check("Total", ["1000"], 4000)
-    assert line.startswith("await (async () =>") and "deadline" in line and "setTimeout(resolve, 250)" in line
+@pytest.mark.skipif(not shutil.which("node"), reason="Node executes the generated replay assertion")
+def test_the_outcome_check_retries_without_a_global_timer():
+    script = """
+global.getComputedStyle = () => ({visibility: 'visible'});
+const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
+const check = new AsyncFunction('page', 'setTimeout', CHECK);
+let retries = 0;
+const page = {
+    locator: () => ({evaluate: (fn, args) => fn({innerText: retries ? 'Total 1000' : 'Waiting',
+        getClientRects: () => [1], matches: () => false, querySelectorAll: () => []}, args)}),
+    waitForTimeout: async () => { retries++; },
+};
+check(page, undefined).then(() => { if (retries !== 1) process.exitCode = 1; })
+    .catch(error => { console.error(error); process.exitCode = 1; });
+"""
+    script = script.replace("CHECK", json.dumps(live.outcome_check("Total", ["1000"], 4000)))
+    done = subprocess.run(["node", "-"], input=script, capture_output=True, text=True, timeout=10)
+    assert done.returncode == 0, done.stderr
 
 
 def test_a_ui_fixture_is_kept_whole_and_runs_before_the_step_opens_its_screen():
