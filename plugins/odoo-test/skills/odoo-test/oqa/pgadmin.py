@@ -1,5 +1,5 @@
-"""PgAdmin evidence: sign in to the team's PgAdmin web, open a Query Tool on the right server and database, run one read-only SQL and take the picture.
-The AI only passes the SQL: the address, server, database and passwords come from the workspace (oqa init), the steps below are the only place that knows the PgAdmin screen."""
+"""Read and verify a query in the workspace's PgAdmin, then keep the query and result picture as evidence."""
+import json
 import re
 from contextlib import contextmanager
 from urllib.parse import urljoin
@@ -14,9 +14,65 @@ TREE_MS = 20000          # the tree is already on the page: a name that is not t
 READ_ONLY = {"select", "with", "show", "explain", "values", "table"}
 FORBIDDEN = {"insert", "update", "delete", "drop", "alter", "truncate", "create", "grant", "revoke", "copy", "call", "do", "vacuum", "reindex", "cluster", "comment", "merge", "lock", "refresh", "reassign", "security", "set", "listen", "notify", "into"}
 _TOKENS = re.compile(r"('(?:[^']|'')*'|\"(?:[^\"]|\"\")*\"|--[^\n]*|/\*.*?\*/)", re.S)     # quoted text and comments, read left to right so neither hides the other
+_DATABASE_STEP = re.compile(
+    r"\bpg\s*admin\b|\b(?:xác nhận|kiểm tra|đối chiếu|verify|validate|confirm|check)\s+"
+    r"(?:(?:[^.\n]{0,75}\s)?(?:trong|trên|tại|in|on|against|via)\s+)?(?:the\s+)?(?:database|postgresql|cơ sở dữ liệu|db)\b", re.I)
+_QUERY_STATUS = ".StatusBar-padding.StatusBar-divider"
+_QUERY_MESSAGES = ".dock-tabpane-active[role=tabpanel] .dock-pane-cache > div[tabindex='0']"
 
 
 secret_ref = pgadmin_secret_ref
+
+
+def is_database_step(step):
+    return "database" in step or any(_DATABASE_STEP.search(str(step.get(key) or "")) for key in ("action", "expected", "evidence"))
+
+
+def validate_expectation(rows):
+    """Expect an exact row count and named cells for each row. SQL aliases identify the cells."""
+    if not isinstance(rows, list) or any(
+        not isinstance(row, dict) or not row or any(
+            not isinstance(key, str) or not key.strip() or "\n" in key or (value is not None and not isinstance(value, str))
+            for key, value in row.items()) for row in rows
+    ):
+        raise GateError('Database expectation must be an array of rows with named text or null values, such as [{"phone":"0901234567"}], or [] for no rows.')
+    return rows
+
+
+def verify_result(result, expected):
+    """Compare the observed grid by column name. A missing column or incomplete grid cannot establish FAIL or PASS."""
+    rows, count = result["rows"], result["total"]
+    result_check = {"status": "UNVERIFIED", "expected_rows": expected, "actual_count": count, "actual_rows": []}
+    if result["error"] or count is None:
+        return {**result_check, "detail": result["error"] or "PgAdmin did not report the result row count."}
+    if not count and not expected:
+        return {**result_check, "status": "PASS", "detail": "Expected and got zero rows."}
+    header = rows[0] if rows else []
+    columns = [cell.partition("\n")[0].strip() for cell in header[1:]]
+    fields = dict.fromkeys(key for row in expected for key in row)
+    if not expected:
+        fields = dict.fromkeys(column for column in columns if column and columns.count(column) == 1)
+    unavailable = [field for field in fields if columns.count(field) != 1]
+    if unavailable:
+        return {**result_check, "detail": "Missing or ambiguous result column(s): " + ", ".join(unavailable) + ". Use unique SQL aliases."}
+    indexes = {field: columns.index(field) + 1 for field in fields}
+    result_check["actual_rows"] = [
+        {field: row[index] for field, index in indexes.items() if index < len(row)}
+        for row in rows[1:] if indexes
+    ]
+    if count != len(expected):
+        return {**result_check, "status": "FAIL", "detail": f"Expected {len(expected)} row(s), got {count}."}
+    actual = result_check["actual_rows"]
+    if len(actual) != count or any(len(row) != len(header) for row in rows[1:]):
+        return {**result_check, "detail": "PgAdmin did not show all requested cells. Narrow the query so the result fits the grid."}
+    mismatches = [f"row {n}, {field}: expected {json.dumps(value, ensure_ascii=False)}, got {json.dumps(observed[field], ensure_ascii=False)}"
+                  for n, (wanted, observed) in enumerate(zip(expected, actual), 1) for field, value in wanted.items() if value != observed[field]]
+    return {**result_check, "status": "FAIL" if mismatches else "PASS", "detail": "; ".join(mismatches) or "All expected rows and fields match."}
+
+
+def check_summary(check):
+    expected, actual = (json.dumps(check[key], ensure_ascii=False) for key in ("expected_rows", "actual_rows"))
+    return f"PgAdmin {check['status']} — {check['detail']}\nExpected ({len(check['expected_rows'])} rows): {expected}\nActual ({check['actual_count']} rows): {actual}"
 
 
 def check_sql(sql):
@@ -204,6 +260,8 @@ class PgAdmin:
     def query(self, sql, picture):
         """Run `sql` in a fresh Query Tool tab (so nothing from an earlier query can be mistaken for this result) and save the screen to `picture`.
         Returns {rows, total, error, box}: the rows read from the grid, PgAdmin's own row count, its error text, and the result panel as [x, y, w, h]."""
+        from playwright.sync_api import TimeoutError as PlaywrightTimeout
+
         page = self.page
         self.entry(self.cfg["database"]).click()
         page.wait_for_timeout(800)
@@ -214,31 +272,39 @@ class PgAdmin:
             if page.locator("iframe").count() > before:
                 break
             page.wait_for_timeout(250)
+        else:
+            raise GateError("PgAdmin did not open a new Query Tool tab.")
         frame = self._tool_frame()
         frame.wait_for_function("() => { const e = document.querySelector('.cm-content'); return !!e && e.getAttribute('aria-readonly') !== 'true'; }", timeout=SLOW_MS)   # read-only until the tab has connected
         frame.locator(".cm-content").click()
         page.keyboard.press("Control+A")
         page.keyboard.insert_text(format_sql(sql))
         page.keyboard.press("F5")
+        error = ""
         try:
-            frame.wait_for_function("() => /Total rows: \\d|Query returned successfully|Query complete|ERROR:/.test(document.body.innerText)", timeout=SLOW_MS)
-        except Exception:
-            pass
-        page.wait_for_timeout(800)
-        text = frame.evaluate("() => document.body.innerText")
-        failed = re.search(r"ERROR:[^\n]*", text)
-        if failed:
+            frame.wait_for_function(
+                "selector => [...document.querySelectorAll(selector)].some(e => /^(Query complete|Query cancel)/i.test(e.innerText.trim()))",
+                arg=_QUERY_STATUS, timeout=SLOW_MS)
+        except PlaywrightTimeout:
+            error = "PgAdmin did not finish the query before the timeout."
+        statuses = frame.locator(_QUERY_STATUS).all_inner_texts()
+        if not error and any(text.strip().lower().startswith("query cancel") for text in statuses):
+            error = "PgAdmin cancelled the query."
+        total = next((match for text in statuses if (match := re.fullmatch(r"Total rows:\s*([\d,]+)", text.strip()))), None)
+        if not error and total is None:
             messages = frame.get_by_text("Messages", exact=True)
             if messages.count():
                 messages.first.click()
-                page.wait_for_timeout(500)
-        rows = frame.evaluate("""() => [...document.querySelectorAll('[role=row]')].slice(0, 60)
-            .map(r => [...r.querySelectorAll('[role=columnheader], [role=gridcell]')].map(c => c.innerText.trim()))""")
-        total = re.search(r"Total rows:\s*([\d,]+)", text)
+            error = next((text.strip() for text in frame.locator(_QUERY_MESSAGES).all_inner_texts()
+                          if text.lstrip().startswith("ERROR:")), "PgAdmin did not report a completed result grid.")
+        rows = frame.evaluate("""() => [...document.querySelectorAll('[role=row]:has([role=columnheader], [role=gridcell])')].slice(0, 60)
+            .map(r => [...r.querySelectorAll('[role=columnheader], [role=gridcell]')]
+                .map(c => c.getAttribute('role') === 'columnheader' ? c.innerText.trim()
+                    : c.querySelector('.Formatters-disabledCell')?.textContent === '[null]' ? null : c.textContent))""")
         box = frame.evaluate("""() => { const t = [...document.querySelectorAll('*')].find(e => e.children.length === 0 && /^Data Output$/.test(e.innerText || ''));
             const p = t && (t.closest('.dock-panel') || t.parentElement.parentElement);
             if (!p) return null; const b = p.getBoundingClientRect(); return [Math.round(b.x), Math.round(b.y), Math.round(b.width), Math.round(b.height)]; }""")
-        if not failed:
+        if not error:
             try:
                 fit_columns(page, frame)
             except Exception:                                  # a picture with a cut value is still a picture: never lose the result for a cosmetic step
@@ -248,7 +314,7 @@ class PgAdmin:
             box = [box[0] + round(offset["x"]), box[1] + round(offset["y"]), box[2], box[3]]
         page.screenshot(path=str(picture))
         self.close_query_tabs()
-        return {"rows": rows, "total": int(total.group(1).replace(",", "")) if total else None, "error": failed.group(0) if failed else "", "box": box}
+        return {"rows": rows, "total": int(total.group(1).replace(",", "")) if total else None, "error": error, "box": box}
 
 
 @contextmanager
@@ -260,7 +326,7 @@ def session(ws, store: SecretStore, headless=True):
         yield PgAdmin(page, cfg).login().select_database()
 
 
-def shot(run, ws, store: SecretStore, case, n, sql, caption=None, headless=True):
+def shot(run, ws, store: SecretStore, case, n, sql, caption=None, headless=True, *, expected_rows=None):
     """Run `sql` on PgAdmin and keep the picture as evidence of step `n` of `case`.
     Take it BEFORE recording the step (n is the next step): `oqa live step` then writes what the rows showed and the picture is already part of the step.
     A step that is already recorded gets it as supplemental evidence (the same place `oqa live shot` puts one). The picture is the whole PgAdmin screen with the result panel framed."""
@@ -269,11 +335,23 @@ def shot(run, ws, store: SecretStore, case, n, sql, caption=None, headless=True)
     from . import evidence, events, live
     run.require("EXECUTE")
     attempt = live._attempt(run, case)
-    if not isinstance(n, int) or not 1 <= n <= len(live._strategy_case(run, case)["steps"]):
+    steps = live._strategy_case(run, case)["steps"]
+    if not isinstance(n, int) or not 1 <= n <= len(steps):
         raise GateError("Choose a planned step number for the database evidence.")
     done = live._recorded(run, case, attempt)
     if n not in done and n != len(done) + 1:
         raise GateError(f"Record the steps in order: the next step of {case} is {len(done) + 1}, not {n}.")
+    spec = steps[n - 1]
+    if n not in done:
+        planned = spec.get("database")
+        if planned is not None:
+            if expected_rows is not None and expected_rows != planned:
+                raise GateError("--expect must match the approved database expectation for this step.")
+            expected_rows = planned
+        elif expected_rows is None and is_database_step(spec):
+            raise GateError('This approved step needs an exact database check. Give --expect with the named columns and expected rows.')
+    if expected_rows is not None:
+        expected_rows = validate_expectation(expected_rows)
     sql = check_sql(sql)
     folder = run.dir / "evidence" / re.sub(r"[^\w.-]+", "_", case) / f"a{attempt}"
     folder.mkdir(parents=True, exist_ok=True)
@@ -281,8 +359,13 @@ def shot(run, ws, store: SecretStore, case, n, sql, caption=None, headless=True)
     raw, annotated = folder / f"s{n}_supp_{suffix}_raw.png", folder / f"s{n}_supp_{suffix}_annotated.png"
     with globals()["session"](ws, store, headless) as pg:
         result = pg.query(sql, raw)
-    label = caption or ("PgAdmin: " + (result["error"] or f"{result['total']} row(s)") + " - " + " ".join(sql.split())[:90])
-    evidence.annotate(raw, [tuple(result["box"] or (0, 0, browser.VIEWPORT["width"], browser.VIEWPORT["height"]))], label, annotated, ok=not result["error"])
+    check = verify_result(result, expected_rows) if expected_rows is not None else None
+    if check is not None:
+        result = {**result, "check": check}
+    verdict = f" {check['status']}" if check else ""
+    label = f"PgAdmin{verdict}: " + (caption or result["error"] or f"{result['total']} row(s) - " + " ".join(sql.split())[:90])
+    evidence.annotate(raw, [tuple(result["box"] or (0, 0, browser.VIEWPORT["width"], browser.VIEWPORT["height"]))], label, annotated,
+                      ok=check["status"] == "PASS" if check else not result["error"])
     error = evidence.check(raw, annotated)
     if error:
         raise GateError(error)
@@ -291,17 +374,19 @@ def shot(run, ws, store: SecretStore, case, n, sql, caption=None, headless=True)
         events.append(run.dir, "step_evidence", case=case, attempt=attempt, n=n, source="pgadmin", sql=sql, images=[image])
     else:
         events.append(run.dir, "evidence_captured", case=case, attempt=attempt, n=n, source="pgadmin", sql=sql,
-                      pgadmin_result={key: result[key] for key in ("rows", "total", "error")},
+                      pgadmin_result={key: result[key] for key in ("rows", "total", "error", "check") if key in result},
                       images=[{**image, "caption": label, "target": "PgAdmin", "box": list(result["box"] or [])}])
     return result, annotated
 
 
 def summary(result, where):
     """What the assistant reads after a query: the row count (or PgAdmin's error) and the first rows, so it can judge PASS or FAIL from them."""
+    if result.get("check"):
+        return f"{check_summary(result['check'])}\nPicture {where}."
     if result["error"]:
         return f"PgAdmin ERROR: {result['error']}\nThe picture of the error is {where}."
     lines = [f"PgAdmin returned {result['total']} row(s). Picture {where}."]
     rows = result["rows"]
     if rows:
-        lines += [" | ".join(cell.split(chr(10))[0] for cell in row[1:]) for row in rows[:21]]
+        lines += [" | ".join("NULL" if cell is None else cell.split(chr(10))[0] for cell in row[1:]) for row in rows[:21]]
     return "\n".join(lines)

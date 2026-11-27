@@ -139,13 +139,6 @@ const page = text => ({ locator: () => ({evaluate: (fn, args) =>
     assert done.returncode == 0, done.stderr
 
 
-def test_database_values_compare_by_value_and_skip_the_row_number():
-    live.check_database_values({"rows": [["1", "1500000.00", "2026-01-01", "approved"]], "total": 1},
-                               live.specific_values('amount 1.500.000 on 01/01/2026, status "Đã duyệt"'))
-    with pytest.raises(GateError):
-        live.check_database_values({"rows": [["2", "99"]], "total": 1}, ["2"])
-
-
 def test_the_outcome_check_retries_until_its_timeout():
     line = live.outcome_check("Total", ["1000"], 4000)
     assert line.startswith("await (async () =>") and "deadline" in line and "setTimeout(resolve, 250)" in line

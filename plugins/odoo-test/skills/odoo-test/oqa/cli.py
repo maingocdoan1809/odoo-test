@@ -565,7 +565,7 @@ def cmd_results(args):
 
 
 def cmd_pgadmin(args):
-    """Database evidence: run one read-only SQL on the team's PgAdmin and take the picture. The AI passes the SQL only; address and passwords come from oqa init."""
+    """Verify a read-only SQL result in PgAdmin and keep the evidence picture."""
     from . import pgadmin
 
     ws = workspace.load(paths.resolve_workspace(args.ws))
@@ -575,15 +575,24 @@ def cmd_pgadmin(args):
             return {"ok": True}, "PgAdmin signed in and the database is selected."
     if not args.sql:
         raise GateError("Give the query: --sql \"SELECT ...\"")
+    expected = None
+    if args.expect is not None:
+        try:
+            expected = pgadmin.validate_expectation(json.loads(args.expect))
+        except ValueError as error:
+            raise GateError(f"--expect must be a JSON array: {error}") from error
     if args.case:
         session = Session.open(args.ws, args.session)
         claims.require_owner(session, args.case, getattr(args, "agent", None))
-        result, picture = pgadmin.shot(session, ws, store, args.case, args.n, args.sql, args.caption, headless=not args.headed)
+        result, picture = pgadmin.shot(session, ws, store, args.case, args.n, args.sql, args.caption,
+                                      headless=not args.headed, expected_rows=expected)
         where = f"attached to step {args.n} of {args.case}: {picture}"
     else:
         out = Path(args.out or "pgadmin.png").resolve()
         with pgadmin.session(ws, store, headless=not args.headed) as pg:
             result = pg.query(pgadmin.check_sql(args.sql), out)
+        if expected is not None:
+            result = {**result, "check": pgadmin.verify_result(result, expected)}
         where = str(out)
     return {"result": result, "picture": where}, pgadmin.summary(result, where)
 
@@ -1221,6 +1230,7 @@ def build_parser():
     p.add_argument("--agent", help="worker holding the live case claim")
     p.add_argument("--n", type=int, help="the recorded step number the picture belongs to")
     p.add_argument("--sql", help="one reading query (SELECT, WITH, SHOW, EXPLAIN)")
+    p.add_argument("--expect", help='expected rows by SQL column alias as JSON, e.g. [{"phone":"0901234567"}], or [] for no rows')
     p.add_argument("--out", help="without a case: where to save the picture (default pgadmin.png)")
     p.add_argument("--caption", help="the text under the picture")
     p.add_argument("--headed", action="store_true", help="show the browser")

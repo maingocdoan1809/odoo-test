@@ -33,16 +33,20 @@ The dashboard gallery and Excel evidence sheet retain all pictures. Supplemental
 
 ## Database evidence (PgAdmin)
 
-When a step says to confirm on the database, check a record in PostgreSQL or capture a query result, keep it as one planned step and do not open PgAdmin yourself. Write the SQL from the step's wording (table and columns it names, the case's own `AUTO_TEST_` values). Take the PgAdmin picture first (the step is the next one to record), then record the step (`oqa live step`, framing the saved record still on screen, `--actual` saying what the rows showed). Pass only the SQL:
+Keep a database verification as one planned step. Set `database` in the analysis to the exact expected rows, using SQL result column names or aliases and text values or JSON `null`. For example, `"database": [{"phone":"0901234567","active":"true"}]` requires one row with that phone and status. Use `[]` when the expected result is zero rows. Derive these expectations from the approved testcase or design before running the query.
 
-`oqa pgadmin shot CASE --n N --sql "SELECT id, name FROM res_partner WHERE name = 'AUTO_TEST_x'"`
+Run the query immediately after the Odoo action has saved and before the next action changes the record. Filter by the current case's fixture key and select the fields whose values must be proved. For the example above, replace `FIXTURE_KEY` with the name generated for the case.
 
-- It signs in to the PgAdmin of the workspace (address, login, server and database come from `oqa init`), opens a fresh Query Tool on the right database, runs the SQL and keeps the real PgAdmin screen as evidence of step N: before the step is recorded it becomes part of the step, after it is recorded it is added to the step as supplemental evidence. Long values are shown in full (columns are widened) and the SQL is laid out one clause per line, result panel framed. The output lists the rows it read, so you can judge PASS or FAIL from them.
-- Only one reading statement is accepted (SELECT, WITH, SHOW, EXPLAIN). Anything that writes is refused.
-- Query the rows the case itself created or changed (its `AUTO_TEST_` names), and select the columns the expectation names.
-- `oqa connect` already runs this check once before the run, so a wrong address, password, server or database stops the run at the start. Do not start cases while it fails.
-- `oqa pgadmin check` only signs in and selects the database (use it to see whether the setup works). Without CASE, `--out FILE.png` saves the picture on its own.
-- If it says PgAdmin is not set up or a password is missing, tell the user to run `oqa init` and fill the PgAdmin section; never ask for the password in the chat.
+```sh
+oqa pgadmin shot CASE --n N --sql "SELECT phone, active FROM res_partner WHERE name = 'FIXTURE_KEY'"
+```
+
+- Compare multiple related records by selecting their identifying values and using `ORDER BY` for deterministic row order. For example, select the parent code, line product, and quantity in a joined query. To assert a count returned by SQL, select `COUNT(*) AS line_count` and expect `[{"line_count":"2"}]`.
+- Use unique aliases. Text compares exactly, including leading zeros. Use `{"phone":null}` for SQL NULL and `{"phone":""}` for an empty string. You can also select `phone IS NULL AS phone_is_null` and expect `"phone_is_null":"true"`. For dates and decimals, specify the expected display format or use an explicit SQL expression such as `to_char`.
+- `oqa pgadmin shot` opens a Query Tool on the selected database, runs one read-only statement, and captures the query and framed result. It reports PASS when the row count and every specified cell match, FAIL for a mismatch, and UNVERIFIED when a query error or unreadable grid prevents comparison. Keep the query narrow enough for the grid to show all requested rows and columns.
+- Use `oqa live step` with the PgAdmin verdict and an Odoo locator for the current record or relevant view. The step records the expected and observed values alongside the screenshots. A query error, missing or ambiguous result columns, or an incomplete grid needs a corrected query or a diagnosis before closing the case as BLOCKED. UI replay verifies the Odoo outcome. The live run performs the database verification.
+- For an older approved database step without `database`, pass the expected rows via `--expect '[{"phone":"0901234567","active":"true"}]'`. A supplied expectation on a step with an approved `database` must match that plan. For a separate capture, omit CASE and use `--out FILE.png`. An image added after the step has been recorded is supplemental evidence.
+- `oqa connect` verifies access to the workspace's PgAdmin and selects the configured database. Use `oqa pgadmin check` to test the connection on its own. If the configuration or saved password is missing, ask the user to fill in PgAdmin through `oqa init`.
 
 ## What a PASS must prove
 

@@ -28,10 +28,11 @@ TOOLS = [
     schema("profile", "Switch to a signed-in workspace profile required by the case.", strings("name"), ("name",)),
     schema("evidence_before", "Capture a checkpoint before the next action. Repeat for intermediate states; all pictures are retained.",
            (*strings("target", "caption"), ("n", "integer", {})), ("n", "target")),
-    schema("pgadmin_shot", "Database evidence for a step the testcase says to confirm on the database. Call it BEFORE recording that step (n is the next step; the picture becomes part of the step), with ONE read-only SQL (SELECT, WITH, SHOW, EXPLAIN), then record the step with step, its actual = what the rows showed. "
-                           "It signs in to the workspace's PgAdmin, runs the SQL on the right database and keeps the real PgAdmin screen as evidence of step n. Returns the row count and the rows: judge PASS or FAIL from them. "
-                           "Use this run's fixture key in the SQL, never a fixed name. Do not open PgAdmin yourself.",
-           (*strings("sql", "caption"), ("n", "integer", {})), ("n", "sql")),
+    schema("pgadmin_shot", "Before recording a database step, run one read-only SQL filtered by this attempt's fixture key. Select the actual named columns. "
+                           "The planned rows are checked automatically; for an older plan give expect explicitly. Returns the verdict and expected/actual rows with the picture. "
+                           "Record the result with step. An UNVERIFIED query needs correction before recording a verdict.",
+           (*strings("sql", "caption"), ("n", "integer", {}),
+            ("expect", "array", {"items": {"type": "object", "additionalProperties": {"type": ["string", "null"]}}})), ("n", "sql")),
     schema("step", "Record observed PASS/FAIL and a screenshot for a planned step. Include code and shows for replay.",
            (*strings("status", "actual", "target", "code", "shows", "assertions"), ("n", "integer", {})),
            ("n", "status", "actual", "target", "code", "shows")),
@@ -153,7 +154,8 @@ def _call(session, case, agent, name, args):
         from . import pgadmin
         from .secrets import default_store
 
-        result, picture = pgadmin.shot(session, workspace.load(session.ws), default_store(), case, args["n"], args["sql"], args.get("caption"))
+        expectation = {"expected_rows": pgadmin.validate_expectation(args["expect"])} if "expect" in args else {}
+        result, picture = pgadmin.shot(session, workspace.load(session.ws), default_store(), case, args["n"], args["sql"], args.get("caption"), **expectation)
         return pgadmin.summary(result, f"attached to step {args['n']}")
     if name == "step":
         return live.step(session, case, args["n"], args["status"], args["actual"], args["target"],

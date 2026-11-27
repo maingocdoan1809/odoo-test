@@ -116,13 +116,27 @@ def _fake_pgadmin(monkeypatch, result):
     monkeypatch.setattr(pgadmin, "session", fake)
 
 
-def _recorded_session(session, ws, monkeypatch):
+def _recorded_session(session, ws, monkeypatch, db_step=None):
     from PIL import Image
 
     from oqa import live
     from test_evidence_replay import approved
 
-    approved(session, ws)
+    if db_step is None:
+        approved(session, ws)
+    else:
+        from conftest import filled
+        from oqa import analysis
+        from oqa.store import write_json
+
+        document = filled(session.cases(), ws)
+        document["cases"][0]["steps"][0].update(db_step)
+        session.analysis_submitted(document=document)
+        session.connected({})
+        strategy, _ = analysis.strategy(document, session.cases(), ws)
+        write_json(session.dir / "strategy.json", strategy)
+        session.strategy_ready(strategy["sha"])
+        session.confirm_current("test")
     monkeypatch.setattr(live, "open_browser", lambda *a, **kw: "Admin")
     monkeypatch.setattr(live, "_run", lambda *a, **kw: "")
     monkeypatch.setattr(live, "_box", lambda browser, target: ((50, 50, 200, 40), (600, 400)))
@@ -150,7 +164,7 @@ def test_shot_attaches_the_pgadmin_picture_to_a_recorded_step(session, ws, monke
         pgadmin.shot(session, ws, store, "ORD-001", 1, "delete from res_partner")
 
 
-def test_the_worker_has_a_pgadmin_tool_that_takes_only_the_sql(session, ws, monkeypatch, store):
+def test_the_worker_can_query_the_approved_step_without_repeating_its_expectation(session, ws, monkeypatch, store):
     from oqa import pgadmin as module, worker_mcp
     from oqa.secrets import default_store  # noqa: F401  (imported by the tool)
 
@@ -165,6 +179,107 @@ def test_the_worker_has_a_pgadmin_tool_that_takes_only_the_sql(session, ws, monk
     monkeypatch.setattr(module, "shot", fake_shot)
     text = worker_mcp._call(session, "ORD-001", "w1", "pgadmin_shot", {"n": 2, "sql": "select 1"})
     assert seen == {"case": "ORD-001", "n": 2, "sql": "select 1"} and "1 row(s)" in text
+
+
+@pytest.mark.parametrize(("rows", "count", "expected", "verdict"), [
+    ([["", "active\nboolean", "phone\ncharacter varying"], ["1", "true", "0901234567"]], 1,
+     [{"phone": "0901234567", "active": "true"}], "PASS"),
+    ([["", "phone", "mobile"], ["1", "901234567", "0901234567"]], 1,
+     [{"phone": "0901234567"}], "FAIL"),
+    ([["", "phone"], ["1", None]], 1, [{"phone": None}], "PASS"),
+    ([["", "phone"], ["1", ""]], 1, [{"phone": None}], "FAIL"),
+    ([["", "phone"], ["1", "[null]"]], 1, [{"phone": None}], "FAIL"),
+    ([["", "phone"], ["1", "0901234567 "]], 1, [{"phone": "0901234567"}], "FAIL"),
+    ([["", "quantity"], ["1", "0"]], 1, [{"quantity": "1"}], "FAIL"),
+    ([["", "quantity"], ["1", "7"], ["2", "7"]], 2, [{"quantity": "7"}], "FAIL"),
+    ([["", "quantity"]], 0, [], "PASS"),
+    ([["", "quantity"]], 0, [{"quantity": "7"}], "FAIL"),
+    ([["", "quantity"], ["1", "7"]], 1, [], "FAIL"),
+    ([["", "wrong"], ["1", "7"]], 1, [{"quantity": "7"}], "UNVERIFIED"),
+    ([["", "quantity", "quantity"], ["1", "7", "8"]], 1, [{"quantity": "7"}], "UNVERIFIED"),
+    ([["", "quantity"], ["1", "7"]], 2, [{"quantity": "7"}, {"quantity": "8"}], "UNVERIFIED"),
+])
+def test_verify_result_matches_cell_names_values_and_cardinality(rows, count, expected, verdict):
+    result = pgadmin.verify_result({"rows": rows, "total": count, "error": ""}, expected)
+    assert result["status"] == verdict
+    assert result["actual_count"] == count
+
+
+@pytest.mark.parametrize("rows", [None, {"phone": "123"}, [{}], [{"phone": 123}], [{"phone": True}]])
+def test_database_expectation_requires_text_or_null_in_named_rows(rows):
+    with pytest.raises(GateError, match="Database expectation"):
+        pgadmin.validate_expectation(rows)
+
+
+@pytest.mark.parametrize("status", ["PASS", "FAIL"])
+def test_database_step_requires_matching_pgadmin_evidence(session, ws, monkeypatch, store, status):
+    from oqa import events, live, view
+
+    expected = [{"phone": "0901234567"}]
+    _recorded_session(session, ws, monkeypatch, {"action": "Verify phone in PgAdmin", "database": expected})
+    with pytest.raises(GateError, match="Capture a checked PgAdmin result"):
+        live.step(session, "ORD-001", 1, status, "The saved record is visible", target="#saved")
+
+    phone = "0901234567" if status == "PASS" else "0909876543"
+    _fake_pgadmin(monkeypatch, {"rows": [["", "phone"], ["1", phone]], "total": 1, "error": "", "box": [20, 50, 800, 370]})
+    sql = "SELECT phone FROM res_partner WHERE name = 'AUTO_TEST_x'"
+    with pytest.raises(GateError, match="match the approved database expectation"):
+        pgadmin.shot(session, ws, store, "ORD-001", 1, sql, expected_rows=[{"phone": "different"}])
+    result, picture = pgadmin.shot(session, ws, store, "ORD-001", 1, sql)
+    assert picture.is_file() and result["check"]["status"] == status
+    with pytest.raises(GateError, match=f"PgAdmin verification is {status}"):
+        live.step(session, "ORD-001", 1, "FAIL" if status == "PASS" else "PASS", "The saved record is visible", target="#saved")
+    live.step(session, "ORD-001", 1, status, "The saved record is visible", target="#saved")
+
+    record = next(record for record in events.read(session.dir) if record["kind"] == "step")
+    assert record["database_check"]["expected_rows"] == expected
+    assert record["database_check"]["actual_rows"] == [{"phone": phone}]
+    visible = view.case_records(session)[0]["attempts"][0]["steps"][0]
+    assert f'"phone": "{phone}"' in visible["actual"]
+    assert '"phone": "0901234567"' in visible["actual"]
+    assert visible["images"][0]["target"] == "PgAdmin"
+
+
+def test_legacy_database_step_can_use_cli_expect(session, ws, monkeypatch, store, capsys):
+    from oqa import cli, live
+
+    _recorded_session(session, ws, monkeypatch, {"action": "Verify that this contact was not saved in PgAdmin"})
+    _fake_pgadmin(monkeypatch, {"rows": [["", "phone"]], "total": 0, "error": "", "box": [20, 50, 800, 370]})
+    monkeypatch.setattr(cli, "default_store", lambda: store)
+    args = ["pgadmin", "shot", "ORD-001", "--ws", session.ws, "--session", session.id, "--n", "1",
+            "--sql", "SELECT phone FROM res_partner WHERE name = 'AUTO_TEST_x'"]
+    assert cli.main(args) == 2
+    assert "--expect" in capsys.readouterr().err
+    assert cli.main([*args, "--expect", "[]"]) == 0
+    assert "PgAdmin PASS" in capsys.readouterr().out
+    result, _ = live.step(session, "ORD-001", 1, "PASS", "No contact was saved", target="#saved")
+    assert result["status"] == "PASS"
+
+
+def test_a_database_conflict_tracks_the_users_chosen_expectation(session, ws):
+    from conftest import filled
+    from oqa import analysis
+
+    cases = session.cases()
+    document = filled(cases, ws)
+    case = document["cases"][0]
+    design = [{"phone": None}]
+    workbook = [{"phone": "0901234567"}]
+    step = case["steps"][0]
+    step.update(database=design, expected="The contact phone is unset",
+                oracle={"source": "bd", "ref": "Contact design", "quote": "The contact phone is unset by default."})
+    case["testcase_conflicts"] = [{"step": 1, "testcase": "The contact phone is 0901234567", "bd": step["expected"], "ref": "Contact design"}]
+    with pytest.raises(SchemaError, match="testcase_database"):
+        analysis.validate(document, cases, ws)
+
+    conflict = case["testcase_conflicts"][0]
+    conflict["testcase_database"] = workbook
+    choice = {analysis.conflict_key(case["id"], 1): {"choice": "testcase", "digest": analysis.conflict_digest(conflict)}}
+    analysis.apply_choices(document, choice)
+    assert step["database"] == workbook
+    choice[analysis.conflict_key(case["id"], 1)]["choice"] = "bd"
+    analysis.apply_choices(document, choice)
+    assert step["database"] == design
 
 
 def test_a_case_run_again_gets_a_new_record_name(session, ws, monkeypatch):

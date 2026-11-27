@@ -103,11 +103,24 @@ def validate(kind, data):
         raise SchemaError(problems, "event")
 
 
+def _repair(data):
+    repaired = textfix.repair(data)
+    if not isinstance(data, dict):
+        return repaired
+    if data.get("source") == "pgadmin":
+        for key in ("sql", "pgadmin_result"):
+            if key in data:
+                repaired[key] = data[key]
+    if "database_check" in data:
+        repaired.update(database_check=data["database_check"], actual=data["actual"])
+    return repaired
+
+
 def append(session_dir, kind, **data):
     """Validate and append one event. Unlike progress reporting in the old kit, a malformed event is an error: the file is the evidence."""
     validate(kind, data)
     record = {"ts": time.strftime("%Y-%m-%d %H:%M:%S")}
-    record.update(textfix.repair(data))
+    record.update(_repair(data))
     record["kind"] = kind
     file = Path(session_dir) / "events.jsonl"
     file.parent.mkdir(parents=True, exist_ok=True)
@@ -124,7 +137,7 @@ def read(session_dir):
     if file.exists():
         for line in file.read_text(encoding="utf-8").splitlines():
             try:
-                out.append(textfix.repair(json.loads(line)))
+                out.append(_repair(json.loads(line)))
             except ValueError:
                 continue
     return out

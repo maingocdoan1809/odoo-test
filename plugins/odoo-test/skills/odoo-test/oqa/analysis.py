@@ -115,6 +115,8 @@ def _score(value):
 
 def validate(analysis, cases_doc, workspace, choices=None):
     """Raises SchemaError listing every defect. `choices` = what the user decided about testcase/design conflicts (the session's `conflict_choices`)."""
+    from . import pgadmin
+
     problems = []
     wanted = [c["id"] for c in cases_doc["cases"]]
     given = [c.get("id") for c in analysis.get("cases", []) if isinstance(c, dict)]
@@ -174,6 +176,11 @@ def validate(analysis, cases_doc, workspace, choices=None):
                     labels = step["captions"]
                     if not isinstance(labels, dict) or any(k not in ("vi", "en", "ja") or not isinstance(v, str) for k, v in labels.items()):
                         problems.append(f"{at}: step {position} captions must map vi, en or ja to text")
+                if isinstance(step, dict) and verdict == "ready" and pgadmin.is_database_step(step):
+                    try:
+                        pgadmin.validate_expectation(step.get("database"))
+                    except pgadmin.GateError as error:
+                        problems.append(f"{at}: step {position} database: {error}")
         problems += _conflict_problems(at, c, steps if isinstance(steps, list) else [], choices)
         if verdict == "ready" and ("replay_records" in c or "replay_records_none_reason" in c):
             problems += _replay_problems(at, c)
@@ -269,7 +276,8 @@ def conflict_key(case, step):
 
 def conflict_digest(item):
     """Identifies what the user judged: a choice holds only while the testcase text, the design text and the section stay the same."""
-    return digest({k: item.get(k) for k in ("testcase", "bd", "ref")})
+    keys = ("testcase", "bd", "ref", "testcase_database") if "testcase_database" in item else ("testcase", "bd", "ref")
+    return digest({k: item.get(k) for k in keys})
 
 
 def chosen(choices, case, item):
@@ -281,13 +289,23 @@ def chosen(choices, case, item):
 def _conflict_problems(at, case, steps, choices=None):
     """A testcase that contradicts the design is reported, never silently followed. The design is the default, so the step is judged against it, until the user
     decides otherwise (they may know the design is the one that is wrong): that decision lives in the session, not in anything the assistant writes."""
+    from . import pgadmin
+
     problems = []
     numbered = {s.get("n"): s for s in steps if isinstance(s, dict)}
     for item in case.get("testcase_conflicts") or []:
         if not isinstance(item, dict) or item.get("step") not in numbered or not all(_says(item.get(k), 5) for k in ("testcase", "bd", "ref")):
             problems.append(f"{at}: each testcase_conflicts entry needs the step number, what the testcase says (testcase), what the design says (bd) and the design section (ref)")
             continue
-        oracle = numbered[item["step"]].get("oracle")
+        step = numbered[item["step"]]
+        if "database" in step or "testcase_database" in item:
+            try:
+                pgadmin.validate_expectation(item.get("testcase_database"))
+            except pgadmin.GateError as error:
+                problems.append(f"{at}: step {item['step']} testcase_database: {error}")
+            if "database" not in step:
+                problems.append(f"{at}: step {item['step']} needs a database expectation for the design as well")
+        oracle = step.get("oracle")
         user_chose_testcase = chosen(choices, case.get("id"), item) == "testcase" and isinstance(oracle, dict) and oracle.get("source") == "testcase" and oracle.get("chosen_over")
         if not user_chose_testcase and (not isinstance(oracle, dict) or oracle.get("source") != "bd"):
             problems.append(f"{at}: step {item['step']} contradicts the design: its oracle.source must be bd and its expected must state the design's result (the user decides, not you, if the testcase should win)")
@@ -306,10 +324,18 @@ def apply_choices(document, choices):
             if decision == "testcase":
                 if isinstance(step.get("oracle"), dict) and step["oracle"].get("source") == "bd":
                     item["bd_step"] = {"expected": step["expected"], "oracle": step["oracle"]}          # kept so the user can change their mind
+                    if "database" in step:
+                        item["bd_step"]["database"] = step["database"]
                 step["oracle"] = {"source": "testcase", "ref": "", "quote": "", "chosen_over": item["ref"]}
                 step["expected"] = item["testcase"]
+                if "testcase_database" in item:
+                    step["database"] = item["testcase_database"]
             elif decision == "bd" and isinstance(item.get("bd_step"), dict):
                 step["expected"], step["oracle"] = item["bd_step"]["expected"], item["bd_step"]["oracle"]
+                if "database" in item["bd_step"]:
+                    step["database"] = item["bd_step"]["database"]
+                else:
+                    step.pop("database", None)
     return document
 
 
@@ -482,7 +508,8 @@ def strategy(analysis, cases_doc, workspace, selected=None):
         lines.append(f"- {t['edge']}: " + ("; ".join(c.get("edge_cases") or []) or c.get("edge_cases_none_reason", "")))
         lines += [f"- {t['steps']}:"] + [f"  {s['n']}. {s['action']} → {s['expected']}"
                   + (f" [{t['basis']}: {_basis(s)}]" if _basis(s) else "")
-                  + (f" [Evidence: {s['evidence']}]" if s.get("evidence") else "") for s in c["steps"]] + [""]
+                  + (f" [Evidence: {s['evidence']}]" if s.get("evidence") else "")
+                  + (" [PgAdmin: " + json.dumps(s["database"], ensure_ascii=False) + "]" if "database" in s else "") for s in c["steps"]] + [""]
     if warned:
         lines += [f"## {t['warn']} ({len(warned)})", ""] + [
             f"- {w['case']} bước {w['step']} ({w['ref']}): {t['tc']}: {w['testcase']} ≠ {t['bd']}: {w['bd']}" for w in warned] + [""]

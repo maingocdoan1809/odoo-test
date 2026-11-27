@@ -1,5 +1,5 @@
 """oqa: the command line of the odoo-test skill. Standard library only, except openpyxl (reading testcase workbooks) and Playwright (driving the browser)."""
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 # Every JSON file oqa writes carries this number. A reader that meets a larger one must stop instead of guessing.
 SCHEMA_VERSION = 1
 

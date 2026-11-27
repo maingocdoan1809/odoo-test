@@ -21,7 +21,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from . import analysis as analysis_mod
-from . import captions, connect, evidence, events, memory, paths, record_names, replays, textfix, workspace
+from . import captions, connect, evidence, events, memory, paths, pgadmin, record_names, replays, textfix, workspace
 from .state import GateError, Session
 from .store import read_json, write_json
 
@@ -371,11 +371,13 @@ def start(session, case):
              f"After each planned step: oqa live step {case} --n N --status PASS|FAIL --actual \"what the page showed\" --target \"<locator of the element the step is about>\"."
              f" If the click leaves the page, take the picture first: oqa live shot {case} --n N --target \"<locator>\"."]
     if workspace.load(session.ws).get("pgadmin_url"):
-        lines.append(f"A step that confirms on the database: take the picture FIRST with oqa pgadmin shot {case} --n N --sql \"SELECT ...\" (MCP: pgadmin_shot; N is the next step), then record the step with live step (--actual = what the rows showed). Use this run's fixture key in the SQL. Do not open PgAdmin yourself.")
+        lines.append(f"For a database step, run oqa pgadmin shot {case} --n N --sql \"SELECT ...\" before live step (MCP: pgadmin_shot). Select the actual columns by this attempt's fixture key and use the PgAdmin verdict. See references/evidence.md.")
     for step in item["steps"]:
         lines.append(f"  {step['n']}. {step['action']}   ->   {step['expected']}")
         if step.get("evidence"):
             lines.append(f"     Evidence: {step['evidence']}")
+        if "database" in step:
+            lines.append(f"     PgAdmin expected rows: {json.dumps(step['database'], ensure_ascii=False)}")
     return {"case": case, "attempt": attempt, "browser": browser_name}, "\n".join(lines)
 
 
@@ -737,21 +739,30 @@ def step(session, case, n, status, actual, target=None, verified_code=None, show
         raise GateError("A step already failed: close the case with `oqa live end` (the steps after it are marked as not run).")
     if status not in ("PASS", "FAIL"):
         raise GateError("--status is PASS or FAIL.")
-    if len(re.findall(r"\w+", actual or "")) < 3:
-        raise GateError("--actual says what the page SHOWED for this step (a value, a message, a count), in a few words: it is compared with the expected result.")
     spec = steps[n - 1]
     folder = session.dir / "evidence" / re.sub(r"[^\w.-]+", "_", case) / f"a{attempt}"
     log = events.read(session.dir)
     captured = [event for event in log if event["kind"] == "evidence_captured" and event.get("case") == case
                 and event.get("attempt") == attempt and event.get("n") == n]
     db = next((event.get("pgadmin_result") for event in reversed(captured) if event.get("source") == "pgadmin"), None)
+    db_check = (db or {}).get("check")
+    if pgadmin.is_database_step(spec) or db_check:
+        if not db_check:
+            raise GateError("Capture a checked PgAdmin result for this step first with `oqa pgadmin shot`.")
+        if "database" in spec and db_check["expected_rows"] != spec["database"]:
+            raise GateError("Capture the PgAdmin result again using the approved database expectation.")
+        if db_check["status"] != status:
+            raise GateError(f"PgAdmin verification is {db_check['status']}. {db_check['detail']}")
+        actual = "\n".join(filter(None, [(actual or "").strip(), pgadmin.check_summary(db_check)]))
+    elif len(re.findall(r"\w+", actual or "")) < 3:
+        raise GateError("--actual says what the page SHOWED for this step (a value, a message, a count), in a few words: it is compared with the expected result.")
     if status == "PASS" and db and db["error"]:
         raise GateError("The PgAdmin query failed. Capture a successful query before recording PASS.")
     if status == "PASS" and require_checks and spec.get("evidence") and not shows:
         raise GateError("Give --shows with the observed outcome for this step. Use --assert-code for a calculated value or an absence.")
     browser_id = browser_case(session, case)
     script_step = None
-    checks = 0
+    checks = 1 if db_check else 0
     found = None
     if verified_code is not None or shows is not None or assertion_code is not None:
         if not target or not shows or "\n" in shows or "\n" in target:
@@ -759,13 +770,11 @@ def step(session, case, n, status, actual, target=None, verified_code=None, show
         code, profile = _step_actions(log, case, attempt, n, verified_code)
         assertions = [line.strip() for line in expand_vars(assertion_code).splitlines() if line.strip()]
         values = specific_values(spec.get("expected"))
-        if db and status == "PASS":
-            check_database_values(db, values)
         found = _box(browser_id, target)
         script_step = [f"// step {n}", f"// frame: {target}", f"// shows: {shows}"]
         if found:
             script_step.append("// check-target: yes")
-        if values and not assertions and not db:
+        if values and not assertions and not db_check:
             script_step.append("// check-values: " + json.dumps(values, ensure_ascii=False))
         script_step.extend(f"// assert: {line}" for line in assertions)
         script_step.extend(code)
@@ -780,7 +789,7 @@ def step(session, case, n, status, actual, target=None, verified_code=None, show
                 run_actions(browser_id, commands)
             except GateError as error:
                 raise GateError(f"The replay check could not find 'shows' verbatim or verify the expected outcome: {error}") from error
-            checks = len(commands) - 1 + len(blocks[0].get("check_values", [])) + (1 if db else 0)
+            checks += len(commands) - 1 + len(blocks[0].get("check_values", []))
     raw, annotated = folder / f"s{n}_raw.png", folder / f"s{n}_annotated.png"
     boxes, how = None, ""
     if target:
@@ -814,6 +823,7 @@ def step(session, case, n, status, actual, target=None, verified_code=None, show
         script_step.insert(2, "// frame-before: yes")
     events.append(session.dir, "step", case=case, attempt=attempt, n=n, status=status, caption=spec["action"], expected=spec["expected"], actual=actual.strip(),
                   checks=checks, images=images,
+                  **({"database_check": db_check} if db_check else {}),
                   **({"verified_script": script_step} if script_step else {}))
     return {"case": case, "n": n, "status": status, "frame": how}, f"Step {n} recorded as {status} (frame drawn by oqa, {how or 'whole screen'}). " + (
         f"Next: step {n + 1}." if status == "PASS" and n < len(steps) else f"Next: oqa live end {case} --status {'PASS' if status == 'PASS' else 'FAIL'} --reason \"...\"")
@@ -1352,18 +1362,6 @@ def specific_values(expected):
     values = [m.group(0) for m in _NUMBER.finditer(text)]
     values += [q for q in _QUOTED.findall(text) if not _NUMBER.fullmatch(q)]
     return list(dict.fromkeys(values))
-
-
-def check_database_values(result, values):
-    """The numbers and dates of the expected result must be among the rows. Words are not checked here: the database keeps keys (state = 'sale'), not the labels
-    the screen shows. The first cell of each row is PgAdmin's row number, not data."""
-    observed = " ".join(str(value) for row in result["rows"] for value in row[1:])
-    seen = {form for token in _NUMBER.findall(observed) for form in number_forms(token)}
-    if result["total"] is not None:
-        seen |= number_forms(str(result["total"]))
-    missing = [v for v in values if _NUMBER.fullmatch(v) and not number_forms(v) & seen]
-    if missing:
-        raise GateError("The PgAdmin result is missing expected values: " + ", ".join(missing))
 
 
 def end(session, case, status, reason, script=None, category=None, control=None):
